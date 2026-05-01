@@ -3,6 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from accounts.permissions import IsTeamMember, CanEditWiki
+from teamos_project.api_response import ok, fail
 from wiki.models import WikiPage
 from .models import GraphEdge
 from .analytics import (
@@ -15,7 +16,8 @@ class GraphView(APIView):
     permission_classes = [IsAuthenticated, IsTeamMember]
 
     def get(self, request, team_id):
-        analytics = get_team_graph_analytics(team_id)
+        mode = request.query_params.get("mode", "simple")
+        analytics = get_team_graph_analytics(team_id, mode=mode)
         page_rank = analytics.get("page_rank", {})
         clusters = analytics.get("clusters", {})
 
@@ -50,7 +52,7 @@ class GraphView(APIView):
             }
             for e in edges_qs
         ]
-        return Response({"nodes": nodes, "edges": edges})
+        return ok({"nodes": nodes, "edges": edges, "analytics_mode": analytics.get("analytics_mode", "simple")})
 
 
 class GraphNodeView(APIView):
@@ -60,7 +62,7 @@ class GraphNodeView(APIView):
         try:
             page = WikiPage.objects.get(id=page_id, team_id=team_id, is_deleted=False)
         except WikiPage.DoesNotExist:
-            return Response(status=404)
+            return fail("Graph node not found.", status_code=404, code="graph_node_not_found")
 
         neighbors = []
         for e in GraphEdge.objects.filter(from_page=page).select_related("to_page"):
@@ -69,7 +71,7 @@ class GraphNodeView(APIView):
         for e in GraphEdge.objects.filter(to_page=page).select_related("from_page"):
             neighbors.append({"page_id": str(e.from_page_id), "title": e.from_page.title,
                                "slug": e.from_page.slug, "direction": "in", "type": e.edge_type})
-        return Response({
+        return ok({
             "id": str(page.id), "title": page.title, "slug": page.slug,
             "type": page.page_type, "summary": page.summary,
             "frontmatter": page.frontmatter, "neighbors": neighbors,
@@ -82,7 +84,7 @@ class GraphHubsView(APIView):
 
     def get(self, request, team_id):
         analytics = get_team_graph_analytics(team_id)
-        return Response(analytics.get("hubs", []))
+        return ok(analytics.get("hubs", []))
 
 
 class GraphOrphansView(APIView):
@@ -91,14 +93,15 @@ class GraphOrphansView(APIView):
 
     def get(self, request, team_id):
         analytics = get_team_graph_analytics(team_id)
-        return Response(analytics.get("orphans", []))
+        return ok(analytics.get("orphans", []))
 
 
 class GraphAnalyticsView(APIView):
     permission_classes = [IsAuthenticated, IsTeamMember]
 
     def get(self, request, team_id):
-        return Response(get_team_graph_analytics(team_id))
+        mode = request.query_params.get("mode", "simple")
+        return ok(get_team_graph_analytics(team_id, mode=mode))
 
 
 class GraphEdgeCreateView(APIView):
@@ -112,13 +115,13 @@ class GraphEdgeCreateView(APIView):
             fp = WikiPage.objects.get(id=from_id, team_id=team_id)
             tp = WikiPage.objects.get(id=to_id, team_id=team_id)
         except WikiPage.DoesNotExist:
-            return Response(status=404)
+            return fail("Source or target page not found.", status_code=404, code="graph_edge_page_not_found")
         edge, _ = GraphEdge.objects.get_or_create(
             from_page=fp, to_page=tp, edge_type=edge_type,
             defaults={"confidence": 1.0, "created_by": "user"},
         )
         invalidate_team_graph_analytics_cache(team_id)
-        return Response({"id": str(edge.id)}, status=201)
+        return ok({"id": str(edge.id)}, status_code=201)
 
     def delete(self, request, team_id):
         edge_id = request.data.get("edge_id")

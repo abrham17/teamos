@@ -6,7 +6,7 @@ class IngestJobSerializer(serializers.ModelSerializer):
         model = IngestJob
         fields = [
             "id", "source_type", "source_url", "source_filename", 
-            "status", "chunk_count", "error", "wiki_page", 
+            "status", "ingest_stage", "ingest_stage_detail", "chunk_count", "error", "wiki_page",
             "created_at", "updated_at"
         ]
         read_only_fields = ["id", "status", "created_at", "updated_at"]

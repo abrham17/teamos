@@ -59,7 +59,17 @@ class TeamSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Team
-        fields = ["id", "name", "slug", "plan", "created_at", "member_count"]
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "plan",
+            "is_deleted",
+            "deleted_at",
+            "purge_after",
+            "created_at",
+            "member_count",
+        ]
 
     def get_member_count(self, obj):
         return obj.members.count()
@@ -75,6 +85,7 @@ class TeamMemberSerializer(serializers.ModelSerializer):
 
 class TeamInviteSerializer(serializers.ModelSerializer):
     accept_url = serializers.SerializerMethodField()
+    lifecycle_status = serializers.SerializerMethodField()
 
     class Meta:
         model = TeamInvite
@@ -88,6 +99,7 @@ class TeamInviteSerializer(serializers.ModelSerializer):
             "revoked_at",
             "send_status",
             "sent_at",
+            "lifecycle_status",
             "accept_url",
         ]
 
@@ -96,6 +108,9 @@ class TeamInviteSerializer(serializers.ModelSerializer):
         if not frontend_url:
             return ""
         return f"{frontend_url.rstrip('/')}/accept-invite?token={obj.token}"
+
+    def get_lifecycle_status(self, obj):
+        return obj.lifecycle_status
 
 
 class InviteCreateSerializer(serializers.Serializer):

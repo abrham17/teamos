@@ -19,6 +19,12 @@ from ingest.vectors import vector_store
 logger = logging.getLogger(__name__)
 
 
+def _set_job_stage(job: IngestJob, stage: str, detail: str = "") -> None:
+    job.ingest_stage = stage
+    job.ingest_stage_detail = detail
+    job.save(update_fields=["ingest_stage", "ingest_stage_detail", "updated_at"])
+
+
 def _derive_chunk_config(team_plan: str) -> tuple[int, int]:
     tiers = getattr(settings, "PLAN_TIERS", {})
     plan_cfg = tiers.get(team_plan) or tiers.get("free") or {}
@@ -135,7 +141,8 @@ def _persist_chunks(page: WikiPage, chunks: list[str]) -> int:
     return len(rows)
 
 
-def run_pipeline(job, source_text: str = ""):
+def run_pipeline(job, source_text: str = "", trace_id: str | None = None):
+    _set_job_stage(job, "extracting", "Extracting source content")
     parsed_text = (source_text or "").strip()
     if job.source_type == "url":
         parsed_text = _fetch_url_text(job.source_url)
@@ -149,6 +156,7 @@ def run_pipeline(job, source_text: str = ""):
     job.save(update_fields=["raw_data"])
 
     # Advanced AI: Template Detection
+    _set_job_stage(job, "governance", "Classifying content and governance checks")
     page_type, template_name = _detect_template_and_type(parsed_text)
 
     # Governance Gate
@@ -159,6 +167,7 @@ def run_pipeline(job, source_text: str = ""):
         return
 
     # Materialization
+    _set_job_stage(job, "materializing", "Creating/updating wiki page")
     title = _derive_title(job, parsed_text)
     page, created = WikiPage.objects.get_or_create(
         team=job.team, title=title,
@@ -177,6 +186,7 @@ def run_pipeline(job, source_text: str = ""):
         page.save(update_fields=["content", "raw_content", "updated_at"])
 
     # Vectorization
+    _set_job_stage(job, "vectorizing", "Chunking and embedding content")
     chunk_size, chunk_overlap = _derive_chunk_config(job.team.plan)
     words = parsed_text.split()
     chunks = [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size - chunk_overlap)]
@@ -187,13 +197,16 @@ def run_pipeline(job, source_text: str = ""):
     vector_store.upsert_chunks(job.team.id, page.id, chunks_data)
 
     # Graph
+    _set_job_stage(job, "graph_sync", "Wiring graph relationships")
     from ingest.tasks import wire_page_graph
-    wire_page_graph.delay(str(page.id))
+    wire_page_graph.delay(str(page.id), trace_id=trace_id)
 
     job.chunk_count = chunk_count
     job.status = "done"
+    job.ingest_stage = "completed"
+    job.ingest_stage_detail = "Ingestion completed successfully"
     job.wiki_page = page
-    job.save(update_fields=["chunk_count", "status", "wiki_page", "updated_at"])
+    job.save(update_fields=["chunk_count", "status", "ingest_stage", "ingest_stage_detail", "wiki_page", "updated_at"])
 
     # Log Activity
     KnowledgeActivity.objects.create(

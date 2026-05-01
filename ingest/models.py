@@ -4,6 +4,16 @@ from accounts.models import Team, User
 from wiki.models import WikiPage
 
 class IngestJob(models.Model):
+    STAGE_CHOICES = [
+        ("queued", "Queued"),
+        ("extracting", "Extracting"),
+        ("governance", "Governance"),
+        ("materializing", "Materializing"),
+        ("vectorizing", "Vectorizing"),
+        ("graph_sync", "Graph Sync"),
+        ("completed", "Completed"),
+        ("failed", "Failed"),
+    ]
     STATUS_CHOICES = [
         ("pending", "Pending"), ("running", "Running"),
         ("review_required", "Review Required"), # New state
@@ -20,6 +30,8 @@ class IngestJob(models.Model):
     source_url = models.URLField(blank=True)
     source_filename = models.CharField(max_length=300, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    ingest_stage = models.CharField(max_length=30, choices=STAGE_CHOICES, default="queued")
+    ingest_stage_detail = models.CharField(max_length=200, blank=True)
     auto_approve = models.BooleanField(default=True)
     raw_data = models.TextField(blank=True)  # Full raw text extracted
     chunk_count = models.PositiveIntegerField(default=0)
@@ -63,6 +75,27 @@ class KnowledgeActivity(models.Model):
     summary = models.CharField(max_length=500)
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class AsyncDeadLetter(models.Model):
+    STATUS_CHOICES = [
+        ("new", "New"),
+        ("requeued", "Requeued"),
+        ("resolved", "Resolved"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task_name = models.CharField(max_length=200)
+    trace_id = models.CharField(max_length=120, db_index=True)
+    error_message = models.TextField()
+    payload = models.JSONField(default=dict, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="new")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]

@@ -1,5 +1,6 @@
 import os
 from typing import Optional, Tuple
+from urllib.parse import urlparse
 
 import jwt
 from django.contrib.auth import get_user_model
@@ -72,6 +73,9 @@ class ClerkJWTAuthentication(BaseAuthentication):
         audience = os.environ.get("CLERK_AUDIENCE")
 
         if not jwks_url or not issuer:
+            issuer, jwks_url = self._derive_issuer_and_jwks_from_token(token)
+
+        if not jwks_url or not issuer:
             raise exceptions.AuthenticationFailed("Clerk is not configured on the backend.")
 
         try:
@@ -88,6 +92,39 @@ class ClerkJWTAuthentication(BaseAuthentication):
             return jwt.decode(token, signing_key.key, **kwargs)
         except jwt.PyJWTError as exc:
             raise exceptions.AuthenticationFailed(f"Invalid Clerk token: {exc}") from exc
+
+    def _derive_issuer_and_jwks_from_token(self, token: str) -> Tuple[str, str]:
+        """
+        Dev-friendly fallback:
+        when explicit Clerk env vars are absent, derive issuer from token.
+        """
+        try:
+            payload = jwt.decode(
+                token,
+                options={
+                    "verify_signature": False,
+                    "verify_exp": False,
+                    "verify_aud": False,
+                    "verify_iss": False,
+                },
+                algorithms=["RS256"],
+            )
+        except jwt.PyJWTError:
+            return "", ""
+
+        issuer = str(payload.get("iss") or "").strip()
+        if not issuer:
+            return "", ""
+
+        parsed = urlparse(issuer)
+        if parsed.scheme != "https":
+            return "", ""
+
+        host = (parsed.hostname or "").lower()
+        if not (host.endswith(".clerk.accounts.dev") or host.endswith(".clerk.com")):
+            return "", ""
+
+        return issuer, f"{issuer.rstrip('/')}/.well-known/jwks.json"
 
 class CookieJWTAuthentication(JWTAuthentication):
     def authenticate(self, request):
