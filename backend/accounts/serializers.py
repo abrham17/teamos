@@ -1,17 +1,18 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
-from .models import User, Team, TeamMember, TeamInvite
+from .models import User, Team, TeamMember, TeamInvite, TeamAuditEvent
 
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["id", "email", "first_name", "last_name", "avatar_url", "created_at"]
+        fields = ["id", "clerk_user_id", "username", "email", "first_name", "last_name", "avatar_url", "created_at"]
 
 
 class RegisterSerializer(serializers.Serializer):
     email = serializers.EmailField()
+    username = serializers.CharField(max_length=150, required=False, allow_blank=True)
     password = serializers.CharField(min_length=8, write_only=True)
     first_name = serializers.CharField(max_length=60, default="")
     last_name = serializers.CharField(max_length=60, default="")
@@ -21,9 +22,18 @@ class RegisterSerializer(serializers.Serializer):
             raise serializers.ValidationError("Email already registered.")
         return value.lower()
 
+    def validate_username(self, value):
+        username = value.strip()
+        if not username:
+            return ""
+        if User.objects.filter(username=username).exists():
+            raise serializers.ValidationError("Username is already taken.")
+        return username
+
     def create(self, validated_data):
+        username = validated_data.get("username", "").strip() or validated_data["email"]
         user = User.objects.create_user(
-            username=validated_data["email"],
+            username=username,
             email=validated_data["email"],
             password=validated_data["password"],
             first_name=validated_data.get("first_name", ""),
@@ -64,6 +74,41 @@ class TeamMemberSerializer(serializers.ModelSerializer):
 
 
 class TeamInviteSerializer(serializers.ModelSerializer):
+    accept_url = serializers.SerializerMethodField()
+
     class Meta:
         model = TeamInvite
-        fields = ["id", "token", "role", "expires_at"]
+        fields = [
+            "id",
+            "token",
+            "invitee_email",
+            "role",
+            "expires_at",
+            "used_at",
+            "revoked_at",
+            "send_status",
+            "sent_at",
+            "accept_url",
+        ]
+
+    def get_accept_url(self, obj):
+        frontend_url = self.context.get("frontend_url", "")
+        if not frontend_url:
+            return ""
+        return f"{frontend_url.rstrip('/')}/accept-invite?token={obj.token}"
+
+
+class InviteCreateSerializer(serializers.Serializer):
+    invitee_email = serializers.EmailField()
+    role = serializers.ChoiceField(choices=["owner", "editor", "viewer"], default="editor")
+
+    def validate_invitee_email(self, value):
+        return value.lower().strip()
+
+
+class TeamAuditEventSerializer(serializers.ModelSerializer):
+    actor = UserSerializer(read_only=True)
+
+    class Meta:
+        model = TeamAuditEvent
+        fields = ["id", "event_type", "metadata", "created_at", "actor"]

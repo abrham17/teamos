@@ -1,23 +1,23 @@
 import re
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from accounts.models import TeamMember
+from rest_framework.permissions import IsAuthenticated
+from accounts.permissions import IsTeamMember, CanEditWiki
 from wiki.models import WikiPage
 from .models import GraphEdge
-
-
-def get_membership(user, team_id):
-    try:
-        return TeamMember.objects.get(user=user, team_id=team_id)
-    except TeamMember.DoesNotExist:
-        return None
+from .analytics import (
+    get_team_graph_analytics,
+    invalidate_team_graph_analytics_cache,
+)
 
 
 class GraphView(APIView):
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
     def get(self, request, team_id):
-        m = get_membership(request.user, team_id)
-        if not m:
-            return Response(status=403)
+        analytics = get_team_graph_analytics(team_id)
+        page_rank = analytics.get("page_rank", {})
+        clusters = analytics.get("clusters", {})
 
         pages = WikiPage.objects.filter(team_id=team_id, is_deleted=False).only(
             "id", "title", "slug", "page_type", "updated_at", "content"
@@ -30,6 +30,8 @@ class GraphView(APIView):
                 "type": p.page_type,
                 "summary": p.summary,
                 "updated_at": p.updated_at.isoformat(),
+                "page_rank": page_rank.get(str(p.id), 0.0),
+                "cluster_id": clusters.get(str(p.id), "cluster-0"),
             }
             for p in pages
         ]
@@ -52,10 +54,9 @@ class GraphView(APIView):
 
 
 class GraphNodeView(APIView):
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
     def get(self, request, team_id, page_id):
-        m = get_membership(request.user, team_id)
-        if not m:
-            return Response(status=403)
         try:
             page = WikiPage.objects.get(id=page_id, team_id=team_id, is_deleted=False)
         except WikiPage.DoesNotExist:
@@ -77,44 +78,33 @@ class GraphNodeView(APIView):
 
 class GraphHubsView(APIView):
     """Pages with most incoming edges (simple PageRank proxy)."""
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
     def get(self, request, team_id):
-        m = get_membership(request.user, team_id)
-        if not m:
-            return Response(status=403)
-        from django.db.models import Count
-        hubs = (
-            GraphEdge.objects
-            .filter(to_page__team_id=team_id, to_page__is_deleted=False)
-            .values("to_page_id", "to_page__title", "to_page__slug")
-            .annotate(in_degree=Count("id"))
-            .order_by("-in_degree")[:10]
-        )
-        return Response(list(hubs))
+        analytics = get_team_graph_analytics(team_id)
+        return Response(analytics.get("hubs", []))
 
 
 class GraphOrphansView(APIView):
     """Pages with zero graph edges."""
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
     def get(self, request, team_id):
-        m = get_membership(request.user, team_id)
-        if not m:
-            return Response(status=403)
-        all_pages = WikiPage.objects.filter(team_id=team_id, is_deleted=False)
-        connected = set(
-            GraphEdge.objects.filter(from_page__team_id=team_id)
-            .values_list("from_page_id", flat=True)
-        ) | set(
-            GraphEdge.objects.filter(to_page__team_id=team_id)
-            .values_list("to_page_id", flat=True)
-        )
-        orphans = [p for p in all_pages if p.id not in connected]
-        return Response([{"id": str(p.id), "title": p.title, "slug": p.slug} for p in orphans])
+        analytics = get_team_graph_analytics(team_id)
+        return Response(analytics.get("orphans", []))
+
+
+class GraphAnalyticsView(APIView):
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
+    def get(self, request, team_id):
+        return Response(get_team_graph_analytics(team_id))
 
 
 class GraphEdgeCreateView(APIView):
+    permission_classes = [IsAuthenticated, CanEditWiki]
+
     def post(self, request, team_id):
-        m = get_membership(request.user, team_id)
-        if not m or m.role == "viewer":
-            return Response(status=403)
         from_id = request.data.get("from_page_id")
         to_id = request.data.get("to_page_id")
         edge_type = request.data.get("edge_type", "manual")
@@ -127,12 +117,11 @@ class GraphEdgeCreateView(APIView):
             from_page=fp, to_page=tp, edge_type=edge_type,
             defaults={"confidence": 1.0, "created_by": "user"},
         )
+        invalidate_team_graph_analytics_cache(team_id)
         return Response({"id": str(edge.id)}, status=201)
 
     def delete(self, request, team_id):
-        m = get_membership(request.user, team_id)
-        if not m or m.role == "viewer":
-            return Response(status=403)
         edge_id = request.data.get("edge_id")
         GraphEdge.objects.filter(id=edge_id, from_page__team_id=team_id).delete()
+        invalidate_team_graph_analytics_cache(team_id)
         return Response(status=204)

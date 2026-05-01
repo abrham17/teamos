@@ -84,7 +84,13 @@ export function Sidebar() {
   };
 
   const handleLogout = async () => {
-    try { await api.post("/auth/logout/", {}); } catch (_) {}
+    try {
+      const clerk = (window as any).Clerk;
+      if (clerk?.signOut) {
+        await clerk.signOut({ redirectUrl: "/login" });
+        return;
+      }
+    } catch (_) {}
     window.location.href = "/login";
   };
 

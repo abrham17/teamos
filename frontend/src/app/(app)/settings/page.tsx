@@ -8,15 +8,67 @@ import { useToast } from "@/components/ui/Toast";
 
 export default function SettingsPage() {
   const { currentTeamId } = useWikiStore();
-  const { success, info } = useToast();
+  const { success, info, error } = useToast();
   const [team, setTeam] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
+  const [invites, setInvites] = useState<any[]>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("editor");
 
   useEffect(() => {
     if (!currentTeamId) return;
     api.get(`/auth/teams/${currentTeamId}/`).then(setTeam).catch(console.error);
     api.get(`/auth/teams/${currentTeamId}/members/`).then(setMembers).catch(console.error);
+    api.get(`/auth/teams/${currentTeamId}/invites/`).then(setInvites).catch(console.error);
   }, [currentTeamId]);
+
+  const refreshInvites = async () => {
+    if (!currentTeamId) return;
+    const data = await api.get(`/auth/teams/${currentTeamId}/invites/`);
+    setInvites(data);
+  };
+
+  const handleInviteMember = async () => {
+    if (!currentTeamId) return;
+    if (!inviteEmail.trim()) {
+      error("Invite email is required.");
+      return;
+    }
+    try {
+      await api.post(`/auth/teams/${currentTeamId}/invite/`, {
+        invitee_email: inviteEmail.trim(),
+        role: inviteRole,
+      });
+      success("Invite created and email dispatch requested.");
+      setInviteEmail("");
+      setInviteRole("editor");
+      await refreshInvites();
+    } catch (e: any) {
+      error(e?.message || "Failed to send invite.");
+    }
+  };
+
+  const handleResendInvite = async (inviteId: string) => {
+    if (!currentTeamId) return;
+    try {
+      await api.post(`/auth/teams/${currentTeamId}/invites/${inviteId}/resend/`, {});
+      info("Invite resend requested.");
+      await refreshInvites();
+    } catch (e: any) {
+      error(e?.message || "Failed to resend invite.");
+    }
+  };
+
+  const handleRevokeInvite = async (inviteId: string) => {
+    if (!currentTeamId) return;
+    try {
+      await api.post(`/auth/teams/${currentTeamId}/invites/${inviteId}/revoke/`, {});
+      success("Invite revoked.");
+      await refreshInvites();
+    } catch (e: any) {
+      error(e?.message || "Failed to revoke invite.");
+    }
+  };
 
   const handleExportWiki = () => {
     if (!currentTeamId) return;
@@ -74,9 +126,30 @@ export default function SettingsPage() {
               </h3>
               <p className="text-sm text-[var(--text-muted)] mt-1">Add or remove team members and manage their roles.</p>
             </div>
-            <button className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-800)] border border-[var(--border-subtle)] hover:border-[var(--accent)] rounded-lg text-sm transition-colors">
-              <Plus className="w-4 h-4" /> Invite Member
-            </button>
+            <div className="flex items-center gap-2">
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="name@company.com"
+                className="px-3 py-2 rounded-lg bg-[var(--surface-1)] border border-[var(--border-subtle)] text-sm"
+              />
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value)}
+                className="px-3 py-2 rounded-lg bg-[var(--surface-1)] border border-[var(--border-subtle)] text-sm capitalize"
+              >
+                <option value="viewer">viewer</option>
+                <option value="editor">editor</option>
+                <option value="owner">owner</option>
+              </select>
+              <button
+                onClick={handleInviteMember}
+                className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-800)] border border-[var(--border-subtle)] hover:border-[var(--accent)] rounded-lg text-sm transition-colors"
+              >
+                <Plus className="w-4 h-4" /> Invite Member
+              </button>
+            </div>
           </div>
           <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-xl overflow-hidden">
             {members.map(m => (
@@ -98,6 +171,45 @@ export default function SettingsPage() {
                 </div>
               </div>
             ))}
+          </div>
+          <div className="mt-4 bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-[var(--border-subtle)] text-sm font-medium">
+              Pending / recent invites
+            </div>
+            {invites.length === 0 ? (
+              <div className="px-4 py-4 text-sm text-[var(--text-muted)]">No invites yet.</div>
+            ) : (
+              invites.map((invite) => (
+                <div key={invite.id} className="px-4 py-3 border-b border-[var(--border-subtle)] last:border-0 text-sm">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="font-medium">{invite.invitee_email}</div>
+                      <div className="text-[var(--text-muted)]">
+                        Role: <span className="capitalize">{invite.role}</span> · Status: {invite.send_status}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!invite.used_at && !invite.revoked_at && (
+                        <>
+                          <button
+                            onClick={() => handleResendInvite(invite.id)}
+                            className="px-3 py-1.5 rounded border border-[var(--border-subtle)] hover:border-[var(--accent)]"
+                          >
+                            Resend
+                          </button>
+                          <button
+                            onClick={() => handleRevokeInvite(invite.id)}
+                            className="px-3 py-1.5 rounded border border-red-500/20 text-red-400 hover:bg-red-500/10"
+                          >
+                            Revoke
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </section>
 

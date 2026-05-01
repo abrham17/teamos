@@ -21,11 +21,27 @@ interface GraphData {
   edges: GraphEdge[];
 }
 
+interface GraphAnalytics {
+  page_rank: Record<string, number>;
+  clusters: Record<string, string>;
+  cluster_sizes: Record<string, number>;
+  hubs: Array<{
+    to_page_id: string;
+    to_page__title: string;
+    to_page__slug: string;
+    score: number;
+  }>;
+  orphans: Array<{ id: string; title: string; slug: string }>;
+  node_count: number;
+  edge_count: number;
+}
+
 export default function GraphPage() {
   const router          = useRouter();
   const { currentTeamId } = useWikiStore();
 
   const [data, setData]                 = useState<GraphData | null>(null);
+  const [analytics, setAnalytics]       = useState<GraphAnalytics | null>(null);
   const [loading, setLoading]           = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery]   = useState("");
@@ -38,9 +54,14 @@ export default function GraphPage() {
     if (!currentTeamId) return;
     setLoading(true);
     setSelectedNodeId(null);
-    api
-      .get(`/graph/${currentTeamId}/`)
-      .then(setData)
+    Promise.all([
+      api.get(`/graph/${currentTeamId}/`),
+      api.get(`/graph/${currentTeamId}/analytics/`),
+    ])
+      .then(([graphData, analyticsData]) => {
+        setData(graphData);
+        setAnalytics(analyticsData);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [currentTeamId]);
@@ -142,6 +163,42 @@ export default function GraphPage() {
             onNodeClick={handleNodeClick}
             onNodeDoubleClick={setSelectedNodeId}
           />
+        )}
+
+        {/* Analytics overlay */}
+        {analytics && data && data.nodes.length > 0 && (
+          <div className="absolute top-3 left-3 z-10 flex flex-col gap-2 max-w-sm">
+            <div className="bg-[var(--glass-heavy-bg)] backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-secondary)]">
+              <div className="font-semibold text-[var(--text-primary)] mb-1">Graph Insights</div>
+              <div>
+                {Object.keys(analytics.cluster_sizes || {}).length} clusters ·{" "}
+                {analytics.orphans.length} orphan pages
+              </div>
+            </div>
+
+            {analytics.orphans.length > 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2 text-xs text-amber-300">
+                <div className="font-semibold mb-1">Orphan Warning</div>
+                <div>
+                  {analytics.orphans.length} pages have no graph links yet. Add wikilinks to
+                  improve discoverability.
+                </div>
+              </div>
+            )}
+
+            {analytics.hubs.length > 0 && (
+              <div className="bg-[var(--glass-heavy-bg)] backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-secondary)]">
+                <div className="font-semibold text-[var(--text-primary)] mb-1">Top hubs</div>
+                <div className="space-y-1">
+                  {analytics.hubs.slice(0, 3).map((h) => (
+                    <div key={h.to_page_id} className="truncate">
+                      {h.to_page__title} <span className="text-[var(--text-dim)]">({h.score.toFixed(3)})</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Node inspector (slides in from right) */}

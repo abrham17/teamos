@@ -18,6 +18,7 @@ class WikiPage(models.Model):
     title = models.CharField(max_length=300)
     slug = models.SlugField(max_length=300)
     content = models.TextField(blank=True)          # raw Markdown
+    raw_content = models.TextField(blank=True)      # original source content for citations
     page_type = models.CharField(max_length=30, choices=PAGE_TYPE_CHOICES, default="standard")
     frontmatter = models.JSONField(default=dict, blank=True)   # tags, status, related, etc.
     raw_file_url = models.URLField(blank=True)       # original uploaded file (S3)
