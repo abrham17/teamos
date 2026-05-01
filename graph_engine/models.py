@@ -8,6 +8,8 @@ class GraphEdge(models.Model):
         ("wikilink", "Wikilink"),
         ("ai_inferred", "AI Inferred"),
         ("manual", "Manual"),
+        ("citation", "Citation"),
+        ("semantic", "Semantic Similarity"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

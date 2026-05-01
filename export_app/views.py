@@ -8,16 +8,20 @@ from accounts.models import TeamMember
 from wiki.models import WikiPage
 from graph_engine.models import GraphEdge
 
-
 def get_membership(user, team_id):
     try:
         return TeamMember.objects.get(user=user, team_id=team_id)
     except TeamMember.DoesNotExist:
         return None
 
-
 class ExportWikiView(APIView):
-    """Export the entire wiki as a ZIP containing Markdown files + _graph.json"""
+    """
+    Export the entire wiki as a ZIP containing:
+    - /pages/*.md (Markdown + YAML Frontmatter)
+    - /sources/*.txt (Raw data used for grounding)
+    - _graph.json (Nodes and Edges for portability)
+    - metadata.json (Team information)
+    """
     def get(self, request, team_id):
         m = get_membership(request.user, team_id)
         if not m:
@@ -29,7 +33,15 @@ class ExportWikiView(APIView):
         # Build graph JSON
         graph_data = {
             "nodes": [{"id": str(p.id), "slug": p.slug, "title": p.title, "type": p.page_type} for p in pages],
-            "edges": [{"source": str(e.from_page_id), "target": str(e.to_page_id), "type": e.edge_type} for e in edges]
+            "edges": [{"source": str(e.from_page_id), "target": str(e.to_page_id), "type": e.edge_type, "confidence": e.confidence} for e in edges]
+        }
+
+        # Build metadata JSON
+        meta_data = {
+            "team_name": m.team.name,
+            "team_slug": m.team.slug,
+            "exported_at": str(pages.first().updated_at if pages.exists() else ""),
+            "page_count": pages.count(),
         }
 
         # Create ZIP in memory
@@ -49,9 +61,14 @@ class ExportWikiView(APIView):
                 
                 content = frontmatter_str + page.content
                 z.writestr(f"pages/{page.slug}.md", content)
+
+                # Add raw source data if it exists (for grounding portability)
+                if page.raw_content:
+                    z.writestr(f"sources/{page.slug}_raw.txt", page.raw_content)
             
-            # Add graph
+            # Add graph and metadata
             z.writestr("_graph.json", json.dumps(graph_data, indent=2))
+            z.writestr("metadata.json", json.dumps(meta_data, indent=2))
 
         buffer.seek(0)
         response = HttpResponse(buffer.getvalue(), content_type="application/zip")

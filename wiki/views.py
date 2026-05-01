@@ -4,19 +4,13 @@ from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from accounts.models import TeamMember
+from rest_framework.permissions import IsAuthenticated
+from accounts.permissions import IsTeamMember, CanEditWiki
 from .models import WikiPage, PageTemplate
 from .serializers import (
     WikiPageListSerializer, WikiPageDetailSerializer,
     WikiPageCreateSerializer, PageTemplateSerializer,
 )
-
-
-def get_membership(user, team_id):
-    try:
-        return TeamMember.objects.get(user=user, team_id=team_id)
-    except TeamMember.DoesNotExist:
-        return None
 
 
 def unique_slug(team, title, exclude_id=None):
@@ -35,10 +29,9 @@ def unique_slug(team, title, exclude_id=None):
 
 
 class WikiPageListView(APIView):
+    permission_classes = [IsAuthenticated, CanEditWiki]
+
     def get(self, request, team_id):
-        m = get_membership(request.user, team_id)
-        if not m:
-            return Response(status=403)
         pages = WikiPage.objects.filter(team_id=team_id, is_deleted=False)
         # full-text search
         q = request.query_params.get("q")
@@ -51,14 +44,12 @@ class WikiPageListView(APIView):
         return Response(WikiPageListSerializer(pages, many=True).data)
 
     def post(self, request, team_id):
-        m = get_membership(request.user, team_id)
-        if not m or m.role == "viewer":
-            return Response(status=403)
         s = WikiPageCreateSerializer(data=request.data)
         s.is_valid(raise_exception=True)
-        slug = unique_slug(m.team, s.validated_data["title"])
+        membership = request.team_membership
+        slug = unique_slug(membership.team, s.validated_data["title"])
         page = WikiPage.objects.create(
-            team=m.team,
+            team=membership.team,
             slug=slug,
             created_by=request.user,
             **s.validated_data,
@@ -70,8 +61,10 @@ class WikiPageListView(APIView):
 
 
 class WikiPageDetailView(APIView):
+    permission_classes = [IsAuthenticated, CanEditWiki]
+
     def _get(self, request, team_id, slug):
-        m = get_membership(request.user, team_id)
+        m = request.team_membership
         if not m:
             return None, None
         try:
@@ -94,14 +87,14 @@ class WikiPageDetailView(APIView):
             return Response(status=403)
         if page is None:
             return Response(status=404)
-        if m.role == "viewer":
-            return Response(status=403)
-        page.title = request.data.get("title", page.title)
+        new_title = request.data.get("title", page.title)
+        old_title = page.title
+        page.title = new_title
         page.content = request.data.get("content", page.content)
         page.page_type = request.data.get("page_type", page.page_type)
         page.frontmatter = request.data.get("frontmatter", page.frontmatter)
-        if request.data.get("title") and request.data["title"] != page.title:
-            page.slug = unique_slug(page.team, request.data["title"], exclude_id=page.id)
+        if request.data.get("title") and new_title != old_title:
+            page.slug = unique_slug(page.team, new_title, exclude_id=page.id)
         page.save()
         # re-wire graph after content update
         from ingest.tasks import wire_page_graph
@@ -114,8 +107,6 @@ class WikiPageDetailView(APIView):
             return Response(status=403)
         if page is None:
             return Response(status=404)
-        if m.role == "viewer":
-            return Response(status=403)
         page.is_deleted = True
         page.save()
         # remove from graph
@@ -127,10 +118,9 @@ class WikiPageDetailView(APIView):
 
 class WikiBacklinksView(APIView):
     """Pages that link TO this page."""
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
     def get(self, request, team_id, slug):
-        m = get_membership(request.user, team_id)
-        if not m:
-            return Response(status=403)
         try:
             page = WikiPage.objects.get(team_id=team_id, slug=slug, is_deleted=False)
         except WikiPage.DoesNotExist:
@@ -157,10 +147,9 @@ class WikiBacklinksView(APIView):
 
 class WikiUnlinkedMentionsView(APIView):
     """Pages that mention this page's title but don't have a [[wikilink]]."""
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
     def get(self, request, team_id, slug):
-        m = get_membership(request.user, team_id)
-        if not m:
-            return Response(status=403)
         try:
             page = WikiPage.objects.get(team_id=team_id, slug=slug, is_deleted=False)
         except WikiPage.DoesNotExist:
@@ -178,10 +167,9 @@ class WikiUnlinkedMentionsView(APIView):
 
 
 class WikiSearchView(APIView):
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
     def get(self, request, team_id):
-        m = get_membership(request.user, team_id)
-        if not m:
-            return Response(status=403)
         q = request.query_params.get("q", "")
         if not q:
             return Response([])
@@ -192,19 +180,17 @@ class WikiSearchView(APIView):
 
 
 class WikiRecentView(APIView):
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
     def get(self, request, team_id):
-        m = get_membership(request.user, team_id)
-        if not m:
-            return Response(status=403)
         pages = WikiPage.objects.filter(team_id=team_id, is_deleted=False)[:10]
         return Response(WikiPageListSerializer(pages, many=True).data)
 
 
 class PageTemplateListView(APIView):
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
     def get(self, request, team_id):
-        m = get_membership(request.user, team_id)
-        if not m:
-            return Response(status=403)
         templates = PageTemplate.objects.filter(
             Q(is_builtin=True) | Q(team_id=team_id)
         )
