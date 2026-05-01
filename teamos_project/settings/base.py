@@ -1,0 +1,206 @@
+from pathlib import Path
+from datetime import timedelta
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-insecure-change-me")
+
+INSTALLED_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "django.contrib.sites",
+    # Third-party
+    "rest_framework",
+    "rest_framework_simplejwt",
+    "corsheaders",
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.google",
+    "channels",
+    # TeamOS apps
+    "accounts",
+    "wiki",
+    "graph_engine",
+    "chat",
+    "ingest",
+    "export_app",
+    "presence",
+]
+
+MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
+]
+
+ROOT_URLCONF = "teamos_project.urls"
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+
+ASGI_APPLICATION = "teamos_project.asgi.application"
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {"hosts": [os.environ.get("REDIS_URL", "redis://localhost:6379")]},
+    }
+}
+
+# --- Database (override in dev/prod) ---
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("DB_NAME", "teamos"),
+        "USER": os.environ.get("DB_USER", "postgres"),
+        "PASSWORD": os.environ.get("DB_PASSWORD", ""),
+        "HOST": os.environ.get("DB_HOST", "localhost"),
+        "PORT": os.environ.get("DB_PORT", "5432"),
+    }
+}
+
+AUTH_USER_MODEL = "accounts.User"
+
+# --- REST Framework ---
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "accounts.authentication.CookieJWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=7),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
+    "ROTATE_REFRESH_TOKENS": True,
+    "AUTH_COOKIE": "access_token",
+    "AUTH_COOKIE_HTTP_ONLY": True,
+    "AUTH_COOKIE_SECURE": False,   # True in production
+    "AUTH_COOKIE_SAMESITE": "Lax",
+}
+
+# --- Allauth ---
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
+]
+SITE_ID = 1
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_AUTHENTICATION_METHOD = "email"
+ACCOUNT_EMAIL_VERIFICATION = "none"
+SOCIALACCOUNT_PROVIDERS = {
+    "google": {
+        "SCOPE": ["profile", "email"],
+        "AUTH_PARAMS": {"access_type": "online"},
+        "APP": {
+            "client_id": os.environ.get("GOOGLE_CLIENT_ID", ""),
+            "secret": os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+        },
+    }
+}
+
+# --- CORS ---
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://teamos.vercel.app",
+]
+
+# --- Static & Media ---
+STATIC_URL = "/static/"
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+# --- Celery ---
+CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
+CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL", "redis://localhost:6379")
+
+# --- External APIs ---
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
+
+# --- Plan Tiers ---
+PLAN_TIERS = {
+    "free": {
+        "embed_model": "nomic-embed-text",
+        "embed_provider": "local",
+        "chunk_size": 300,
+        "chunk_overlap": 30,
+        "chunking_strategy": "character",
+        "retrieve_k": 5,
+        "rerank_k": 3,
+        "context_tokens": 2000,
+        "chat_model": "llama-3.1-8b-instant",
+        "chat_provider": "groq",
+        "query_expansions": 0,
+        "reranker": None,
+    },
+    "team": {
+        "embed_model": "text-embedding-3-small",
+        "embed_provider": "openai",
+        "chunk_size": 512,
+        "chunk_overlap": 64,
+        "chunking_strategy": "sentence",
+        "retrieve_k": 20,
+        "rerank_k": 8,
+        "context_tokens": 6000,
+        "chat_model": "llama-3.3-70b-versatile",
+        "chat_provider": "groq",
+        "query_expansions": 3,
+        "reranker": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    },
+    "pro": {
+        "embed_model": "text-embedding-3-large",
+        "embed_provider": "openai",
+        "chunk_size": 1024,
+        "chunk_overlap": 128,
+        "chunking_strategy": "semantic",
+        "retrieve_k": 50,
+        "rerank_k": 12,
+        "context_tokens": 16000,
+        "chat_model": "claude-3-5-sonnet-20241022",
+        "chat_provider": "anthropic",
+        "query_expansions": 5,
+        "reranker": "cross-encoder/ms-marco-MiniLM-L-12-v2",
+    },
+}
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+LANGUAGE_CODE = "en-us"
+TIME_ZONE = "UTC"
+USE_I18N = True
+USE_TZ = True
