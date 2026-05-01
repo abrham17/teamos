@@ -1,0 +1,55 @@
+# TeamOS — root ignores (backend + frontend + local tooling)
+# Example env templates (*.example) stay committed; real secrets do not.
+
+# --- Python / Django ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+.venv
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.cover
+backend/db.sqlite3
+backend/db.sqlite3-journal
+backend/staticfiles/
+backend/media/
+
+# --- Secrets & local env ---
+.env
+.env.*
+!.env*.example
+
+# --- Node / Next.js (root-level convenience; frontend/.gitignore also applies) ---
+node_modules/
+
+# --- IDE / editor ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Misc ---
+*.pem
+.local/

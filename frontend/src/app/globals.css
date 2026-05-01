@@ -1,0 +1,251 @@
+@import "tailwindcss";
+
+/* ─── Dark Theme (Default) ──────────────────────────────────────── */
+:root {
+  /* Backgrounds */
+  --bg-950: #020204;
+  --bg-900: #050508;
+  --bg-800: #0a0a10;
+  --bg-700: #12121a;
+  --bg-600: #1c1c28;
+  --bg-500: #282838;
+
+  /* Text */
+  --text-primary: #f0f0f8;
+  --text-secondary: #a3a3b5;
+  --text-muted: #6e6e80;
+  --text-dim: #434354;
+
+  /* Accent — Cyberpunk Cyan */
+  --accent: #00d4e8;
+  --accent-light: #70ffff;
+  --accent-dark: #009ab0;
+  --accent-glow: rgba(0, 212, 232, 0.35);
+  --accent-subtle: rgba(0, 212, 232, 0.1);
+
+  /* Status */
+  --success: #00e898;
+  --warning: #ffb800;
+  --danger: #ff3366;
+  --info: #00c3ff;
+  --success-bg: rgba(0, 232, 152, 0.1);
+  --danger-bg: rgba(255, 51, 102, 0.1);
+  --warning-bg: rgba(255, 184, 0, 0.1);
+  --info-bg: rgba(0, 195, 255, 0.1);
+
+  /* Legacy aliases */
+  --green: var(--success);
+  --yellow: var(--warning);
+  --red: var(--danger);
+  --green-bg: var(--success-bg);
+  --yellow-bg: var(--warning-bg);
+  --red-bg: var(--danger-bg);
+  --border-accent: var(--accent);
+
+  /* Surfaces */
+  --surface-1: var(--bg-800);
+  --surface-2: var(--bg-700);
+  --surface-3: var(--bg-600);
+
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-strong: rgba(255, 255, 255, 0.1);
+  --border: var(--border-subtle);
+  --border-hover: var(--border-strong);
+  --ring: var(--accent);
+
+  /* Glass */
+  --glass-bg: rgba(5, 5, 8, 0.65);
+  --glass-bg-light: rgba(5, 5, 8, 0.4);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-blur: 24px;
+  --glass-heavy-bg: rgba(2, 2, 4, 0.88);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.55);
+  --shadow-glow: 0 0 20px var(--accent-glow);
+  --shadow-1: var(--shadow-sm);
+  --shadow-2: var(--shadow-md);
+  --shadow-3: var(--shadow-lg);
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --text-base: 14px;
+  --leading-base: 1.6;
+  --heading-1: 2rem;
+  --heading-2: 1.5rem;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+  --page-padding-x: 56px;
+  --page-padding-y: 48px;
+  --reading-max-w: 760px;
+
+  /* Layout */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-2xl: 36px;
+  --radius: var(--radius-md);
+  --sidebar-w: 240px;
+  --sidebar-w-collapsed: 72px;
+  --sidebar-w-rail: 72px;
+  --header-h: 52px;
+  --panel-max-w: 1024px;
+
+  /* Animation */
+  --spring: cubic-bezier(0.25, 1.2, 0.4, 1);
+  --ease: cubic-bezier(0.3, 0, 0.1, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --t-fast: 150ms var(--ease);
+  --t-normal: 250ms var(--ease);
+  --t-slow: 400ms var(--ease);
+
+  /* Compat */
+  --primary-50: #e0faff;
+  --primary-100: #b3f2ff;
+  --primary-500: #00d4e8;
+  --primary-900: #004d66;
+}
+
+/* ─── Light Theme ────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg-950: #eff0f5;
+  --bg-900: #f7f7fc;
+  --bg-800: #ffffff;
+  --bg-700: #ebebf3;
+  --bg-600: #dfdfe8;
+  --bg-500: #cfcfdc;
+
+  --text-primary: #0c0c16;
+  --text-secondary: #383850;
+  --text-muted: #68687e;
+  --text-dim: #9898b2;
+
+  --accent: #0070f3;
+  --accent-light: #3291ff;
+  --accent-dark: #0050bb;
+  --accent-glow: rgba(0, 112, 243, 0.22);
+  --accent-subtle: rgba(0, 112, 243, 0.08);
+
+  --success: #00a855;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --info: #0284c7;
+  --success-bg: rgba(0, 168, 85, 0.08);
+  --danger-bg: rgba(220, 38, 38, 0.08);
+  --warning-bg: rgba(217, 119, 6, 0.08);
+  --info-bg: rgba(2, 132, 199, 0.08);
+
+  --green: var(--success);
+  --yellow: var(--warning);
+  --red: var(--danger);
+  --green-bg: var(--success-bg);
+  --yellow-bg: var(--warning-bg);
+  --red-bg: var(--danger-bg);
+
+  --surface-1: #ffffff;
+  --surface-2: #f3f3f8;
+  --surface-3: var(--bg-700);
+
+  --border-subtle: rgba(0, 0, 0, 0.07);
+  --border-strong: rgba(0, 0, 0, 0.14);
+
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-bg-light: rgba(255, 255, 255, 0.5);
+  --glass-border: rgba(0, 0, 0, 0.06);
+  --glass-heavy-bg: rgba(250, 250, 254, 0.92);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 0 20px rgba(0, 112, 243, 0.18);
+  --shadow-1: var(--shadow-sm);
+  --shadow-2: var(--shadow-md);
+  --shadow-3: var(--shadow-lg);
+
+  --primary-500: #0070f3;
+  --primary-900: #003d8a;
+}
+
+/* ─── Base Layer ─────────────────────────────────────────────────── */
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    height: 100%;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    background: var(--bg-900);
+    color: var(--text-primary);
+    line-height: var(--leading-base);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    transition: background 0.25s ease, color 0.25s ease;
+  }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--bg-500); border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+}
+
+/* ─── Keyframe Animations ─────────────────────────────────────────── */
+@keyframes toast-in {
+  from { transform: translateX(calc(100% + 24px)); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes bounce-dot {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.5; }
+  40%           { transform: translateY(-5px); opacity: 1; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 1; }
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
