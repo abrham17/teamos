@@ -1,6 +1,7 @@
 import uuid
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 
 
 class User(AbstractUser):
@@ -24,6 +25,9 @@ class Team(models.Model):
     name = models.CharField(max_length=120)
     slug = models.SlugField(unique=True, max_length=120)
     plan = models.CharField(max_length=20, choices=PLAN_CHOICES, default="free")
+    is_deleted = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    purge_after = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="created_teams")
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -64,6 +68,16 @@ class TeamInvite(models.Model):
     send_status = models.CharField(max_length=20, choices=SEND_STATUS_CHOICES, default="pending")
     sent_at = models.DateTimeField(null=True, blank=True)
 
+    @property
+    def lifecycle_status(self):
+        if self.revoked_at:
+            return "revoked"
+        if self.used_at:
+            return "accepted"
+        if self.expires_at and self.expires_at < timezone.now():
+            return "expired"
+        return "pending"
+
     def __str__(self):
         return f"Invite {self.invitee_email} to {self.team.name} ({self.token})"
 
@@ -75,6 +89,9 @@ class TeamAuditEvent(models.Model):
         ("invite_send_failed", "Invite Send Failed"),
         ("invite_accepted", "Invite Accepted"),
         ("invite_revoked", "Invite Revoked"),
+        ("ownership_transferred", "Ownership Transferred"),
+        ("team_soft_deleted", "Team Soft Deleted"),
+        ("team_hard_deleted", "Team Hard Deleted"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

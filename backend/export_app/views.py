@@ -3,10 +3,12 @@ import json
 import zipfile
 from django.http import HttpResponse
 from rest_framework.views import APIView
-from rest_framework.response import Response
 from accounts.models import TeamMember
 from wiki.models import WikiPage
 from graph_engine.models import GraphEdge
+from teamos_project.api_response import fail
+from teamos_project.entitlements import check_quota
+from .models import ExportEvent
 
 def get_membership(user, team_id):
     try:
@@ -25,7 +27,21 @@ class ExportWikiView(APIView):
     def get(self, request, team_id):
         m = get_membership(request.user, team_id)
         if not m:
-            return Response(status=403)
+            return fail("Forbidden.", status_code=403, code="forbidden")
+        if m.role not in ("owner", "editor"):
+            return fail(
+                "Owner or editor role required for export.",
+                status_code=403,
+                code="export_role_forbidden",
+            )
+        quota = check_quota(m.team, "export_job_create")
+        if not quota.allowed:
+            return fail(
+                "Plan limit reached for exports.",
+                status_code=402,
+                code="plan_limit_exceeded",
+                details=quota.to_details(),
+            )
             
         pages = WikiPage.objects.filter(team_id=team_id, is_deleted=False)
         edges = GraphEdge.objects.filter(from_page__team_id=team_id, to_page__team_id=team_id)
@@ -71,6 +87,12 @@ class ExportWikiView(APIView):
             z.writestr("metadata.json", json.dumps(meta_data, indent=2))
 
         buffer.seek(0)
+        ExportEvent.objects.create(
+            team=m.team,
+            user=request.user,
+            export_type="wiki_zip",
+            metadata={"page_count": pages.count()},
+        )
         response = HttpResponse(buffer.getvalue(), content_type="application/zip")
         response['Content-Disposition'] = f'attachment; filename="teamos_export_{m.team.slug}.zip"'
         return response
@@ -81,12 +103,26 @@ class ExportPageView(APIView):
     def get(self, request, team_id, slug):
         m = get_membership(request.user, team_id)
         if not m:
-            return Response(status=403)
+            return fail("Forbidden.", status_code=403, code="forbidden")
+        if m.role not in ("owner", "editor"):
+            return fail(
+                "Owner or editor role required for export.",
+                status_code=403,
+                code="export_role_forbidden",
+            )
             
         try:
             page = WikiPage.objects.get(team_id=team_id, slug=slug, is_deleted=False)
         except WikiPage.DoesNotExist:
-            return Response(status=404)
+            return fail("Wiki page not found.", status_code=404, code="wiki_page_not_found")
+        quota = check_quota(m.team, "export_job_create")
+        if not quota.allowed:
+            return fail(
+                "Plan limit reached for exports.",
+                status_code=402,
+                code="plan_limit_exceeded",
+                details=quota.to_details(),
+            )
 
         frontmatter_str = "---\n"
         frontmatter_str += f"title: {page.title}\n"
@@ -97,6 +133,12 @@ class ExportPageView(APIView):
         frontmatter_str += "---\n\n"
         
         content = frontmatter_str + page.content
+        ExportEvent.objects.create(
+            team=m.team,
+            user=request.user,
+            export_type="page_markdown",
+            metadata={"page_id": str(page.id), "page_slug": page.slug},
+        )
 
         response = HttpResponse(content, content_type="text/markdown")
         response['Content-Disposition'] = f'attachment; filename="{page.slug}.md"'

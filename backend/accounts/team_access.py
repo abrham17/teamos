@@ -14,7 +14,7 @@ ROLE_ORDER = {
 
 def get_team_membership(user, team_id) -> Optional[TeamMember]:
     try:
-        return TeamMember.objects.select_related("team").get(user=user, team_id=team_id)
+        return TeamMember.objects.select_related("team").get(user=user, team_id=team_id, team__is_deleted=False)
     except TeamMember.DoesNotExist:
         return None
 

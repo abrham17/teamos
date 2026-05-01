@@ -10,17 +10,25 @@ from django.conf import settings
 from accounts.permissions import IsTeamMember
 from ingest.vectors import vector_store
 from wiki.models import WikiPage
-from .models import ChatSession, ChatMessage
+from teamos_project.entitlements import check_quota
+from product_analytics.services import record_first_once
+from .models import ChatSession, ChatMessage, ChatTokenUsage
 from .serializers import ChatSessionSerializer
+from teamos_project.api_response import ok, fail
 
 logger = logging.getLogger(__name__)
+
+
+def estimate_tokens(text: str) -> int:
+    # Lightweight approximation: ~4 chars/token for English-like text.
+    return max(1, len((text or "").strip()) // 4)
 
 class ChatSessionListView(APIView):
     permission_classes = [IsAuthenticated, IsTeamMember]
 
     def get(self, request, team_id):
         sessions = ChatSession.objects.filter(team_id=team_id, created_by=request.user)
-        return Response(ChatSessionSerializer(sessions, many=True).data)
+        return ok(ChatSessionSerializer(sessions, many=True).data)
 
     def post(self, request, team_id):
         session = ChatSession.objects.create(
@@ -28,7 +36,7 @@ class ChatSessionListView(APIView):
             created_by=request.user,
             title=request.data.get("title", "New Chat")
         )
-        return Response(ChatSessionSerializer(session).data, status=201)
+        return ok(ChatSessionSerializer(session).data, status_code=201)
 
 
 class ChatSessionDetailView(APIView):
@@ -38,11 +46,15 @@ class ChatSessionDetailView(APIView):
         try:
             session = ChatSession.objects.get(id=session_id, team_id=team_id, created_by=request.user)
         except ChatSession.DoesNotExist:
-            return Response(status=404)
-        return Response(ChatSessionSerializer(session).data)
+            return fail("Chat session not found.", status_code=404, code="chat_session_not_found")
+        return ok(ChatSessionSerializer(session).data)
 
     def delete(self, request, team_id, session_id):
-        ChatSession.objects.filter(id=session_id, team_id=team_id, created_by=request.user).delete()
+        deleted_count, _ = ChatSession.objects.filter(
+            id=session_id, team_id=team_id, created_by=request.user
+        ).delete()
+        if deleted_count == 0:
+            return fail("Chat session not found.", status_code=404, code="chat_session_not_found")
         return Response(status=204)
 
 
@@ -57,11 +69,19 @@ class ChatQueryStreamView(APIView):
         try:
             session = ChatSession.objects.get(id=session_id, team_id=team_id, created_by=request.user)
         except ChatSession.DoesNotExist:
-            return Response(status=404)
+            return fail("Chat session not found.", status_code=404, code="chat_session_not_found")
 
         user_message = request.data.get("message", "").strip()
         if not user_message:
-            return Response({"detail": "Message required"}, status=400)
+            return fail("Message required.", status_code=400, code="message_required")
+        quota = check_quota(session.team, "token_consume")
+        if not quota.allowed:
+            return fail(
+                "Plan token limit reached.",
+                status_code=402,
+                code="plan_limit_exceeded",
+                details=quota.to_details(),
+            )
 
         # 1. Save user message
         ChatMessage.objects.create(session=session, role="user", content=user_message)
@@ -85,6 +105,8 @@ class ChatQueryStreamView(APIView):
                     page_id = res.payload.get("page_id")
                     title = res.payload.get("page_title", "Untitled")
                     snippet = res.payload.get("content", "")
+                    chunk_id = res.payload.get("chunk_id")
+                    anchor_hint = res.payload.get("heading") or res.payload.get("section") or ""
                     
                     # Try to get slug for frontend navigation
                     slug = "unknown"
@@ -98,7 +120,9 @@ class ChatQueryStreamView(APIView):
                         "page_title": title,
                         "page_slug": slug,
                         "snippet": snippet[:200],
-                        "score": float(res.score)
+                        "score": float(res.score),
+                        "chunk_id": chunk_id,
+                        "anchor_hint": anchor_hint,
                     })
                     context_blocks.append(f"SOURCE: {title}\nCONTENT: {snippet}")
 
@@ -118,7 +142,8 @@ class ChatQueryStreamView(APIView):
 
                 # Build history
                 history = [{"role": "system", "content": system_prompt}]
-                for msg in session.messages.all()[-10:]: # Last 10 messages
+                recent_messages = list(session.messages.order_by("-created_at")[:10])
+                for msg in reversed(recent_messages):
                     history.append({"role": msg.role, "content": msg.content})
 
                 # Stream from OpenAI
@@ -142,6 +167,24 @@ class ChatQueryStreamView(APIView):
                     content=full_content,
                     citations=citations
                 )
+                prompt_tokens = estimate_tokens(system_prompt) + estimate_tokens(user_message)
+                completion_tokens = estimate_tokens(full_content)
+                ChatTokenUsage.objects.create(
+                    team=session.team,
+                    user=request.user,
+                    session=session,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=prompt_tokens + completion_tokens,
+                    metadata={"model": "gpt-4o"},
+                )
+                if ChatMessage.objects.filter(session__team=session.team, role="assistant").count() == 1:
+                    record_first_once(
+                        event_name="first_chat_answer_received",
+                        team=session.team,
+                        user=request.user,
+                        properties={"session_id": str(session.id)},
+                    )
                 yield f"event: done\ndata: {json.dumps({'status': 'done'})}\n\n"
 
             except Exception as e:

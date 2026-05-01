@@ -1,11 +1,27 @@
-from pathlib import Path
-from datetime import timedelta
 import os
+from datetime import timedelta
+from pathlib import Path
+from celery.schedules import crontab
 from dotenv import load_dotenv
+from kombu import Exchange, Queue
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+
+def env_str(name: str, default: str = "") -> str:
+    """
+    Read env vars while normalizing accidental quoted-empty values.
+    Example: CLERK_AUDIENCE="" should behave as empty.
+    """
+    value = os.environ.get(name, default)
+    if value is None:
+        return default
+    cleaned = value.strip()
+    if cleaned in {'""', "''"}:
+        return ""
+    return cleaned
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-insecure-change-me")
 
@@ -33,6 +49,8 @@ INSTALLED_APPS = [
     "chat",
     "ingest",
     "export_app",
+    "billing",
+    "product_analytics",
     "presence",
 ]
 
@@ -145,6 +163,37 @@ MEDIA_ROOT = BASE_DIR / "media"
 # --- Celery ---
 CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL", "redis://localhost:6379")
+CELERY_TASK_DEFAULT_QUEUE = "teamos.default"
+CELERY_TASK_QUEUES = (
+    Queue("teamos.default", Exchange("teamos"), routing_key="teamos.default"),
+    Queue("teamos.critical", Exchange("teamos"), routing_key="teamos.critical"),
+    Queue("teamos.dead_letter", Exchange("teamos"), routing_key="teamos.dead_letter"),
+)
+CELERY_TASK_ROUTES = {
+    "accounts.tasks.send_team_invite_email": {"queue": "teamos.critical", "routing_key": "teamos.critical"},
+    "accounts.tasks.purge_soft_deleted_team": {"queue": "teamos.critical", "routing_key": "teamos.critical"},
+    "ingest.tasks.run_ingest_job": {"queue": "teamos.critical", "routing_key": "teamos.critical"},
+    "ingest.tasks.wire_page_graph": {"queue": "teamos.default", "routing_key": "teamos.default"},
+    "ingest.tasks.infer_ai_edges": {"queue": "teamos.default", "routing_key": "teamos.default"},
+    "billing.tasks.reconcile_pending_billing_webhooks": {
+        "queue": "teamos.critical",
+        "routing_key": "teamos.critical",
+    },
+    "product_analytics.tasks.emit_product_event": {
+        "queue": "teamos.default",
+        "routing_key": "teamos.default",
+    },
+}
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_TASK_TRACK_STARTED = True
+CELERY_BEAT_SCHEDULE = {
+    "billing-reconcile-pending-webhooks": {
+        "task": "billing.tasks.reconcile_pending_billing_webhooks",
+        "schedule": crontab(minute="*/15"),
+        "kwargs": {"batch_size": 50},
+    },
+}
 
 # --- External APIs ---
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -154,9 +203,15 @@ QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@teamos.local")
-CLERK_ISSUER = os.environ.get("CLERK_ISSUER", "")
-CLERK_JWKS_URL = os.environ.get("CLERK_JWKS_URL", "")
-CLERK_AUDIENCE = os.environ.get("CLERK_AUDIENCE", "")
+CLERK_ISSUER = env_str("CLERK_ISSUER", "")
+CLERK_JWKS_URL = env_str("CLERK_JWKS_URL", "")
+CLERK_AUDIENCE = env_str("CLERK_AUDIENCE", "")
+BILLING_PROVIDER = os.environ.get("BILLING_PROVIDER", "paddle")
+BILLING_WEBHOOK_SECRET = os.environ.get("BILLING_WEBHOOK_SECRET", "")
+PADDLE_WEBHOOK_SECRET = os.environ.get("PADDLE_WEBHOOK_SECRET", "")
+PADDLE_WEBHOOK_TOLERANCE_SECONDS = int(os.environ.get("PADDLE_WEBHOOK_TOLERANCE_SECONDS", "300"))
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+TEAM_SOFT_DELETE_GRACE_HOURS = int(os.environ.get("TEAM_SOFT_DELETE_GRACE_HOURS", "24"))
 
 # --- Plan Tiers ---
 PLAN_TIERS = {

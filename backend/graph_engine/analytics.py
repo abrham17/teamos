@@ -90,16 +90,30 @@ def _compute_clusters(page_ids, edges):
     return cluster_map, cluster_sizes
 
 
-def compute_team_graph_analytics(team_id) -> dict[str, Any]:
+def _apply_mode_edges(edges, mode: str):
+    if mode == "advanced":
+        filtered = []
+        for e in edges:
+            if e.edge_type in ("wikilink", "manual"):
+                filtered.append(e)
+            elif e.edge_type in ("semantic", "ai_inferred") and float(e.confidence or 0) >= 0.55:
+                filtered.append(e)
+        return filtered
+    return edges
+
+
+def compute_team_graph_analytics(team_id, mode: str = "simple") -> dict[str, Any]:
     pages, edges = _build_graph(team_id)
+    analytics_mode = "advanced" if mode == "advanced" else "simple"
+    edges_for_analytics = _apply_mode_edges(edges, analytics_mode)
     page_ids = [p.id for p in pages]
     title_by_id = {p.id: p.title for p in pages}
     slug_by_id = {p.id: p.slug for p in pages}
 
-    page_rank = _compute_pagerank(page_ids, edges)
-    cluster_map, cluster_sizes = _compute_clusters(page_ids, edges)
+    page_rank = _compute_pagerank(page_ids, edges_for_analytics)
+    cluster_map, cluster_sizes = _compute_clusters(page_ids, edges_for_analytics)
 
-    connected_ids = {e.from_page_id for e in edges} | {e.to_page_id for e in edges}
+    connected_ids = {e.from_page_id for e in edges_for_analytics} | {e.to_page_id for e in edges_for_analytics}
     orphan_ids = [pid for pid in page_ids if pid not in connected_ids]
 
     hubs = sorted(page_rank.items(), key=lambda kv: kv[1], reverse=True)[:10]
@@ -125,21 +139,24 @@ def compute_team_graph_analytics(team_id) -> dict[str, Any]:
         "hubs": hub_payload,
         "orphans": orphan_payload,
         "node_count": len(page_ids),
-        "edge_count": len(edges),
+        "edge_count": len(edges_for_analytics),
+        "analytics_mode": analytics_mode,
+        "available_modes": ["simple", "advanced"],
     }
 
 
-def get_team_graph_analytics(team_id, force: bool = False) -> dict[str, Any]:
-    key = CACHE_KEY_TEMPLATE.format(team_id=team_id)
+def get_team_graph_analytics(team_id, force: bool = False, mode: str = "simple") -> dict[str, Any]:
+    analytics_mode = "advanced" if mode == "advanced" else "simple"
+    key = f"{CACHE_KEY_TEMPLATE.format(team_id=team_id)}:mode:{analytics_mode}"
     if not force:
         cached = cache.get(key)
         if cached is not None:
             return cached
-    computed = compute_team_graph_analytics(team_id)
+    computed = compute_team_graph_analytics(team_id, mode=analytics_mode)
     cache.set(key, computed, CACHE_TTL_SECONDS)
     return computed
 
 
 def invalidate_team_graph_analytics_cache(team_id):
-    key = CACHE_KEY_TEMPLATE.format(team_id=team_id)
-    cache.delete(key)
+    for mode in ("simple", "advanced"):
+        cache.delete(f"{CACHE_KEY_TEMPLATE.format(team_id=team_id)}:mode:{mode}")

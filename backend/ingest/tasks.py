@@ -6,12 +6,24 @@ import re
 import logging
 from collections import Counter
 from celery import shared_task
+from teamos_project.dead_letter import record_dead_letter
+from teamos_project.logging_utils import ops_logger
+from teamos_project.trace import coalesce_trace_id
+from product_analytics.services import record_first_once
 
 logger = logging.getLogger(__name__)
 
 
-@shared_task
-def wire_page_graph(page_id: str):
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=180,
+    retry_jitter=True,
+    max_retries=3,
+)
+def wire_page_graph(self, page_id: str, trace_id: str | None = None):
+    trace_id = coalesce_trace_id(trace_id, prefix="graph-wire")
     """
     Parse [[wikilinks]] from a WikiPage and create/delete GraphEdge rows.
     Called after every page create or update.
@@ -24,50 +36,82 @@ def wire_page_graph(page_id: str):
         page = WikiPage.objects.get(id=page_id)
     except WikiPage.DoesNotExist:
         logger.warning(f"wire_page_graph: page {page_id} not found")
+        ops_logger.warning("wire_page_graph_missing_page", trace_id=trace_id, page_id=page_id)
         return
 
-    # Extract all [[Page Title]] references
-    pattern = re.compile(r"\[\[([^\]]+)\]\]")
-    linked_titles = set(pattern.findall(page.content))
+    try:
+        # Extract all [[Page Title]] references
+        pattern = re.compile(r"\[\[([^\]]+)\]\]")
+        linked_titles = set(pattern.findall(page.content))
 
-    # Resolve titles to pages in the same team
-    team_pages = WikiPage.objects.filter(
-        team=page.team, is_deleted=False
-    ).exclude(id=page.id)
+        # Resolve titles to pages in the same team
+        team_pages = WikiPage.objects.filter(
+            team=page.team, is_deleted=False
+        ).exclude(id=page.id)
 
-    resolved = {}
-    for title in linked_titles:
-        match = team_pages.filter(title__iexact=title).first()
-        if match:
-            resolved[title] = match
+        resolved = {}
+        for title in linked_titles:
+            match = team_pages.filter(title__iexact=title).first()
+            if match:
+                resolved[title] = match
 
-    # Create new wikilink edges
-    existing = set(
-        GraphEdge.objects.filter(from_page=page, edge_type="wikilink")
-        .values_list("to_page_id", flat=True)
-    )
-    for title, target in resolved.items():
-        if target.id not in existing:
-            GraphEdge.objects.get_or_create(
-                from_page=page,
-                to_page=target,
-                edge_type="wikilink",
-                defaults={"confidence": 1.0, "created_by": "human"},
+        # Create new wikilink edges
+        existing = set(
+            GraphEdge.objects.filter(from_page=page, edge_type="wikilink")
+            .values_list("to_page_id", flat=True)
+        )
+        for title, target in resolved.items():
+            if target.id not in existing:
+                GraphEdge.objects.get_or_create(
+                    from_page=page,
+                    to_page=target,
+                    edge_type="wikilink",
+                    defaults={"confidence": 1.0, "created_by": "human"},
+                )
+
+        # Delete stale wikilink edges (links removed from content)
+        resolved_ids = {t.id for t in resolved.values()}
+        GraphEdge.objects.filter(
+            from_page=page, edge_type="wikilink"
+        ).exclude(to_page_id__in=resolved_ids).delete()
+
+        infer_ai_edges.delay(page_id, trace_id=trace_id)
+        invalidate_team_graph_analytics_cache(page.team_id)
+        logger.info(f"wire_page_graph: page {page.slug} → {len(resolved)} wikilink edges")
+        ops_logger.info(
+            "wire_page_graph_completed",
+            trace_id=trace_id,
+            page_id=str(page.id),
+            team_id=str(page.team_id),
+            wikilink_edges=len(resolved),
+            task_id=getattr(self.request, "id", None),
+        )
+    except Exception as exc:
+        if self.request.retries >= self.max_retries:
+            record_dead_letter(
+                task_name="ingest.wire_page_graph",
+                error_message=str(exc),
+                trace_id=trace_id,
+                payload={"page_id": str(page_id)},
+                metadata={
+                    "task_id": getattr(self.request, "id", None),
+                    "retries": self.request.retries,
+                    "max_retries": self.max_retries,
+                },
             )
-
-    # Delete stale wikilink edges (links removed from content)
-    resolved_ids = {t.id for t in resolved.values()}
-    GraphEdge.objects.filter(
-        from_page=page, edge_type="wikilink"
-    ).exclude(to_page_id__in=resolved_ids).delete()
-
-    infer_ai_edges.delay(page_id)
-    invalidate_team_graph_analytics_cache(page.team_id)
-    logger.info(f"wire_page_graph: page {page.slug} → {len(resolved)} wikilink edges")
+        raise
 
 
-@shared_task
-def infer_ai_edges(page_id: str):
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=180,
+    retry_jitter=True,
+    max_retries=2,
+)
+def infer_ai_edges(self, page_id: str, trace_id: str | None = None):
+    trace_id = coalesce_trace_id(trace_id, prefix="ai-edges")
     """
     High-fidelity AI-inferred edges using Vector Semantic Similarity.
     """
@@ -79,69 +123,157 @@ def infer_ai_edges(page_id: str):
     try:
         page = WikiPage.objects.get(id=page_id, is_deleted=False)
     except WikiPage.DoesNotExist:
+        ops_logger.warning("infer_ai_edges_missing_page", trace_id=trace_id, page_id=page_id)
         return
 
-    # Use title + first chunk as query context
-    query_text = f"{page.title}\n{page.content[:500]}"
     try:
+        # Use title + first chunk as query context
+        query_text = f"{page.title}\n{page.content[:500]}"
         results = vector_store.search_similar_pages(page.team.id, query_text, limit=10)
-    except Exception as e:
-        logger.error(f"Semantic search failed for page {page.id}: {e}")
-        return
 
-    # Group by page_id and take max score
-    page_scores = {}
-    for res in results:
-        target_page_id = res.payload.get("page_id")
-        if not target_page_id or target_page_id == str(page.id):
-            continue
-        page_scores[target_page_id] = max(page_scores.get(target_page_id, 0), res.score)
+        # Group by page_id and take max score
+        page_scores = {}
+        for res in results:
+            target_page_id = res.payload.get("page_id")
+            if not target_page_id or target_page_id == str(page.id):
+                continue
+            page_scores[target_page_id] = max(page_scores.get(target_page_id, 0), res.score)
 
-    sorted_targets = sorted(page_scores.items(), key=lambda x: x[1], reverse=True)[:3]
+        sorted_targets = sorted(page_scores.items(), key=lambda x: x[1], reverse=True)[:3]
 
-    # Delete stale edges (both old ai_inferred and new semantic)
-    GraphEdge.objects.filter(from_page=page, edge_type__in=["ai_inferred", "semantic"], created_by="pipeline").delete()
-    
-    for target_id, score in sorted_targets:
-        try:
-            target = WikiPage.objects.get(id=target_id)
-            GraphEdge.objects.get_or_create(
-                from_page=page,
-                to_page=target,
-                edge_type="semantic",
-                defaults={"confidence": score, "created_by": "pipeline"}
+        # Delete stale edges (both old ai_inferred and new semantic)
+        GraphEdge.objects.filter(from_page=page, edge_type__in=["ai_inferred", "semantic"], created_by="pipeline").delete()
+        
+        for target_id, score in sorted_targets:
+            try:
+                target = WikiPage.objects.get(id=target_id)
+                GraphEdge.objects.get_or_create(
+                    from_page=page,
+                    to_page=target,
+                    edge_type="semantic",
+                    defaults={"confidence": score, "created_by": "pipeline"}
+                )
+            except WikiPage.DoesNotExist:
+                continue
+
+        invalidate_team_graph_analytics_cache(page.team_id)
+        logger.info("infer_ai_edges: page %s semantic_edges=%s", page.slug, len(sorted_targets))
+        ops_logger.info(
+            "infer_ai_edges_completed",
+            trace_id=trace_id,
+            page_id=str(page.id),
+            team_id=str(page.team_id),
+            semantic_edges=len(sorted_targets),
+            task_id=getattr(self.request, "id", None),
+        )
+    except Exception as exc:
+        if self.request.retries >= self.max_retries:
+            record_dead_letter(
+                task_name="ingest.infer_ai_edges",
+                error_message=str(exc),
+                trace_id=trace_id,
+                payload={"page_id": str(page_id)},
+                metadata={
+                    "task_id": getattr(self.request, "id", None),
+                    "retries": self.request.retries,
+                    "max_retries": self.max_retries,
+                },
             )
-        except WikiPage.DoesNotExist:
-            continue
-
-    invalidate_team_graph_analytics_cache(page.team_id)
-    logger.info("infer_ai_edges: page %s semantic_edges=%s", page.slug, len(sorted_targets))
+        raise
 
 
-@shared_task
-def run_ingest_job(job_id: str, source_text: str = ""):
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    max_retries=2,
+)
+def run_ingest_job(self, job_id: str, source_text: str = "", trace_id: str | None = None):
     """Execute full ingestion pipeline for a stored ingest job."""
     from ingest.models import IngestJob
     from ingest.pipeline import run_pipeline
+    trace_id = coalesce_trace_id(trace_id, prefix="ingest-job")
     job = None
     try:
         job = IngestJob.objects.get(id=job_id)
         job.status = "running"
+        job.ingest_stage = "extracting"
+        job.ingest_stage_detail = "Job accepted by worker"
         job.error = ""
-        job.save(update_fields=["status", "error", "updated_at"])
-        run_pipeline(job, source_text=source_text or "")
+        job.save(update_fields=["status", "ingest_stage", "ingest_stage_detail", "error", "updated_at"])
+        run_pipeline(job, source_text=source_text or "", trace_id=trace_id)
         job.status = "done"
-        job.save(update_fields=["status", "updated_at"])
+        job.ingest_stage = "completed"
+        job.ingest_stage_detail = "Ingestion completed successfully"
+        job.save(update_fields=["status", "ingest_stage", "ingest_stage_detail", "updated_at"])
+        if job.team_id and job.created_by_id:
+            done_count = IngestJob.objects.filter(team_id=job.team_id, status="done").count()
+            if done_count == 1:
+                record_first_once(
+                    event_name="first_ingest_completed",
+                    team=job.team,
+                    user=job.created_by,
+                    properties={"job_id": str(job.id), "source_type": job.source_type},
+                )
+        ops_logger.info(
+            "run_ingest_job_completed",
+            trace_id=trace_id,
+            job_id=job_id,
+            team_id=str(job.team_id),
+            wiki_page_id=str(job.wiki_page_id) if job.wiki_page_id else None,
+            task_id=getattr(self.request, "id", None),
+        )
     except Exception as e:
-        logger.exception(f"Ingest job {job_id} failed: {e}")
+        logger.exception(
+            "Ingest job failed",
+            extra={
+                "job_id": job_id,
+                "attempt": self.request.retries + 1 if getattr(self, "request", None) else 1,
+                "max_retries": self.max_retries,
+                "trace_id": trace_id,
+            },
+        )
+        ops_logger.error(
+            "run_ingest_job_failed",
+            trace_id=trace_id,
+            job_id=job_id,
+            error=str(e),
+            retries=self.request.retries if getattr(self, "request", None) else 0,
+            max_retries=self.max_retries,
+            task_id=getattr(self.request, "id", None),
+        )
+        if self.request.retries >= self.max_retries:
+            record_dead_letter(
+                task_name="ingest.run_ingest_job",
+                error_message=str(e),
+                trace_id=trace_id,
+                payload={"job_id": str(job_id)},
+                metadata={
+                    "task_id": getattr(self.request, "id", None),
+                    "retries": self.request.retries,
+                    "max_retries": self.max_retries,
+                },
+            )
         try:
             if job is None:
                 job = IngestJob.objects.get(id=job_id)
-            job.status = "failed"
             job.error = str(e)
-            job.save(update_fields=["status", "error", "updated_at"])
+            # Keep running state while retries remain; mark failed only on last attempt.
+            if self.request.retries >= self.max_retries:
+                job.status = "failed"
+                job.ingest_stage = "failed"
+                job.ingest_stage_detail = "Retries exhausted"
+                job.save(update_fields=["status", "ingest_stage", "ingest_stage_detail", "error", "updated_at"])
+            else:
+                job.status = "running"
+                job.ingest_stage = "extracting"
+                job.ingest_stage_detail = "Retrying ingest job"
+                job.save(update_fields=["status", "ingest_stage", "ingest_stage_detail", "error", "updated_at"])
         except Exception:
             pass
+        raise
 
 
 @shared_task
