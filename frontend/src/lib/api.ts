@@ -1,10 +1,18 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
+interface ClerkSession {
+  getToken?: () => Promise<string | null>;
+}
+
+interface ClerkGlobal {
+  session?: ClerkSession;
+}
+
 async function getAuthHeader(): Promise<Record<string, string>> {
   if (typeof window === "undefined") return {};
 
   try {
-    const clerk = (window as any).Clerk;
+    const clerk = (window as Window & { Clerk?: ClerkGlobal }).Clerk;
     if (!clerk?.session?.getToken) return {};
     const token = await clerk.session.getToken();
     return token ? { Authorization: `Bearer ${token}` } : {};
@@ -13,18 +21,64 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   }
 }
 
+type Envelope<T = unknown> = {
+  success: boolean;
+  data?: T;
+  error?: {
+    message?: string;
+    code?: string;
+    details?: unknown;
+  };
+  meta?: Record<string, unknown>;
+};
+
+function tryParseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+async function parseResponse(res: Response) {
+  if (res.status === 204) return null;
+  const text = await res.text();
+  if (!text) return null;
+  return tryParseJson(text) ?? text;
+}
+
+function unwrapEnvelope(payload: unknown): unknown {
+  if (payload && typeof payload === "object" && "success" in payload) {
+    const envelope = payload as Envelope;
+    return envelope.data ?? null;
+  }
+  return payload;
+}
+
+function extractErrorMessage(payload: unknown) {
+  if (!payload) return "Request failed.";
+  if (typeof payload === "string") return payload;
+  if (typeof payload === "object" && payload !== null) {
+    const maybePayload = payload as { error?: { message?: string }; detail?: string };
+    if (maybePayload.error?.message) return maybePayload.error.message;
+    if (maybePayload.detail) return maybePayload.detail;
+  }
+  return JSON.stringify(payload);
+}
+
 export const api = {
-  get: async (url: string) => {
+  get: async <T = unknown>(url: string): Promise<T> => {
     const authHeader = await getAuthHeader();
     const res = await fetch(`${API_URL}${url}`, {
       method: "GET",
       headers: { "Content-Type": "application/json", ...authHeader },
       credentials: "include",
     });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    const payload = await parseResponse(res);
+    if (!res.ok) throw new Error(extractErrorMessage(payload));
+    return unwrapEnvelope(payload) as T;
   },
-  post: async (url: string, data: any) => {
+  post: async <T = unknown>(url: string, data: unknown): Promise<T> => {
     const authHeader = await getAuthHeader();
     const res = await fetch(`${API_URL}${url}`, {
       method: "POST",
@@ -32,10 +86,11 @@ export const api = {
       body: JSON.stringify(data),
       credentials: "include",
     });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    const payload = await parseResponse(res);
+    if (!res.ok) throw new Error(extractErrorMessage(payload));
+    return unwrapEnvelope(payload) as T;
   },
-  put: async (url: string, data: any) => {
+  put: async <T = unknown>(url: string, data: unknown): Promise<T> => {
     const authHeader = await getAuthHeader();
     const res = await fetch(`${API_URL}${url}`, {
       method: "PUT",
@@ -43,10 +98,11 @@ export const api = {
       body: JSON.stringify(data),
       credentials: "include",
     });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    const payload = await parseResponse(res);
+    if (!res.ok) throw new Error(extractErrorMessage(payload));
+    return unwrapEnvelope(payload) as T;
   },
-  patch: async (url: string, data: any) => {
+  patch: async <T = unknown>(url: string, data: unknown): Promise<T> => {
     const authHeader = await getAuthHeader();
     const res = await fetch(`${API_URL}${url}`, {
       method: "PATCH",
@@ -54,10 +110,11 @@ export const api = {
       body: JSON.stringify(data),
       credentials: "include",
     });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    const payload = await parseResponse(res);
+    if (!res.ok) throw new Error(extractErrorMessage(payload));
+    return unwrapEnvelope(payload) as T;
   },
-  delete: async (url: string, data?: any) => {
+  delete: async <T = unknown>(url: string, data?: unknown): Promise<T> => {
     const authHeader = await getAuthHeader();
     const res = await fetch(`${API_URL}${url}`, {
       method: "DELETE",
@@ -65,7 +122,8 @@ export const api = {
       body: data ? JSON.stringify(data) : undefined,
       credentials: "include",
     });
-    if (!res.ok) throw new Error(await res.text());
-    return res.status === 204 ? null : res.json();
+    const payload = await parseResponse(res);
+    if (!res.ok) throw new Error(extractErrorMessage(payload));
+    return unwrapEnvelope(payload) as T;
   },
 };

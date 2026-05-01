@@ -43,6 +43,9 @@ interface Props {
   onNodeDoubleClick?: (id: string) => void;
 }
 
+type NodeLike = cytoscape.NodeSingular;
+type EdgeLike = cytoscape.EdgeSingular;
+
 /* ── Color maps (dark-theme primary, theme-agnostic hex) ──────────── */
 const NODE_COLORS: Record<string, string> = {
   standard:  "#00d4e8",  // cyan
@@ -102,7 +105,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
       setLayout(name: string) {
         if (!cyRef.current) return;
         cyRef.current
-          .layout({ name: name as any, animate: true, animationDuration: 500, padding: 60, fit: true } as any)
+          .layout(({ name, animate: true, animationDuration: 500, padding: 60, fit: true } as unknown) as cytoscape.LayoutOptions)
           .run();
       },
       highlightSearch(query: string) {
@@ -158,28 +161,28 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
           {
             selector: "node",
             style: {
-              "background-color": (ele: any) =>
+              "background-color": (ele: NodeLike) =>
                 NODE_COLORS[ele.data("type") as string] ?? NODE_COLORS.default,
               "label":           "data(label)",
               "color":           "rgba(255,255,255,0.9)",
               "font-size":       "11px",
               "font-family":     "Inter, system-ui, sans-serif",
-              "font-weight":     "500" as any,
-              "text-valign":     "bottom" as any,
-              "text-halign":     "center" as any,
+              "font-weight":     500,
+              "text-valign":     "bottom",
+              "text-halign":     "center",
               "text-margin-y":   7,
               "text-background-opacity": 0,
-              "text-wrap":       "ellipsis" as any,
+              "text-wrap":       "ellipsis",
               "text-max-width":  "110px",
               /* Size scales with degree */
-              "width": (ele: any) => {
+              "width": (ele: NodeLike) => {
                 const d = ele.connectedEdges().length;
                 if (d >= 8) return 54;
                 if (d >= 5) return 44;
                 if (d >= 3) return 36;
                 return 28;
               },
-              "height": (ele: any) => {
+              "height": (ele: NodeLike) => {
                 const d = ele.connectedEdges().length;
                 if (d >= 8) return 54;
                 if (d >= 5) return 44;
@@ -191,9 +194,9 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
               "border-opacity": 1,
               "overlay-opacity": 0,
               "transition-property":       "opacity, border-color, border-width",
-              "transition-duration":       "180ms",
+              "transition-duration":       180,
               "transition-timing-function": "ease",
-            } as any,
+            },
           },
           /* ── Node: selected ── */
           {
@@ -202,7 +205,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
               "border-width": 3,
               "border-color": "rgba(255,255,255,0.9)",
               "overlay-opacity": 0,
-            } as any,
+            },
           },
           /* ── Node: hovered ── */
           {
@@ -211,12 +214,12 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
               "border-width": 2.5,
               "border-color": "rgba(255,255,255,0.6)",
               "overlay-opacity": 0,
-            } as any,
+            },
           },
           /* ── Faded (search) ── */
           {
             selector: ".faded",
-            style: { opacity: 0.1 } as any,
+            style: { opacity: 0.1 },
           },
           /* ── Highlighted (search match) ── */
           {
@@ -225,42 +228,42 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
               opacity: 1,
               "border-width": 3,
               "border-color": "rgba(255,255,255,0.9)",
-            } as any,
+            },
           },
 
           /* ── Edges ── */
           {
             selector: "edge",
             style: {
-              "width": (ele: any) => {
+              "width": (ele: EdgeLike) => {
                 const conf = (ele.data("confidence") as number) ?? 1;
                 return 0.8 + conf * 2.2;
               },
-              "line-color": (ele: any) =>
+              "line-color": (ele: EdgeLike) =>
                 EDGE_COLORS[ele.data("type") as string] ?? EDGE_COLORS.default,
-              "line-opacity": (ele: any) => {
+              "line-opacity": (ele: EdgeLike) => {
                 const conf = (ele.data("confidence") as number) ?? 1;
                 return 0.28 + conf * 0.5;
               },
-              "target-arrow-color": (ele: any) =>
+              "target-arrow-color": (ele: EdgeLike) =>
                 EDGE_COLORS[ele.data("type") as string] ?? EDGE_COLORS.default,
               "target-arrow-shape": "triangle",
               "arrow-scale":        0.7,
               "curve-style":        "bezier",
               "overlay-opacity":    0,
               "transition-property": "opacity, line-opacity",
-              "transition-duration": "180ms",
-            } as any,
+              "transition-duration": 180,
+            },
           },
           /* ── Edge: hovered ── */
           {
             selector: "edge.hovered",
             style: {
               "line-opacity": 1,
-              "width": (ele: any) =>
+              "width": (ele: EdgeLike) =>
                 (0.8 + ((ele.data("confidence") as number) ?? 1) * 2.2) * 1.6,
               "overlay-opacity": 0,
-            } as any,
+            },
           },
         ],
 
@@ -275,7 +278,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
           numIter: 1000,
           gravity: 80,
           fit: true,
-        } as any,
+        },
 
         minZoom: 0.15,
         maxZoom: 5,

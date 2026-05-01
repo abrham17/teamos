@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useWikiStore } from "@/stores/useWikiStore";
 import { api } from "@/lib/api";
 import { 
@@ -21,6 +21,8 @@ interface IngestJob {
   source_filename?: string;
   source_url?: string;
   status: "pending" | "running" | "done" | "failed";
+  ingest_stage?: string;
+  ingest_stage_detail?: string;
   created_at: string;
 }
 
@@ -38,21 +40,19 @@ export default function IngestPage() {
   // URL input state
   const [url, setUrl] = useState("");
 
+  const fetchJobs = useCallback(() => {
+    if (!currentTeamId) return;
+    api.get<IngestJob[]>(`/ingest/${currentTeamId}/jobs/`)
+      .then(setJobs)
+      .catch(console.error);
+  }, [currentTeamId]);
+
   useEffect(() => {
     if (!currentTeamId) return;
     fetchJobs();
-    
-    // Poll for status updates
     const interval = setInterval(fetchJobs, 5000);
     return () => clearInterval(interval);
-  }, [currentTeamId]);
-
-  const fetchJobs = () => {
-    if (!currentTeamId) return;
-    api.get(`/ingest/${currentTeamId}/jobs/`)
-      .then(setJobs)
-      .catch(console.error);
-  };
+  }, [currentTeamId, fetchJobs]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -77,7 +77,7 @@ export default function IngestPage() {
       } else {
         toastError("Failed to upload file.");
       }
-    } catch (err) {
+    } catch {
       toastError("An error occurred during upload.");
     } finally {
       setUploading(false);
@@ -94,7 +94,7 @@ export default function IngestPage() {
       success("URL submitted! We're crawling the content.");
       setUrl("");
       fetchJobs();
-    } catch (err) {
+    } catch {
       toastError("Failed to submit URL.");
     } finally {
       setLoading(false);
@@ -119,7 +119,7 @@ export default function IngestPage() {
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">Bring your data to TeamOS</h1>
           <p className="text-[var(--text-muted)] max-w-2xl">
             Upload documents or crawl websites. Our AI will analyze the content, generate semantic summaries, 
-            and link them into your team's knowledge graph.
+            and link them into your team&apos;s knowledge graph.
           </p>
         </div>
 
@@ -237,6 +237,7 @@ export default function IngestPage() {
                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">Source</th>
                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">Type</th>
                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">Status</th>
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">Stage</th>
                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">Date</th>
                   </tr>
                 </thead>
@@ -258,6 +259,12 @@ export default function IngestPage() {
                       </td>
                       <td className="px-6 py-4">
                         <StatusBadge status={job.status} />
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-xs text-[var(--text-primary)] capitalize">{job.ingest_stage || "queued"}</div>
+                        {job.ingest_stage_detail && (
+                          <div className="text-[10px] text-[var(--text-muted)]">{job.ingest_stage_detail}</div>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-sm text-[var(--text-muted)]">
                         {new Date(job.created_at).toLocaleDateString()}

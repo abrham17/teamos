@@ -19,6 +19,7 @@ import { api }           from "@/lib/api";
 interface GraphData {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  analytics_mode?: "simple" | "advanced";
 }
 
 interface GraphAnalytics {
@@ -34,6 +35,8 @@ interface GraphAnalytics {
   orphans: Array<{ id: string; title: string; slug: string }>;
   node_count: number;
   edge_count: number;
+  analytics_mode?: "simple" | "advanced";
+  available_modes?: Array<"simple" | "advanced">;
 }
 
 export default function GraphPage() {
@@ -46,6 +49,7 @@ export default function GraphPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery]   = useState("");
   const [layout, setLayout]             = useState("cose");
+  const [analyticsMode, setAnalyticsMode] = useState<"simple" | "advanced">("simple");
 
   const cyRef = useRef<CytoscapeRef>(null);
 
@@ -55,8 +59,8 @@ export default function GraphPage() {
     setLoading(true);
     setSelectedNodeId(null);
     Promise.all([
-      api.get(`/graph/${currentTeamId}/`),
-      api.get(`/graph/${currentTeamId}/analytics/`),
+      api.get<GraphData>(`/graph/${currentTeamId}/?mode=${analyticsMode}`),
+      api.get<GraphAnalytics>(`/graph/${currentTeamId}/analytics/?mode=${analyticsMode}`),
     ])
       .then(([graphData, analyticsData]) => {
         setData(graphData);
@@ -64,7 +68,7 @@ export default function GraphPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [currentTeamId]);
+  }, [currentTeamId, analyticsMode]);
 
   /* ── Derived state ── */
   const selectedNode = selectedNodeId
@@ -170,6 +174,17 @@ export default function GraphPage() {
           <div className="absolute top-3 left-3 z-10 flex flex-col gap-2 max-w-sm">
             <div className="bg-[var(--glass-heavy-bg)] backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-secondary)]">
               <div className="font-semibold text-[var(--text-primary)] mb-1">Graph Insights</div>
+              <div className="mb-1">
+                <label className="text-[10px] uppercase tracking-wide text-[var(--text-dim)] mr-2">Mode</label>
+                <select
+                  value={analyticsMode}
+                  onChange={(e) => setAnalyticsMode((e.target.value as "simple" | "advanced"))}
+                  className="bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded px-1.5 py-0.5 text-[10px]"
+                >
+                  <option value="simple">simple</option>
+                  <option value="advanced">advanced</option>
+                </select>
+              </div>
               <div>
                 {Object.keys(analytics.cluster_sizes || {}).length} clusters ·{" "}
                 {analytics.orphans.length} orphan pages

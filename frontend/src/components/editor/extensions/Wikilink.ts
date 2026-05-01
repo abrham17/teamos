@@ -2,6 +2,20 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import Suggestion from '@tiptap/suggestion';
 import { PluginKey } from '@tiptap/pm/state';
 
+type WikilinkCommandPayload = {
+  editor: {
+    chain: () => {
+      focus: () => {
+        replaceRangeWith: (range: unknown, replacement: { type: string; attrs: Record<string, unknown> }) => {
+          insertContent: (content: string) => { run: () => void }
+        }
+      }
+    }
+  }
+  range: unknown
+  props: Record<string, unknown>
+}
+
 export default Node.create({
   name: 'wikilink',
   group: 'inline',
@@ -28,11 +42,11 @@ export default Node.create({
     return [{ tag: 'span[data-wikilink]' }];
   },
 
-  renderHTML({ attributes }) {
+  renderHTML({ node }) {
     return [
       'span',
-      mergeAttributes({ 'data-wikilink': '', class: 'wikilink-chip' }, attributes),
-      `[[${attributes.title}]]`,
+      mergeAttributes({ 'data-wikilink': '', class: 'wikilink-chip' }, node.attrs),
+      `[[${node.attrs.title}]]`,
     ];
   },
 
@@ -41,7 +55,7 @@ export default Node.create({
       suggestion: {
         char: '[[',
         pluginKey: new PluginKey('wikiLink'),
-        command: ({ editor, range, props }: any) => {
+        command: ({ editor, range, props }: WikilinkCommandPayload) => {
           editor
             .chain()
             .focus()

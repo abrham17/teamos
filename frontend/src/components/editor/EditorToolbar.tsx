@@ -1,10 +1,11 @@
 "use client";
 
 import { Editor } from "@tiptap/react";
+import type { ReactNode } from "react";
 import { 
   Bold, Italic, List, ListOrdered, 
   Heading1, Heading2, Quote, Code, 
-  Table as TableIcon, Link as LinkIcon,
+  Table as TableIcon,
   Underline as UnderlineIcon, AlignLeft,
   AlignCenter, AlignRight
 } from "lucide-react";
@@ -13,10 +14,17 @@ interface Props {
   editor: Editor | null;
 }
 
+interface ToolbarButtonProps {
+  onClick: () => void;
+  isActive?: boolean;
+  children: ReactNode;
+  title?: string;
+}
+
 export default function EditorToolbar({ editor }: Props) {
   if (!editor) return null;
 
-  const Button = ({ onClick, isActive, children, title }: any) => (
+  const Button = ({ onClick, isActive, children, title }: ToolbarButtonProps) => (
     <button
       onClick={onClick}
       title={title}
@@ -89,21 +97,33 @@ export default function EditorToolbar({ editor }: Props) {
       <div className="w-px h-6 bg-white/10 mx-1" />
 
       <Button 
-        onClick={() => editor.chain().focus().setTextAlign('left').run()} 
+        onClick={() =>
+          ((editor.chain().focus() as unknown) as { setTextAlign: (v: string) => { run: () => void } })
+            .setTextAlign('left')
+            .run()
+        }
         isActive={editor.isActive({ textAlign: 'left' })}
         title="Align Left"
       >
         <AlignLeft size={18} />
       </Button>
       <Button 
-        onClick={() => editor.chain().focus().setTextAlign('center').run()} 
+        onClick={() =>
+          ((editor.chain().focus() as unknown) as { setTextAlign: (v: string) => { run: () => void } })
+            .setTextAlign('center')
+            .run()
+        }
         isActive={editor.isActive({ textAlign: 'center' })}
         title="Align Center"
       >
         <AlignCenter size={18} />
       </Button>
       <Button 
-        onClick={() => editor.chain().focus().setTextAlign('right').run()} 
+        onClick={() =>
+          ((editor.chain().focus() as unknown) as { setTextAlign: (v: string) => { run: () => void } })
+            .setTextAlign('right')
+            .run()
+        }
         isActive={editor.isActive({ textAlign: 'right' })}
         title="Align Right"
       >

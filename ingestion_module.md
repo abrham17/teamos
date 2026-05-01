@@ -1,5 +1,22 @@
 # TeamOS — Ingestion Module
 
+**Status:** Partial  
+**Capability refs:** `ING-001`, `ING-002`, `ING-003`, `ING-004` in `docs/capability-matrix.md`
+
+## Current behavior
+
+- URL and file ingestion job creation are implemented via `backend/ingest/views.py`.
+- Ingest jobs are asynchronous through Celery task execution.
+- Job history endpoint is available for recent ingest jobs.
+- Vector/chunk pipeline foundation exists, but full productized stage telemetry and advanced governance/review UX are not fully closed.
+
+## Target behavior
+
+- Full source coverage (URL/PDF/DOCX/repository) with predictable extraction quality.
+- Stage-by-stage progress and observability wired end-to-end for users and operators.
+- Governance flow for review/approval with clear diff and merge outcomes.
+- Strong grounding and merge semantics for updating existing wiki knowledge, not only creating new artifacts.
+
 The Ingestion Module is the gateway through which external information enters the TeamOS Knowledge Base. It transforms raw data (URLs, Documents, Repositories) into structured, interlinked, and searchable "WikiPages."
 
 ---

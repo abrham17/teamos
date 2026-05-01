@@ -1,5 +1,22 @@
 # TeamOS — Export & Portability Module
 
+**Status:** Implemented (core) / Partial (policy hardening)  
+**Capability refs:** `EXP-001`, `EXP-002`, `EXP-003` in `docs/capability-matrix.md`
+
+## Current behavior
+
+- Full wiki ZIP export is implemented with page markdown, graph JSON, and metadata.
+- Single page markdown export is implemented.
+- Permission/not-found errors are standardized via API envelope responses.
+- Advanced export policy controls, larger-scale async export orchestration, and richer audit surfaces are partial.
+
+## Target behavior
+
+- Strict role/policy enforcement with explicit entitlement-aware export controls.
+- Robust large-workspace export job orchestration and observability.
+- Extended export formats and enterprise backup/sync workflows.
+- Complete auditability of export actions in management UX.
+
 TeamOS is committed to **Knowledge Sovereignty**. We believe that your team's knowledge belongs to you, and it should never be locked into a single platform. The Export Module ensures that your wiki is portable, standards-compliant, and verifiable.
 
 ---

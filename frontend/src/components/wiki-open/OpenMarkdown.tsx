@@ -30,7 +30,7 @@ export function OpenMarkdown({ teamId, onOpen, onClose, onNewMarkdown }: OpenMar
     const fetchPages = async () => {
       setLoading(true);
       try {
-        const data = await api.get(`/wiki/${teamId}/pages/`);
+        const data = await api.get<Page[]>(`/wiki/${teamId}/pages/`);
         setPages(data);
       } catch (e) {
         console.error(e);
@@ -120,7 +120,7 @@ export function OpenMarkdown({ teamId, onOpen, onClose, onNewMarkdown }: OpenMar
               }}
               className="text-[var(--accent)] font-medium hover:underline"
             >
-              Create new "{search}" →
+              Create new &quot;{search}&quot; →
             </button>
           )}
         </div>

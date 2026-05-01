@@ -11,9 +11,8 @@ import { TableHeader } from "@tiptap/extension-table-header";
 import { Underline } from "@tiptap/extension-underline";
 import { TextAlign } from "@tiptap/extension-text-align";
 import { Highlight } from "@tiptap/extension-highlight";
-import { Markdown } from "tiptap-markdown";
+import { Markdown } from "@tiptap/markdown";
 import Collaboration from "@tiptap/extension-collaboration";
-import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
 import { useEffect, useMemo } from "react";
 
 import SlashCommand from "./extensions/SlashCommand";
@@ -26,20 +25,21 @@ interface Props {
   initialText: string;
   onChange: (content: string) => void;
   teamId: string;
-  ydoc?: any;
-  provider?: any;
+  ydoc?: unknown;
+  provider?: unknown;
 }
+
+type MarkdownStorage = {
+  markdown?: {
+    getMarkdown: () => string;
+  };
+};
 
 export function GoogleDocsEditor({ initialText, onChange, teamId, ydoc, provider }: Props) {
   const extensions = useMemo(() => {
     const base = [
-      StarterKit.configure({
-        // Disable history if collaboration is active
-        history: !ydoc,
-      }),
-      Markdown.configure({
-        html: false,
-      }),
+      StarterKit.configure({}),
+      Markdown.configure({}),
       Underline,
       TextAlign.configure({
         types: ["heading", "paragraph"],
@@ -63,10 +63,6 @@ export function GoogleDocsEditor({ initialText, onChange, teamId, ydoc, provider
       base.push(
         Collaboration.configure({
           document: ydoc,
-        }),
-        CollaborationCursor.configure({
-          provider: provider,
-          user: provider.awareness.getLocalState()?.user,
         })
       );
     }
@@ -84,14 +80,14 @@ export function GoogleDocsEditor({ initialText, onChange, teamId, ydoc, provider
       },
     },
     onUpdate: ({ editor }) => {
-      const markdown = (editor.storage as any).markdown.getMarkdown();
+      const markdown = ((editor.storage as unknown) as MarkdownStorage).markdown?.getMarkdown?.() || "";
       onChange(markdown); 
     },
   });
 
   useEffect(() => {
     if (editor && initialText && !ydoc) {
-      const current = (editor.storage as any).markdown.getMarkdown();
+      const current = ((editor.storage as unknown) as MarkdownStorage).markdown?.getMarkdown?.() || "";
       if (initialText !== current) {
         editor.commands.setContent(initialText);
       }

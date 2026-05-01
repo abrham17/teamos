@@ -4,14 +4,14 @@ import { useState } from "react";
 import { Settings, Tag, Info, Calendar } from "lucide-react";
 
 interface Props {
-  frontmatter: any;
-  onChange: (newFm: any) => void;
+  frontmatter: Record<string, string>;
+  onChange: (newFm: Record<string, string>) => void;
 }
 
 export default function FrontmatterPanel({ frontmatter, onChange }: Props) {
   const [isOpen, setIsOpen] = useState(false);
 
-  const updateField = (field: string, value: any) => {
+  const updateField = (field: string, value: string) => {
     onChange({ ...frontmatter, [field]: value });
   };
 

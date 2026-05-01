@@ -1,5 +1,22 @@
 # TeamOS — Knowledge Graph Module
 
+**Status:** Partial  
+**Capability refs:** `GRA-001`, `GRA-002`, `GRA-003`, `GRA-004` in `docs/capability-matrix.md`
+
+## Current behavior
+
+- Graph retrieval, node detail, analytics, hubs/orphans, and manual edge APIs are implemented.
+- Graph visualization surface exists in frontend and is wired to backend analytics payloads.
+- Core graph wiring from wiki/ingest exists.
+- Advanced semantic clustering quality and richer graph semantics are still partial.
+
+## Target behavior
+
+- Higher-fidelity clustering/communities with stable and explainable semantics.
+- Stronger citation edge semantics and edge-level context actions in UI.
+- Clear mode/version visibility between simple vs advanced analytics behavior.
+- Better validation and benchmarked quality for inferred relationships at scale.
+
 The Knowledge Graph is the associative brain of TeamOS. It moves beyond simple folder structures to create a dense network of relationships between concepts, documents, and entities.
 
 ---

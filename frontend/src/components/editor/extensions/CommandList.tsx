@@ -1,6 +1,19 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useState } from 'react'
 
-export const CommandList = forwardRef((props: any, ref) => {
+type CommandItem = {
+  title: string
+  icon?: React.ReactNode
+}
+
+type CommandListProps = {
+  items: CommandItem[]
+  command: (item: CommandItem) => void
+}
+
+type KeyDownPayload = { event: KeyboardEvent }
+type CommandListRef = { onKeyDown: (payload: KeyDownPayload) => boolean }
+
+export const CommandList = forwardRef<CommandListRef, CommandListProps>((props, ref) => {
   const [selectedIndex, setSelectedIndex] = useState(0)
 
   const selectItem = (index: number) => {
@@ -25,7 +38,7 @@ export const CommandList = forwardRef((props: any, ref) => {
   useEffect(() => setSelectedIndex(0), [props.items])
 
   useImperativeHandle(ref, () => ({
-    onKeyDown: ({ event }: any) => {
+    onKeyDown: ({ event }: KeyDownPayload) => {
       if (event.key === 'ArrowUp') {
         upHandler()
         return true
@@ -45,7 +58,7 @@ export const CommandList = forwardRef((props: any, ref) => {
   return (
     <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-lg shadow-xl overflow-hidden py-1 w-64 z-50">
       {props.items.length ? (
-        props.items.map((item: any, index: number) => (
+        props.items.map((item, index: number) => (
           <button
             className={`flex items-center gap-3 w-full text-left px-4 py-2 text-sm ${
               index === selectedIndex ? 'bg-[var(--accent)] text-[var(--bg-950)]' : 'text-[var(--text-primary)] hover:bg-[var(--bg-800)]'

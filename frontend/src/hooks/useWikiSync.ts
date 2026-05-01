@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 
-export function useWikiSync(teamId: string, pageId: string, user: any) {
+type SyncUser = { username?: string };
+
+export function useWikiSync(teamId: string, pageId: string, user: SyncUser | null | undefined) {
   const [ydoc, setYdoc] = useState<Y.Doc | null>(null);
   const [provider, setProvider] = useState<WebsocketProvider | null>(null);
 

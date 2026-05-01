@@ -1,30 +1,101 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWikiStore } from "@/stores/useWikiStore";
 import { api } from "@/lib/api";
+import {
+  getPendingActionMessage,
+  isConfirmActionDisabled,
+  isConfirmationMatch,
+  normalizeEmail,
+  type PendingAction,
+} from "@/lib/settingsConfirm";
 import { Download, Users, Plus, Shield, Settings2, AlertTriangle, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+
+interface TeamData {
+  id: string;
+  name: string;
+  slug: string;
+  plan: string;
+  my_role?: "owner" | "editor" | "viewer";
+}
+
+interface TeamUser {
+  id: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+}
+
+interface TeamMemberRow {
+  id: string;
+  role: "owner" | "editor" | "viewer";
+  user: TeamUser;
+}
+
+interface TeamInviteRow {
+  id: string;
+  invitee_email: string;
+  role: "owner" | "editor" | "viewer";
+  send_status?: string;
+  lifecycle_status?: string;
+  revoked_at?: string | null;
+  used_at?: string | null;
+}
+
+interface MeResponse {
+  id: string;
+  email: string;
+}
+
+interface CheckoutSessionResponse {
+  checkout_url?: string;
+}
+
+function toErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
 
 export default function SettingsPage() {
   const { currentTeamId } = useWikiStore();
   const { success, info, error } = useToast();
-  const [team, setTeam] = useState<any>(null);
-  const [members, setMembers] = useState<any[]>([]);
-  const [invites, setInvites] = useState<any[]>([]);
+  const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [myEmail, setMyEmail] = useState<string>("");
+  const [team, setTeam] = useState<TeamData | null>(null);
+  const [members, setMembers] = useState<TeamMemberRow[]>([]);
+  const [invites, setInvites] = useState<TeamInviteRow[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("editor");
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [confirmationInput, setConfirmationInput] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
+  const inviteEmailRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!currentTeamId) return;
-    api.get(`/auth/teams/${currentTeamId}/`).then(setTeam).catch(console.error);
-    api.get(`/auth/teams/${currentTeamId}/members/`).then(setMembers).catch(console.error);
-    api.get(`/auth/teams/${currentTeamId}/invites/`).then(setInvites).catch(console.error);
+    api
+      .get<MeResponse>("/auth/me/")
+      .then((me) => {
+        setMyUserId(me?.id || null);
+        setMyEmail(normalizeEmail(me?.email || ""));
+      })
+      .catch(console.error);
+    api.get<TeamData>(`/auth/teams/${currentTeamId}/`).then(setTeam).catch(console.error);
+    api.get<TeamMemberRow[]>(`/auth/teams/${currentTeamId}/members/`).then(setMembers).catch(console.error);
+    api.get<TeamInviteRow[]>(`/auth/teams/${currentTeamId}/invites/`).then(setInvites).catch(console.error);
   }, [currentTeamId]);
+
+  const refreshMembers = async () => {
+    if (!currentTeamId) return;
+    const data = await api.get<TeamMemberRow[]>(`/auth/teams/${currentTeamId}/members/`);
+    setMembers(data);
+  };
 
   const refreshInvites = async () => {
     if (!currentTeamId) return;
-    const data = await api.get(`/auth/teams/${currentTeamId}/invites/`);
+    const data = await api.get<TeamInviteRow[]>(`/auth/teams/${currentTeamId}/invites/`);
     setInvites(data);
   };
 
@@ -43,8 +114,8 @@ export default function SettingsPage() {
       setInviteEmail("");
       setInviteRole("editor");
       await refreshInvites();
-    } catch (e: any) {
-      error(e?.message || "Failed to send invite.");
+    } catch (e: unknown) {
+      error(toErrorMessage(e, "Failed to send invite."));
     }
   };
 
@@ -54,8 +125,8 @@ export default function SettingsPage() {
       await api.post(`/auth/teams/${currentTeamId}/invites/${inviteId}/resend/`, {});
       info("Invite resend requested.");
       await refreshInvites();
-    } catch (e: any) {
-      error(e?.message || "Failed to resend invite.");
+    } catch (e: unknown) {
+      error(toErrorMessage(e, "Failed to resend invite."));
     }
   };
 
@@ -65,9 +136,52 @@ export default function SettingsPage() {
       await api.post(`/auth/teams/${currentTeamId}/invites/${inviteId}/revoke/`, {});
       success("Invite revoked.");
       await refreshInvites();
-    } catch (e: any) {
-      error(e?.message || "Failed to revoke invite.");
+    } catch (e: unknown) {
+      error(toErrorMessage(e, "Failed to revoke invite."));
     }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    const member = members.find((m) => m.user?.id === userId);
+    if (!member) return;
+    setPendingAction({
+      type: "remove_member",
+      userId,
+      label: member.user?.email || "this member",
+    });
+    setConfirmationInput("");
+  };
+
+  const handleTransferOwnership = async (userId: string) => {
+    const member = members.find((m) => m.user?.id === userId);
+    if (!member) return;
+    setPendingAction({
+      type: "transfer_owner",
+      userId,
+      label: member.user?.email || "this member",
+    });
+    setConfirmationInput("");
+  };
+
+  const handleChangeMemberRole = async (userId: string, role: "viewer" | "editor") => {
+    if (!currentTeamId) return;
+    try {
+      await api.patch(`/auth/teams/${currentTeamId}/members/`, {
+        user_id: userId,
+        role,
+      });
+      success(`Member role updated to ${role}.`);
+      await refreshMembers();
+    } catch (e: unknown) {
+      error(toErrorMessage(e, "Failed to update member role."));
+    }
+  };
+
+  const formatInviteStatus = (invite: TeamInviteRow) => {
+    if (invite.lifecycle_status) return invite.lifecycle_status;
+    if (invite.revoked_at) return "revoked";
+    if (invite.used_at) return "accepted";
+    return "pending";
   };
 
   const handleExportWiki = () => {
@@ -79,9 +193,79 @@ export default function SettingsPage() {
   };
 
   const handleDeleteTeam = () => {
-    if (!confirm("Are you absolutely sure? This will delete all wiki pages, chat history, and semantic graph data for this team. This action is irreversible.")) return;
-    // Implementation for delete...
-    info("Delete requested. This would call the backend delete endpoint.");
+    setPendingAction({ type: "delete_team" });
+    setConfirmationInput("");
+  };
+
+  const handleUpgradePlan = async () => {
+    if (!currentTeamId) return;
+    try {
+      await api.post(`/analytics/${currentTeamId}/events/upgrade-clicked/`, {
+        surface: "settings_team_profile",
+      });
+      const successUrl = `${window.location.origin}/settings?billing=success`;
+      const cancelUrl = `${window.location.origin}/settings?billing=cancel`;
+      const checkout = await api.post<CheckoutSessionResponse>(`/billing/${currentTeamId}/checkout-session/`, {
+        plan_key: "team",
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      });
+      if (checkout?.checkout_url) {
+        window.open(checkout.checkout_url, "_blank");
+        info("Opening checkout...");
+      } else {
+        info("Upgrade intent recorded.");
+      }
+    } catch (e: unknown) {
+      error(toErrorMessage(e, "Unable to start upgrade flow."));
+    }
+  };
+
+  const closeConfirmationModal = () => {
+    if (actionBusy) return;
+    setPendingAction(null);
+    setConfirmationInput("");
+  };
+
+  const executeConfirmedAction = async () => {
+    if (!currentTeamId || !pendingAction || !myEmail) return;
+    if (!isConfirmationMatch(confirmationInput, myEmail)) return;
+    setActionBusy(true);
+    try {
+      if (pendingAction.type === "remove_member") {
+        await api.delete(`/auth/teams/${currentTeamId}/members/`, {
+          user_id: pendingAction.userId,
+          confirmation_email: myEmail,
+        });
+        success("Member removed.");
+        await refreshMembers();
+      } else if (pendingAction.type === "transfer_owner") {
+        await api.post(`/auth/teams/${currentTeamId}/transfer-ownership/`, {
+          new_owner_user_id: pendingAction.userId,
+          confirmation_email: myEmail,
+        });
+        success("Ownership transferred.");
+        const teamData = await api.get<TeamData>(`/auth/teams/${currentTeamId}/`);
+        setTeam(teamData);
+        await refreshMembers();
+      } else {
+        await api.delete(`/auth/teams/${currentTeamId}/`, {
+          confirmation_email: myEmail,
+        });
+        success("Team scheduled for deletion.");
+        window.location.href = "/wiki";
+      }
+      setPendingAction(null);
+      setConfirmationInput("");
+    } catch (e: unknown) {
+      error(toErrorMessage(e, "Action failed."));
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const openInviteComposer = () => {
+    inviteEmailRef.current?.focus();
   };
 
   if (!currentTeamId) return <div className="p-8">Select a team first</div>;
@@ -99,7 +283,7 @@ export default function SettingsPage() {
         <section>
           <div className="mb-4">
             <h3 className="text-lg font-medium text-[var(--text-primary)]">Team Profile</h3>
-            <p className="text-sm text-[var(--text-muted)] mt-1">Manage your team's identity and subscription plan.</p>
+            <p className="text-sm text-[var(--text-muted)] mt-1">Manage your team&apos;s identity and subscription plan.</p>
           </div>
           <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-xl p-6">
             <div className="flex items-center justify-between">
@@ -107,10 +291,20 @@ export default function SettingsPage() {
                 <div className="text-[var(--text-muted)] text-sm mb-1">Team Name</div>
                 <div className="text-xl font-semibold">{team?.name || 'Loading...'}</div>
               </div>
-              <div>
+              <div className="flex items-center gap-3">
+                {team?.plan !== "pro" && (
+                  <button
+                    onClick={handleUpgradePlan}
+                    className="px-3 py-2 rounded border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)]/10 text-sm"
+                  >
+                    Upgrade plan
+                  </button>
+                )}
+                <div>
                 <div className="text-[var(--text-muted)] text-sm mb-1">Current Plan</div>
                 <div className="px-3 py-1 bg-[var(--accent)] text-[var(--bg-950)] text-sm font-bold rounded-full uppercase tracking-wide">
                   {team?.plan || 'FREE'}
+                </div>
                 </div>
               </div>
             </div>
@@ -128,6 +322,7 @@ export default function SettingsPage() {
             </div>
             <div className="flex items-center gap-2">
               <input
+                ref={inviteEmailRef}
                 type="email"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
@@ -168,6 +363,37 @@ export default function SettingsPage() {
                     {m.role === 'owner' && <Shield className="w-3 h-3 text-amber-500" />}
                     {m.role}
                   </span>
+                  {team?.my_role === "owner" && m.role !== "owner" && m.user?.id !== myUserId && (
+                    <>
+                      {m.role === "viewer" ? (
+                        <button
+                          onClick={() => handleChangeMemberRole(m.user.id, "editor")}
+                          className="px-2.5 py-1 rounded border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-xs"
+                        >
+                          Make editor
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleChangeMemberRole(m.user.id, "viewer")}
+                          className="px-2.5 py-1 rounded border border-slate-500/30 text-slate-300 hover:bg-slate-500/10 text-xs"
+                        >
+                          Make viewer
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleTransferOwnership(m.user.id)}
+                        className="px-2.5 py-1 rounded border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs"
+                      >
+                        Make owner
+                      </button>
+                      <button
+                        onClick={() => handleRemoveMember(m.user.id)}
+                        className="px-2.5 py-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs"
+                      >
+                        Remove
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}
@@ -177,7 +403,15 @@ export default function SettingsPage() {
               Pending / recent invites
             </div>
             {invites.length === 0 ? (
-              <div className="px-4 py-4 text-sm text-[var(--text-muted)]">No invites yet.</div>
+              <div className="px-4 py-4 text-sm text-[var(--text-muted)] flex items-center justify-between gap-3">
+                <span>No invites yet.</span>
+                <button
+                  onClick={openInviteComposer}
+                  className="px-3 py-1.5 rounded border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs"
+                >
+                  Invite first teammate
+                </button>
+              </div>
             ) : (
               invites.map((invite) => (
                 <div key={invite.id} className="px-4 py-3 border-b border-[var(--border-subtle)] last:border-0 text-sm">
@@ -185,7 +419,8 @@ export default function SettingsPage() {
                     <div>
                       <div className="font-medium">{invite.invitee_email}</div>
                       <div className="text-[var(--text-muted)]">
-                        Role: <span className="capitalize">{invite.role}</span> · Status: {invite.send_status}
+                        Role: <span className="capitalize">{invite.role}</span> · Delivery: {invite.send_status} · Invite:{" "}
+                        <span className="capitalize">{formatInviteStatus(invite)}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -210,6 +445,40 @@ export default function SettingsPage() {
                 </div>
               ))
             )}
+          </div>
+        </section>
+
+        {/* Workflow Shortcuts */}
+        <section>
+          <div className="mb-4">
+            <h3 className="text-lg font-medium text-[var(--text-primary)]">Workflow Shortcuts</h3>
+            <p className="text-sm text-[var(--text-muted)] mt-1">Quickly continue common team workflows.</p>
+          </div>
+          <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-xl p-4 grid grid-cols-1 md:grid-cols-4 gap-2">
+            <button
+              onClick={openInviteComposer}
+              className="px-3 py-2 rounded border border-[var(--border-subtle)] hover:border-[var(--accent)] text-sm"
+            >
+              Invite teammate
+            </button>
+            <button
+              onClick={() => (window.location.href = "/wiki")}
+              className="px-3 py-2 rounded border border-[var(--border-subtle)] hover:border-[var(--accent)] text-sm"
+            >
+              Open wiki
+            </button>
+            <button
+              onClick={() => (window.location.href = "/chat")}
+              className="px-3 py-2 rounded border border-[var(--border-subtle)] hover:border-[var(--accent)] text-sm"
+            >
+              Open chat
+            </button>
+            <button
+              onClick={handleExportWiki}
+              className="px-3 py-2 rounded border border-[var(--border-subtle)] hover:border-[var(--accent)] text-sm"
+            >
+              Export wiki
+            </button>
           </div>
         </section>
 
@@ -263,6 +532,43 @@ export default function SettingsPage() {
           </div>
         </section>
       </div>
+      {pendingAction && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[1px] flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-6">
+            <h3 className="text-lg font-semibold text-[var(--text-primary)]">Confirm Sensitive Action</h3>
+            <p className="text-sm text-[var(--text-muted)] mt-2">
+              {getPendingActionMessage(pendingAction)}
+            </p>
+            <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              Type your email <span className="font-semibold">{myEmail || "(loading...)"}</span> to confirm.
+            </div>
+            <input
+              type="email"
+              value={confirmationInput}
+              onChange={(e) => setConfirmationInput(e.target.value)}
+              placeholder="your-email@company.com"
+              className="mt-4 w-full px-3 py-2 rounded-lg bg-[var(--surface-1)] border border-[var(--border-subtle)] text-sm"
+              disabled={actionBusy}
+            />
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                onClick={closeConfirmationModal}
+                className="px-3 py-2 rounded border border-[var(--border-subtle)] text-sm"
+                disabled={actionBusy}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeConfirmedAction}
+                className="px-3 py-2 rounded bg-red-500 text-white text-sm disabled:opacity-60"
+                disabled={isConfirmActionDisabled({ actionBusy, myEmail, confirmationInput })}
+              >
+                {actionBusy ? "Processing..." : "Confirm action"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

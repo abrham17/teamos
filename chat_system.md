@@ -1,5 +1,22 @@
 # TeamOS — Citational Chat System
 
+**Status:** Implemented (core) / Partial (advanced)  
+**Capability refs:** `CHA-001`, `CHA-002`, `CHA-003` in `docs/capability-matrix.md`
+
+## Current behavior
+
+- Session-based chat and message history are implemented.
+- SSE-based streaming responses are implemented.
+- Citations are returned and can deep-link into wiki with context hints (`chunk`, `anchor_hint`, `snippet`).
+- Advanced retrieval upgrades (full multi-query/reranker quality layers across plans) remain partial.
+
+## Target behavior
+
+- Deterministic exact-section deep-linking (anchor-level jump, not snippet-near match).
+- Fully tier-aware, benchmarked retrieval quality with robust reranking and query expansion.
+- Strong operational observability for chat latency, citation quality, and failure modes.
+- Consistent source-grounded responses with explicit contradiction handling quality checks.
+
 The Team Chat System is the interactive interface for querying the Knowledge Base. It uses Retrieval-Augmented Generation (RAG) to provide grounded, accurate answers backed by the team's wiki and raw source data.
 
 ---

@@ -6,11 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.22.0",
     "@tanstack/react-query": "^5.100.6",
+    "@tiptap/extension-collaboration": "^3.22.5",
+    "@tiptap/extension-highlight": "^3.22.5",
+    "@tiptap/extension-text-align": "^3.22.5",
+    "@tiptap/markdown": "^3.22.5",
     "@tiptap/suggestion": "^3.22.5",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -21,6 +27,8 @@
     "react-dom": "19.1.4",
     "tailwind-merge": "^3.5.0",
     "tippy.js": "^6.3.7",
+    "y-websocket": "^3.0.0",
+    "yjs": "^13.6.30",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
@@ -43,6 +51,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.15",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.4"
   }
 }

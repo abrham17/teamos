@@ -2,19 +2,32 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { buildChatCitationHref } from "@/lib/chatCitationLink";
 import { useWikiStore } from "@/stores/useWikiStore";
 import { Send, Bot, User, FileText } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/Toast";
+
+type ChatSession = { id: string; title: string };
+type Citation = {
+  page_slug?: string;
+  page_title?: string;
+  confidence?: number;
+  anchor_hint?: string;
+  chunk_id?: string;
+  snippet?: string;
+};
+type ChatMessage = { id: string; role: "user" | "assistant"; content: string; citations?: Citation[] };
+type SessionDetailResponse = { messages?: ChatMessage[] };
 
 export function ChatInterface() {
   const { currentTeamId } = useWikiStore();
   const router = useRouter();
   const { error: toastError } = useToast();
   
-  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState("");
@@ -23,7 +36,7 @@ export function ChatInterface() {
 
   useEffect(() => {
     if (!currentTeamId) return;
-    api.get(`/chat/${currentTeamId}/sessions/`).then((data) => {
+    api.get<ChatSession[]>(`/chat/${currentTeamId}/sessions/`).then((data) => {
       setSessions(data);
       if (data.length > 0 && !activeSessionId) {
         setActiveSessionId(data[0].id);
@@ -33,7 +46,7 @@ export function ChatInterface() {
 
   useEffect(() => {
     if (!currentTeamId || !activeSessionId) return;
-    api.get(`/chat/${currentTeamId}/sessions/${activeSessionId}/`).then((data) => {
+    api.get<SessionDetailResponse>(`/chat/${currentTeamId}/sessions/${activeSessionId}/`).then((data) => {
       setMessages(data.messages || []);
     }).catch(console.error);
   }, [currentTeamId, activeSessionId]);
@@ -45,7 +58,7 @@ export function ChatInterface() {
   const handleNewChat = async () => {
     if (!currentTeamId) return;
     try {
-      const data = await api.post(`/chat/${currentTeamId}/sessions/`, { title: "New Chat" });
+      const data = await api.post<ChatSession>(`/chat/${currentTeamId}/sessions/`, { title: "New Chat" });
       setSessions([data, ...sessions]);
       setActiveSessionId(data.id);
       setMessages([]);
@@ -78,7 +91,7 @@ export function ChatInterface() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       
-      let assistantMsg = { role: "assistant", content: "", citations: [], id: Date.now().toString() };
+      const assistantMsg: ChatMessage = { role: "assistant", content: "", citations: [], id: Date.now().toString() };
       setMessages(prev => [...prev, assistantMsg]);
 
       while (true) {
@@ -177,7 +190,7 @@ export function ChatInterface() {
               </div>
               <h2 className="text-xl font-bold text-[var(--text-primary)] mb-2">Team Intelligence Chat</h2>
               <p className="text-[var(--text-muted)] max-w-sm">
-                Ask questions about your team's knowledge graph. TeamOS will search across all wiki pages and cite its sources.
+                Ask questions about your team&apos;s knowledge graph. TeamOS will search across all wiki pages and cite its sources.
               </p>
             </div>
           )}
@@ -201,11 +214,12 @@ export function ChatInterface() {
                 
                 {m.citations && m.citations.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-1">
-                    {m.citations.map((c: any, idx: number) => (
+                    {m.citations.map((c: Citation, idx: number) => (
                       <button 
                         key={idx}
-                        onClick={() => router.push(`/wiki?page=${c.page_slug}`)}
+                        onClick={() => router.push(buildChatCitationHref(c))}
                         className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--bg-800)] border border-[var(--border-subtle)] text-xs text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-all group"
+                        title={c.anchor_hint ? `Jump hint: ${c.anchor_hint}` : "Open source page"}
                       >
                         <FileText className="w-3 h-3" />
                         <span>{c.page_title}</span>

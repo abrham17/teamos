@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            frontend:
+              - 'frontend/**'
+            docs:
+              - '**/*.md'
+              - 'docs/**'
+              - 'scripts/validate_docs_contracts.py'
+              - '.github/workflows/**'
+
+  backend:
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && pip install -r backend/requirements.txt
+
+      - name: Migration check
+        run: python backend/manage.py makemigrations --check --dry-run
+
+      - name: Run backend tests
+        run: python backend/manage.py test
+
+  frontend:
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        run: npm install --prefix frontend
+
+      - name: Run frontend lint
+        run: npm run lint --prefix frontend
+
+      - name: Run frontend typecheck
+        run: npm run typecheck --prefix frontend
+
+      - name: Run frontend tests
+        run: npm run test --prefix frontend --if-present
+
+  docs-contract:
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate docs contracts
+        run: python3 scripts/validate_docs_contracts.py
+
+      - name: Validate branch protection contract
+        run: python3 scripts/validate_branch_protection_contract.py

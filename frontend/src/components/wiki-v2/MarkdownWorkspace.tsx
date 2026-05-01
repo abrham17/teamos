@@ -7,23 +7,41 @@ import { api } from "@/lib/api";
 import { ChevronLeft, FolderOpen, Book } from "lucide-react";
 import { GoogleDocsEditor } from "../editor/GoogleDocsEditor";
 import { OpenMarkdown } from "@/components/wiki-open/OpenMarkdown";
+import FrontmatterPanel from "@/components/wiki/FrontmatterPanel";
 import { useToast } from "@/components/ui/Toast";
+
+interface WikiPageDetail {
+  id: string;
+  title: string;
+  slug: string;
+  content: string;
+  frontmatter?: Record<string, string>;
+}
+
+interface WikiCreateResponse {
+  slug: string;
+}
 
 export function MarkdownWorkspace() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { currentTeamId, wikiSidebarOpen, setWikiSidebarOpen } = useWikiStore();
-  const { success, error: toastError } = useToast();
+  const { error: toastError } = useToast();
   
   const [loading, setLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
-  const [page, setPage] = useState<any>(null);
+  const [page, setPage] = useState<WikiPageDetail | null>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [frontmatter, setFrontmatter] = useState<Record<string, string>>({});
   const [isNew, setIsNew] = useState(false);
 
   const slug = searchParams.get("page");
   const action = searchParams.get("action");
+  const citationSnippet = searchParams.get("snippet");
+  const citationChunk = searchParams.get("chunk");
+  const citationAnchorHint = searchParams.get("anchor_hint");
+  const citationSource = searchParams.get("source");
 
   useEffect(() => {
     if (!currentTeamId) return;
@@ -33,6 +51,7 @@ export function MarkdownWorkspace() {
       setPage(null);
       setTitle("");
       setContent("");
+      setFrontmatter({});
       setSaveStatus("idle");
       return;
     }
@@ -41,17 +60,19 @@ export function MarkdownWorkspace() {
       setIsNew(false);
       setLoading(true);
       setSaveStatus("idle");
-      api.get(`/wiki/${currentTeamId}/pages/${slug}/`)
-        .then((data) => {
+      api.get<WikiPageDetail>(`/wiki/${currentTeamId}/pages/${slug}/`)
+      .then((data) => {
           setPage(data);
           setTitle(data.title);
           setContent(data.content);
+          setFrontmatter((data.frontmatter || {}) as Record<string, string>);
         })
         .catch(console.error)
         .finally(() => setLoading(false));
     } else {
       setPage(null);
       setIsNew(false);
+      setFrontmatter({});
       setSaveStatus("idle");
     }
   }, [currentTeamId, slug, action]);
@@ -60,7 +81,9 @@ export function MarkdownWorkspace() {
     if (loading || (!page && !isNew) || !currentTeamId) return;
     
     // Don't trigger save if content hasn't changed from initial load
-    if (!isNew && page && title === page.title && content === page.content) {
+    const pageFrontmatter = JSON.stringify((page?.frontmatter || {}) as Record<string, string>);
+    const localFrontmatter = JSON.stringify(frontmatter || {});
+    if (!isNew && page && title === page.title && content === page.content && pageFrontmatter === localFrontmatter) {
       return;
     }
 
@@ -71,11 +94,12 @@ export function MarkdownWorkspace() {
           setSaveStatus("idle");
           return;
         }
-        api.post(`/wiki/${currentTeamId}/pages/`, {
+        api.post<WikiCreateResponse>(`/wiki/${currentTeamId}/pages/`, {
           title: title || "Untitled",
           content: content,
-          page_type: "standard"
-        }).then((data) => {
+          page_type: "standard",
+          frontmatter,
+        }).then((data: WikiCreateResponse) => {
           setIsNew(false);
           setSaveStatus("saved");
           router.replace(`/wiki?page=${data.slug}`);
@@ -85,9 +109,14 @@ export function MarkdownWorkspace() {
           toastError("Failed to create page.");
         });
       } else {
+        if (!page) {
+          setSaveStatus("idle");
+          return;
+        }
         api.put(`/wiki/${currentTeamId}/pages/${page.slug}/`, {
           title: title || "Untitled",
-          content: content
+          content: content,
+          frontmatter,
         }).then(() => {
           setSaveStatus("saved");
           setTimeout(() => setSaveStatus("idle"), 2000);
@@ -98,7 +127,17 @@ export function MarkdownWorkspace() {
       }
     }, 1500);
     return () => clearTimeout(t);
-  }, [title, content, isNew, page, currentTeamId, router]);
+  }, [title, content, frontmatter, isNew, page, currentTeamId, router, loading, toastError]);
+
+  const handleFindCitationSnippet = () => {
+    if (!citationSnippet) return;
+    try {
+      const finder = (window as Window & { find?: (query: string) => boolean }).find;
+      finder?.(citationSnippet);
+    } catch {
+      // no-op: browser support can vary
+    }
+  };
 
   if (!currentTeamId) {
     return <div className="flex-1 flex items-center justify-center text-[var(--text-muted)]">Select a team first</div>;
@@ -170,6 +209,35 @@ export function MarkdownWorkspace() {
       </div>
 
       <div className="px-8 pt-6 pb-4 border-b border-[var(--border-subtle)] shrink-0 max-w-4xl mx-auto w-full">
+        {citationSource === "chat" && (citationSnippet || citationChunk || citationAnchorHint) && (
+          <div className="mb-4 rounded-lg border border-[var(--accent-subtle)] bg-[var(--surface-1)] px-4 py-3 text-sm">
+            <div className="font-semibold text-[var(--text-primary)]">Opened from chat citation</div>
+            <div className="mt-1 text-[var(--text-muted)]">
+              {citationAnchorHint && (
+                <span>
+                  Section hint: <span className="text-[var(--text-primary)]">{citationAnchorHint}</span>.{" "}
+                </span>
+              )}
+              {citationChunk && (
+                <span>
+                  Chunk: <span className="font-mono text-[var(--text-primary)]">{citationChunk}</span>.{" "}
+                </span>
+              )}
+              {citationSnippet && "Use Find snippet to jump close to the referenced text."}
+            </div>
+            {citationSnippet && (
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  onClick={handleFindCitationSnippet}
+                  className="px-3 py-1.5 rounded border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs"
+                >
+                  Find snippet
+                </button>
+                <div className="text-xs text-[var(--text-dim)] truncate">{citationSnippet}</div>
+              </div>
+            )}
+          </div>
+        )}
         <input
           className="w-full bg-transparent border-none outline-none text-3xl font-bold text-[var(--text-primary)] placeholder-[var(--text-muted)] opacity-50 focus:opacity-100 transition-opacity"
           value={title}
@@ -180,6 +248,7 @@ export function MarkdownWorkspace() {
 
       <div className="flex-1 min-h-0 overflow-y-auto w-full flex justify-center">
         <div className="max-w-4xl w-full px-8 py-6">
+          <FrontmatterPanel frontmatter={frontmatter} onChange={setFrontmatter} />
           <GoogleDocsEditor initialText={content} onChange={setContent} teamId={currentTeamId} />
         </div>
       </div>

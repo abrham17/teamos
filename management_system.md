@@ -1,5 +1,23 @@
 # TeamOS — Management & Presence Module
 
+**Status:** Partial  
+**Capability refs:** `ACC-001`, `ACC-002`, `ACC-003`, `ACC-004`, `ACC-005`, `ACC-006`, `INV-001`, `INV-002`, `INV-003` in `docs/capability-matrix.md`
+
+## Current behavior
+
+- Team/member RBAC and invite lifecycle flows are implemented.
+- Owner-safe controls are implemented: role changes, ownership transfer, member removal with email confirmation.
+- Invite acceptance is idempotent and integrated with frontend accept route.
+- Presence module still has partial implementation depth relative to documented ambition.
+- Team deletion and some management hardening items remain planned.
+
+## Target behavior
+
+- Fully closed admin lifecycle including soft-delete team flow and rollback windows.
+- Complete presence feature parity with reliable real-time awareness surfaces.
+- Strong audit visibility in settings UI for key administrative actions.
+- Clear entitlement/billing-aware management controls as monetization matures.
+
 The Management Module is the administrative backbone of TeamOS. It handles team formation, role-based security, and real-time user presence across the entire workspace.
 
 ---

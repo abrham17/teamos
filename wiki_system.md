@@ -1,5 +1,22 @@
 # TeamOS — Interlinked Wiki System
 
+**Status:** Partial  
+**Capability refs:** `WIKI-001`, `WIKI-002`, `WIKI-003`, `WIKI-004` in `docs/capability-matrix.md`
+
+## Current behavior
+
+- Wiki CRUD and autosave workspace are implemented and usable.
+- TipTap editor with wikilink authoring support is integrated.
+- Backlinks/unlinked endpoints exist and are exposed from backend wiki APIs.
+- Some advanced wiki promises (full frontmatter parity, deep editor navigation polish, full CRDT collaboration completeness) are still partial.
+
+## Target behavior
+
+- Feature-complete interlinked authoring loop with robust frontmatter workflows.
+- Deterministic deep-link navigation to exact sections from citations and graph/chat contexts.
+- Production-grade real-time collaboration and presence consistency.
+- Consistent documentation claims aligned with shipped editor and wiki behaviors.
+
 The Interlinked Wiki System is the core of TeamOS. It transforms flat markdown files into a multi-dimensional knowledge graph where every page is a node and every citation is a living connection.
 
 ---

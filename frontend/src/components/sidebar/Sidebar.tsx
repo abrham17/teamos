@@ -11,6 +11,7 @@ import {
   Share2,
   MessageSquare,
   Upload,
+  BarChart3,
   Settings,
   LogOut,
   PlusCircle,
@@ -29,11 +30,18 @@ interface Team {
   plan?: string;
 }
 
+interface ClerkGlobal {
+  Clerk?: {
+    signOut?: (args?: { redirectUrl?: string }) => Promise<void>;
+  };
+}
+
 const NAV_ITEMS = [
   { href: "/wiki",    icon: Book,           label: "Wiki"   },
   { href: "/graph",   icon: Share2,         label: "Graph"  },
   { href: "/chat",    icon: MessageSquare,  label: "Chat"   },
   { href: "/ingest",  icon: Upload,         label: "Ingest" },
+  { href: "/analytics", icon: BarChart3,    label: "Analytics" },
 ];
 
 export function Sidebar() {
@@ -45,6 +53,11 @@ export function Sidebar() {
   const [teams, setTeams]               = useState<Team[]>([]);
   const [collapsed, setCollapsed]       = useState(false);
   const [teamDropOpen, setTeamDropOpen] = useState(false);
+  const [teamLoadError, setTeamLoadError] = useState<string | null>(null);
+  const [createTeamOpen, setCreateTeamOpen] = useState(false);
+  const [newTeamName, setNewTeamName] = useState("");
+  const [createTeamBusy, setCreateTeamBusy] = useState(false);
+  const [createTeamError, setCreateTeamError] = useState<string | null>(null);
 
   const teamDropRef = useRef<HTMLDivElement>(null);
   const currentTeam = teams.find(t => t.id === currentTeamId);
@@ -57,12 +70,17 @@ export function Sidebar() {
   /* ── Fetch teams ── */
   useEffect(() => {
     api
-      .get("/auth/teams/")
-      .then((data: Team[]) => {
+      .get<Team[]>("/auth/teams/")
+      .then((data) => {
         setTeams(data);
+        setTeamLoadError(null);
         if (data.length > 0 && !currentTeamId) setCurrentTeamId(data[0].id);
       })
-      .catch(console.error);
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : "Failed to load teams.";
+        setTeamLoadError(message);
+        console.error(err);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -85,13 +103,47 @@ export function Sidebar() {
 
   const handleLogout = async () => {
     try {
-      const clerk = (window as any).Clerk;
+      const clerk = (window as Window & ClerkGlobal).Clerk;
       if (clerk?.signOut) {
         await clerk.signOut({ redirectUrl: "/login" });
         return;
       }
-    } catch (_) {}
+    } catch {
+      // fall back to login redirect below
+    }
     window.location.href = "/login";
+  };
+
+  const handleCreateTeam = async () => {
+    const trimmed = newTeamName.trim();
+    if (!trimmed) {
+      setCreateTeamError("Team name is required.");
+      return;
+    }
+    if (trimmed.length < 2) {
+      setCreateTeamError("Team name must be at least 2 characters.");
+      return;
+    }
+
+    setCreateTeamBusy(true);
+    setCreateTeamError(null);
+    try {
+      const created = await api.post<Team>("/auth/teams/", { name: trimmed });
+      setTeams((prev) => {
+        const exists = prev.some((t) => t.id === created.id);
+        return exists ? prev : [...prev, created];
+      });
+      setCurrentTeamId(created.id);
+      setTeamLoadError(null);
+      setCreateTeamOpen(false);
+      setNewTeamName("");
+      setTeamDropOpen(false);
+      router.push("/wiki");
+    } catch (err) {
+      setCreateTeamError(err instanceof Error ? err.message : "Failed to create team.");
+    } finally {
+      setCreateTeamBusy(false);
+    }
   };
 
   const isActive = (href: string) =>
@@ -210,6 +262,11 @@ export function Sidebar() {
               <div className="absolute top-full left-0 right-0 mt-1 bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-xl z-50 overflow-hidden"
                 style={{ boxShadow: "var(--shadow-lg)" }}
               >
+                {teamLoadError && (
+                  <div className="px-3 py-2 text-xs text-red-300 border-b border-[var(--border-subtle)]">
+                    {teamLoadError}
+                  </div>
+                )}
                 {teams.map(t => (
                   <button
                     key={t.id}
@@ -225,6 +282,69 @@ export function Sidebar() {
                     )}
                   </button>
                 ))}
+                <div className="border-t border-[var(--border-subtle)] p-2">
+                  {!createTeamOpen ? (
+                    <button
+                      onClick={() => {
+                        setCreateTeamOpen(true);
+                        setCreateTeamError(null);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 text-sm rounded-lg text-[var(--accent)] hover:bg-[var(--surface-2)] transition-colors"
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                      Create Team
+                    </button>
+                  ) : (
+                    <div className="space-y-2">
+                      <input
+                        value={newTeamName}
+                        onChange={(e) => {
+                          setNewTeamName(e.target.value);
+                          if (createTeamError) setCreateTeamError(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void handleCreateTeam();
+                          }
+                          if (e.key === "Escape") {
+                            setCreateTeamOpen(false);
+                            setCreateTeamError(null);
+                            setNewTeamName("");
+                          }
+                        }}
+                        placeholder="New team name"
+                        className="w-full px-3 py-2 rounded-lg text-sm bg-[var(--bg-900)] border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent)]"
+                        autoFocus
+                        disabled={createTeamBusy}
+                      />
+                      {createTeamError && (
+                        <p className="text-xs text-red-300 px-1">{createTeamError}</p>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => void handleCreateTeam()}
+                          disabled={createTeamBusy}
+                          className="flex-1 px-3 py-2 rounded-lg text-sm bg-[var(--accent)] text-[var(--bg-950)] disabled:opacity-60"
+                        >
+                          {createTeamBusy ? "Creating..." : "Create"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (createTeamBusy) return;
+                            setCreateTeamOpen(false);
+                            setCreateTeamError(null);
+                            setNewTeamName("");
+                          }}
+                          disabled={createTeamBusy}
+                          className="px-3 py-2 rounded-lg text-sm border border-[var(--border-subtle)] hover:border-[var(--text-muted)] disabled:opacity-60"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
