@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useWikiStore } from "@/stores/useWikiStore";
 import { api } from "@/lib/api";
 import { ChevronLeft, FolderOpen, Book } from "lucide-react";
-import { GoogleDocsEditor } from "../editor/GoogleDocsEditor";
+import { GoogleDocsEditor, type GoogleDocsEditorHandle } from "../editor/GoogleDocsEditor";
 import { OpenMarkdown } from "@/components/wiki-open/OpenMarkdown";
 import FrontmatterPanel from "@/components/wiki/FrontmatterPanel";
 import { useToast } from "@/components/ui/Toast";
+import { WikiPublishReviewModal, type WikiChangeSetPayload } from "@/components/wiki-v2/WikiPublishReviewModal";
 
 interface WikiPageDetail {
   id: string;
@@ -18,15 +19,11 @@ interface WikiPageDetail {
   frontmatter?: Record<string, string>;
 }
 
-interface WikiCreateResponse {
-  slug: string;
-}
-
 export function MarkdownWorkspace() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { currentTeamId, wikiSidebarOpen, setWikiSidebarOpen } = useWikiStore();
-  const { error: toastError } = useToast();
+  const { error: toastError, success: toastSuccess } = useToast();
   
   const [loading, setLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
@@ -35,6 +32,10 @@ export function MarkdownWorkspace() {
   const [content, setContent] = useState("");
   const [frontmatter, setFrontmatter] = useState<Record<string, string>>({});
   const [isNew, setIsNew] = useState(false);
+  const editorRef = useRef<GoogleDocsEditorHandle>(null);
+  const [autoApproveWiki, setAutoApproveWiki] = useState(true);
+  const [publishBusy, setPublishBusy] = useState(false);
+  const [reviewChangeset, setReviewChangeset] = useState<WikiChangeSetPayload | null>(null);
 
   const slug = searchParams.get("page");
   const action = searchParams.get("action");
@@ -78,52 +79,135 @@ export function MarkdownWorkspace() {
   }, [currentTeamId, slug, action]);
 
   useEffect(() => {
+    if (!currentTeamId) return;
+    try {
+      const v = localStorage.getItem(`teamos-wiki-auto-approve-${currentTeamId}`);
+      if (v === "0" || v === "false") setAutoApproveWiki(false);
+      else if (v === "1" || v === "true") setAutoApproveWiki(true);
+    } catch {
+      /* ignore */
+    }
+  }, [currentTeamId]);
+
+  const persistWikiAutoApprove = (next: boolean) => {
+    setAutoApproveWiki(next);
+    if (!currentTeamId) return;
+    try {
+      localStorage.setItem(`teamos-wiki-auto-approve-${currentTeamId}`, next ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!currentTeamId || !page?.slug) return;
+    setPublishBusy(true);
+    try {
+      const data = await api.post<{
+        mode: string;
+        changeset?: WikiChangeSetPayload | null;
+        job?: unknown;
+      }>(`/wiki/${currentTeamId}/pages/${page.slug}/publish/`, { auto_approve: autoApproveWiki });
+      if (data.mode === "review_required" && data.changeset) {
+        setReviewChangeset(data.changeset);
+      } else {
+        toastSuccess("Publish completed.");
+        const refreshed = await api.get<WikiPageDetail>(
+          `/wiki/${currentTeamId}/pages/${page.slug}/`,
+        );
+        setPage(refreshed);
+        setTitle(refreshed.title);
+        setContent(refreshed.content);
+        setFrontmatter((refreshed.frontmatter || {}) as Record<string, string>);
+      }
+    } catch {
+      toastError("Publish failed.");
+    } finally {
+      setPublishBusy(false);
+    }
+  };
+
+  const reloadPageAfterReview = () => {
+    if (!currentTeamId || !page?.slug) return;
+    void api
+      .get<WikiPageDetail>(`/wiki/${currentTeamId}/pages/${page.slug}/`)
+      .then((refreshed) => {
+        setPage(refreshed);
+        setTitle(refreshed.title);
+        setContent(refreshed.content);
+        setFrontmatter((refreshed.frontmatter || {}) as Record<string, string>);
+      })
+      .catch(() => toastError("Could not reload page."));
+  };
+
+  useEffect(() => {
     if (loading || (!page && !isNew) || !currentTeamId) return;
-    
+
+    const flushedBody = editorRef.current?.getMarkdown() ?? content;
+
     // Don't trigger save if content hasn't changed from initial load
     const pageFrontmatter = JSON.stringify((page?.frontmatter || {}) as Record<string, string>);
     const localFrontmatter = JSON.stringify(frontmatter || {});
-    if (!isNew && page && title === page.title && content === page.content && pageFrontmatter === localFrontmatter) {
+    if (
+      !isNew &&
+      page &&
+      title === page.title &&
+      flushedBody === page.content &&
+      pageFrontmatter === localFrontmatter
+    ) {
       return;
     }
 
     setSaveStatus("saving");
     const t = setTimeout(() => {
+      const bodyMarkdown = editorRef.current?.getMarkdown() ?? content;
       if (isNew) {
-        if (!title.trim() && !content.trim()) {
+        if (!title.trim() && !bodyMarkdown.trim()) {
           setSaveStatus("idle");
           return;
         }
-        api.post<WikiCreateResponse>(`/wiki/${currentTeamId}/pages/`, {
-          title: title || "Untitled",
-          content: content,
-          page_type: "standard",
-          frontmatter,
-        }).then((data: WikiCreateResponse) => {
-          setIsNew(false);
-          setSaveStatus("saved");
-          router.replace(`/wiki?page=${data.slug}`);
-          setTimeout(() => setSaveStatus("idle"), 2000);
-        }).catch(() => {
-          setSaveStatus("idle");
-          toastError("Failed to create page.");
-        });
+        api
+          .post<WikiPageDetail>(`/wiki/${currentTeamId}/pages/`, {
+            title: title || "Untitled",
+            content: bodyMarkdown,
+            page_type: "standard",
+            frontmatter,
+          })
+          .then((data) => {
+            setIsNew(false);
+            setPage(data);
+            setContent(data.content ?? bodyMarkdown);
+            setSaveStatus("saved");
+            router.replace(`/wiki?page=${data.slug}`);
+            setTimeout(() => setSaveStatus("idle"), 2000);
+          })
+          .catch(() => {
+            setSaveStatus("idle");
+            toastError("Failed to create page.");
+          });
       } else {
         if (!page) {
           setSaveStatus("idle");
           return;
         }
-        api.put(`/wiki/${currentTeamId}/pages/${page.slug}/`, {
-          title: title || "Untitled",
-          content: content,
-          frontmatter,
-        }).then(() => {
-          setSaveStatus("saved");
-          setTimeout(() => setSaveStatus("idle"), 2000);
-        }).catch(() => {
-          setSaveStatus("idle");
-          toastError("Failed to save changes.");
-        });
+        api
+          .put(`/wiki/${currentTeamId}/pages/${page.slug}/`, {
+            title: title || "Untitled",
+            content: bodyMarkdown,
+            frontmatter,
+          })
+          .then(() => {
+            setPage((prev) =>
+              prev ? { ...prev, title: title || "Untitled", content: bodyMarkdown, frontmatter } : prev,
+            );
+            setContent(bodyMarkdown);
+            setSaveStatus("saved");
+            setTimeout(() => setSaveStatus("idle"), 2000);
+          })
+          .catch(() => {
+            setSaveStatus("idle");
+            toastError("Failed to save changes.");
+          });
       }
     }, 1500);
     return () => clearTimeout(t);
@@ -191,7 +275,28 @@ export function MarkdownWorkspace() {
           <FolderOpen className="w-4 h-4" />
         </button>
         
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex flex-wrap items-center gap-3">
+          {!isNew && page ? (
+            <>
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-muted)]">
+                <input
+                  type="checkbox"
+                  checked={autoApproveWiki}
+                  onChange={(e) => persistWikiAutoApprove(e.target.checked)}
+                  className="rounded border-[var(--border-subtle)]"
+                />
+                Auto-approve
+              </label>
+              <button
+                type="button"
+                disabled={publishBusy}
+                onClick={() => void handlePublish()}
+                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--accent)] px-3 py-1.5 text-xs font-bold text-[var(--bg-950)] hover:opacity-90 disabled:opacity-50"
+              >
+                {publishBusy ? "Publishing…" : "Publish"}
+              </button>
+            </>
+          ) : null}
           {saveStatus !== "idle" && (
             <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all duration-300 ${
               saveStatus === "saving" 
@@ -249,7 +354,12 @@ export function MarkdownWorkspace() {
       <div className="flex-1 min-h-0 overflow-y-auto w-full flex justify-center">
         <div className="max-w-4xl w-full px-8 py-6">
           <FrontmatterPanel frontmatter={frontmatter} onChange={setFrontmatter} />
-          <GoogleDocsEditor initialText={content} onChange={setContent} teamId={currentTeamId} />
+          <GoogleDocsEditor
+            ref={editorRef}
+            initialText={content}
+            onChange={setContent}
+            teamId={currentTeamId}
+          />
         </div>
       </div>
 
@@ -261,6 +371,16 @@ export function MarkdownWorkspace() {
           onNewMarkdown={() => router.push("/wiki?action=new")}
         />
       )}
+
+      <WikiPublishReviewModal
+        open={Boolean(reviewChangeset)}
+        teamId={currentTeamId || ""}
+        changeset={reviewChangeset}
+        onClose={() => setReviewChangeset(null)}
+        onApplied={() => {
+          reloadPageAfterReview();
+        }}
+      />
     </div>
   );
 }

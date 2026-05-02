@@ -30,12 +30,48 @@ def estimate_tokens(text: str) -> int:
     return max(1, len((text or "").strip()) // 4)
 
 
+def _build_ask_system_prompt(context_str: str) -> str:
+    """Strict RAG when wiki context exists; general assistant when search returned nothing."""
+    ctx = (context_str or "").strip()
+    if not ctx:
+        return (
+            "You are the TeamOS AI. No wiki excerpts were retrieved for this question "
+            "(the team wiki may be empty, not yet indexed, or search is temporarily unavailable). "
+            "Answer helpfully using your general knowledge. Begin by briefly noting that the answer is not sourced "
+            "from this team's wiki. Do not invent wiki page titles or slugs. "
+            "Format answers in GitHub-flavored Markdown: use ### headings, bullet lists, and fenced code blocks "
+            "for formulas or code."
+        )
+    return (
+        "You are the TeamOS AI. Answer based ONLY on the provided Wiki context. "
+        "If the information is not in the context, say you don't know. "
+        "Cite sources by using [Source Title]. "
+        "If you find a contradiction, point it out. "
+        "Format answers in GitHub-flavored Markdown: use ### headings, bullet lists, and fenced code "
+        "blocks for formulas or code. "
+        "When the context includes numeric, time-series, or tabular data (e.g. daily trading rows), "
+        "summarize it in a Markdown pipe table with clear column headers; do not invent numbers. "
+        "When a small chart would clarify trends and the values are in the context, add a diagram using "
+        "a fenced code block with language tag `mermaid` (e.g. xychart-beta or a simple flowchart). "
+        "Always close every ```mermaid block with ``` on its own line. "
+        "Context:\n" + context_str
+    )
+
+
 def _retrieve_wiki_citations(team_id, user_message: str) -> tuple[list, str]:
     """Vector search → citation payloads + flattened context string for prompts."""
     limit = int(getattr(settings, "CHAT_RAG_RESULT_LIMIT", 10) or 10)
     max_chars = int(getattr(settings, "CHAT_RAG_MAX_CONTEXT_CHARS", 5000) or 5000)
 
-    results = vector_store.search_similar_pages(team_id, user_message, limit=limit)
+    try:
+        results = vector_store.search_similar_pages(team_id, user_message, limit=limit)
+    except Exception:
+        logger.exception(
+            "Wiki citation search failed (team_id=%s); continuing with empty context.",
+            team_id,
+        )
+        return [], ""
+
     citations = []
     context_blocks = []
     for res in results:
@@ -253,20 +289,7 @@ class ChatQueryStreamView(APIView):
                 tool_trace_for_done: list = []
 
                 if mode == "ask":
-                    system_prompt = (
-                        "You are the TeamOS AI. Answer based ONLY on the provided Wiki context. "
-                        "If the information is not in the context, say you don't know. "
-                        "Cite sources by using [Source Title]. "
-                        "If you find a contradiction, point it out. "
-                        "Format answers in GitHub-flavored Markdown: use ### headings, bullet lists, and fenced code "
-                        "blocks for formulas or code. "
-                        "When the context includes numeric, time-series, or tabular data (e.g. daily trading rows), "
-                        "summarize it in a Markdown pipe table with clear column headers; do not invent numbers. "
-                        "When a small chart would clarify trends and the values are in the context, add a diagram using "
-                        "a fenced code block with language tag `mermaid` (e.g. xychart-beta or a simple flowchart). "
-                        "Always close every ```mermaid block with ``` on its own line. "
-                        "Context:\n" + context_str
-                    )
+                    system_prompt = _build_ask_system_prompt(context_str)
 
                     history = [{"role": "system", "content": system_prompt}]
                     recent_messages = list(session.messages.order_by("-created_at")[:10])

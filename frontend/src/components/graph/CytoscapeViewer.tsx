@@ -90,16 +90,6 @@ const EDGE_COLORS: Record<string, string> = {
   default:     "#6b7280",
 };
 
-/** Soft outer glow — toned down so small nodes stay readable */
-const NODE_OVERLAY: Record<string, string> = {
-  standard:  "rgba(0, 212, 232, 0.28)",
-  meeting:   "rgba(168, 85, 247, 0.28)",
-  decision:  "rgba(249, 115, 22, 0.28)",
-  incident:  "rgba(239, 68, 68, 0.28)",
-  template:  "rgba(34, 197, 94, 0.28)",
-  default:   "rgba(107, 114, 128, 0.24)",
-};
-
 /* ── Component ────────────────────────────────────────────────────── */
 const HOVER_CLEAR_MS = 160;
 
@@ -219,6 +209,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
           {
             selector: "node",
             style: {
+              shape: "ellipse",
               "background-color": (ele: NodeLike) =>
                 NODE_COLORS[ele.data("type") as string] ?? NODE_COLORS.default,
               "label":           "data(label)",
@@ -251,13 +242,8 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
               "border-color": (ele: NodeLike) =>
                 NODE_COLORS[ele.data("type") as string] ?? NODE_COLORS.default,
               "border-opacity": 0.5,
-              "overlay-color": ((ele: NodeLike) =>
-                NODE_OVERLAY[(ele.data("type") as string) ?? "standard"] ??
-                NODE_OVERLAY.default) as unknown as cytoscape.Css.PropertyValueEdge<cytoscape.Css.Colour>,
-              "overlay-padding": 8,
-              "overlay-opacity": 0.32,
-              "transition-property":
-                "opacity, overlay-opacity, overlay-padding, width, height, border-width, border-opacity",
+              /* No overlay-* — Cytoscape draws overlays as a box around the node bbox (reads as a rectangle). */
+              "transition-property": "opacity, width, height, border-width, border-opacity",
               "transition-duration":       320,
               "transition-timing-function": "ease-in-out-cubic",
             },
@@ -270,11 +256,9 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
               "border-opacity": 1,
               "border-color": (ele: NodeLike) =>
                 NODE_COLORS[ele.data("type") as string] ?? NODE_COLORS.default,
-              "overlay-padding": 14,
-              "overlay-opacity": 0.55,
             },
           },
-          /* ── Node: hovered — border only, no overlay on top of the node */
+          /* ── Node: hovered — ring only; wiki text lives in GraphHoverPreview (HTML), not on canvas */
           {
             selector: "node.hovered",
             style: {
@@ -282,8 +266,6 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
               "border-opacity": 1,
               "border-color": (ele: NodeLike) =>
                 NODE_COLORS[ele.data("type") as string] ?? NODE_COLORS.default,
-              "overlay-opacity": 0,
-              "overlay-padding": 0,
             },
           },
           /* ── Faded (search) ── */
@@ -298,8 +280,6 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
               opacity: 1,
               "border-width": 2,
               "border-opacity": 1,
-              "overlay-padding": 10,
-              "overlay-opacity": 0.4,
             },
           },
 

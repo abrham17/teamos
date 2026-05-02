@@ -215,6 +215,17 @@ def run_ingest_job(self, job_id: str, source_text: str = "", trace_id: str | Non
                     job.save(update_fields=["staging_file", "updated_at"])
             except Exception:
                 logger.exception("ingest staging cleanup failed for job %s", job_id)
+        job.refresh_from_db()
+        # Pipeline may leave the job in review_required (auto_approve=False); do not mark done.
+        if job.status == "review_required":
+            ops_logger.info(
+                "run_ingest_job_review_required",
+                trace_id=trace_id,
+                job_id=job_id,
+                team_id=str(job.team_id),
+                task_id=getattr(self.request, "id", None),
+            )
+            return
         job.status = "done"
         job.ingest_stage = "completed"
         job.ingest_stage_detail = "Ingestion completed successfully"

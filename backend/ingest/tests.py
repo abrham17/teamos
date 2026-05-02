@@ -8,7 +8,7 @@ from rest_framework.test import APITestCase
 from accounts.models import Team, User
 from accounts.models import TeamMember
 from wiki.models import WikiPage, PageChunk
-from ingest.models import IngestJob, AsyncDeadLetter
+from ingest.models import IngestJob, AsyncDeadLetter, WikiChangeSet
 from types import SimpleNamespace
 
 from openai import OpenAIError
@@ -235,6 +235,31 @@ class IngestionPipelineTest(TestCase):
         
         # Verify no wiki page created yet
         self.assertFalse(WikiPage.objects.filter(team=self.team).exists())
+
+    @patch("ingest.tasks.wire_page_graph.delay")
+    @patch("wiki.services.reindex.reindex_wiki_page")
+    @patch("ingest.pipeline._chat_json_completion")
+    @patch("ingest.pipeline.vector_store")
+    def test_run_ingest_job_preserves_review_required_status(
+        self, mock_pipeline_vector_store, mock_chat_json, _mock_reindex, _mock_wire
+    ):
+        """Celery task must not overwrite review_required with done (auto_approve=False)."""
+        mock_pipeline_vector_store.search_similar_pages.return_value = []
+        mock_chat_json.side_effect = [
+            {"type": "standard", "template_name": "Standard Page"},
+            {"contradictions": [], "additions": []},
+        ]
+        job = IngestJob.objects.create(
+            team=self.team,
+            created_by=self.user,
+            source_type="markdown",
+            source_filename="r.md",
+            auto_approve=False,
+        )
+        run_ingest_job.run(str(job.id), "# Report\n\nSome body for governance.", trace_id="test-trace")
+        job.refresh_from_db()
+        self.assertEqual(job.status, "review_required")
+        self.assertTrue(WikiChangeSet.objects.filter(job=job).exists())
 
 
 class IngestApiTests(APITestCase):

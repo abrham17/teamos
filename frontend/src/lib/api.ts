@@ -60,7 +60,7 @@ function unwrapEnvelope(payload: unknown): unknown {
   return payload;
 }
 
-function extractErrorMessage(payload: unknown) {
+export function extractErrorMessage(payload: unknown) {
   if (!payload) return "Request failed.";
   if (typeof payload === "string") return payload;
   if (typeof payload === "object" && payload !== null) {

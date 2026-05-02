@@ -13,13 +13,18 @@ import { TextAlign } from "@tiptap/extension-text-align";
 import { Highlight } from "@tiptap/extension-highlight";
 import { Markdown } from "@tiptap/markdown";
 import Collaboration from "@tiptap/extension-collaboration";
-import { useEffect, useMemo } from "react";
+import { useEffect, useImperativeHandle, useMemo, forwardRef } from "react";
 
 import SlashCommand from "./extensions/SlashCommand";
 import suggestion from "./extensions/suggestions";
 import Wikilink from "./extensions/Wikilink";
 import getWikilinkSuggestion from "./extensions/WikilinkSuggestion";
 import EditorToolbar from "./EditorToolbar";
+
+export type GoogleDocsEditorHandle = {
+  /** Latest markdown from the editor (TipTap storage), even if React state is stale. */
+  getMarkdown: () => string;
+};
 
 interface Props {
   initialText: string;
@@ -35,7 +40,10 @@ type MarkdownStorage = {
   };
 };
 
-export function GoogleDocsEditor({ initialText, onChange, teamId, ydoc, provider }: Props) {
+export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(function GoogleDocsEditor(
+  { initialText, onChange, teamId, ydoc, provider },
+  ref,
+) {
   const extensions = useMemo(() => {
     const base = [
       StarterKit.configure({}),
@@ -54,7 +62,7 @@ export function GoogleDocsEditor({ initialText, onChange, teamId, ydoc, provider
       TableHeader,
       TableCell,
       SlashCommand.configure({ suggestion }),
-      Wikilink.configure({ 
+      Wikilink.configure({
         suggestion: getWikilinkSuggestion(teamId),
       }),
     ];
@@ -63,7 +71,7 @@ export function GoogleDocsEditor({ initialText, onChange, teamId, ydoc, provider
       base.push(
         Collaboration.configure({
           document: ydoc,
-        })
+        }),
       );
     }
 
@@ -81,9 +89,20 @@ export function GoogleDocsEditor({ initialText, onChange, teamId, ydoc, provider
     },
     onUpdate: ({ editor }) => {
       const markdown = ((editor.storage as unknown) as MarkdownStorage).markdown?.getMarkdown?.() || "";
-      onChange(markdown); 
+      onChange(markdown);
     },
   });
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      getMarkdown: () => {
+        if (!editor) return "";
+        return ((editor.storage as unknown) as MarkdownStorage).markdown?.getMarkdown?.() || "";
+      },
+    }),
+    [editor],
+  );
 
   useEffect(() => {
     if (editor && initialText && !ydoc) {
@@ -104,4 +123,4 @@ export function GoogleDocsEditor({ initialText, onChange, teamId, ydoc, provider
       </div>
     </div>
   );
-}
+});

@@ -5,6 +5,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from accounts.models import Team, TeamMember, User
+from ingest.models import IngestJob, WikiChangeSet
 from wiki.models import WikiPage
 
 
@@ -120,6 +121,88 @@ class WikiApiTests(APITestCase):
         url = f"/api/wiki/{self.team.id}/pages/"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    @patch("wiki.views.run_pipeline")
+    def test_wiki_publish_completed_mode(self, mock_run):
+        def fake(job, source_text="", trace_id=None):
+            job.status = "done"
+            job.ingest_stage = "completed"
+            job.raw_data = source_text or ""
+            job.save(update_fields=["status", "ingest_stage", "raw_data", "updated_at"])
+
+        mock_run.side_effect = fake
+        self.client.force_authenticate(user=self.editor)
+        page = WikiPage.objects.create(
+            team=self.team,
+            title="Pub Page",
+            slug="pub-page",
+            content="Body for publish",
+            created_by=self.editor,
+        )
+        url = f"/api/wiki/{self.team.id}/pages/{page.slug}/publish/"
+        res = self.client.post(url, {"auto_approve": True}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data["success"])
+        self.assertEqual(res.data["data"]["mode"], "completed")
+
+    @patch("wiki.views.run_pipeline")
+    def test_wiki_publish_review_required_returns_changeset(self, mock_run):
+        def fake(job, source_text="", trace_id=None):
+            job.status = "review_required"
+            job.raw_data = source_text or ""
+            job.save(update_fields=["status", "raw_data", "updated_at"])
+            WikiChangeSet.objects.create(
+                job=job,
+                proposed_content=source_text or "x",
+                diff_summary={"contradictions": [], "additions": []},
+                status=WikiChangeSet.STATUS_PENDING,
+            )
+
+        mock_run.side_effect = fake
+        self.client.force_authenticate(user=self.editor)
+        page = WikiPage.objects.create(
+            team=self.team,
+            title="Review Page",
+            slug="review-page",
+            content="Needs governance",
+            created_by=self.editor,
+        )
+        url = f"/api/wiki/{self.team.id}/pages/{page.slug}/publish/"
+        res = self.client.post(url, {"auto_approve": False}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["data"]["mode"], "review_required")
+        self.assertIsNotNone(res.data["data"]["changeset"])
+        self.assertEqual(res.data["data"]["changeset"]["status"], "pending")
+
+    @patch("wiki.views.approve_wiki_changeset")
+    def test_wiki_changeset_approve_calls_service(self, mock_approve):
+        self.client.force_authenticate(user=self.editor)
+        page = WikiPage.objects.create(
+            team=self.team,
+            title="Approve Me",
+            slug="approve-me",
+            content="v1",
+            created_by=self.editor,
+        )
+        job = IngestJob.objects.create(
+            team=self.team,
+            created_by=self.editor,
+            source_type="markdown",
+            wiki_page=page,
+            status="review_required",
+        )
+        cs = WikiChangeSet.objects.create(
+            job=job,
+            proposed_content="v2",
+            diff_summary={},
+            status=WikiChangeSet.STATUS_PENDING,
+        )
+        mock_approve.return_value = page
+        url = f"/api/wiki/{self.team.id}/changesets/{cs.id}/approve/"
+        res = self.client.post(url, {}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data["success"])
+        mock_approve.assert_called_once()
 
 
 class ReindexServiceTests(TestCase):

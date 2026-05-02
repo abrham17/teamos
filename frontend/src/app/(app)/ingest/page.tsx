@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { api } from "@/lib/api";
+import { api, extractErrorMessage, getApiAuthHeaders } from "@/lib/api";
 import { 
   Upload, 
   FileText, 
@@ -20,9 +20,11 @@ interface IngestJob {
   source_type: string;
   source_filename?: string;
   source_url?: string;
-  status: "pending" | "running" | "done" | "failed";
+  status: "pending" | "running" | "done" | "failed" | "review_required";
   ingest_stage?: string;
   ingest_stage_detail?: string;
+  error?: string;
+  auto_approve?: boolean;
   created_at: string;
 }
 
@@ -33,7 +35,8 @@ export default function IngestPage() {
   const [jobs, setJobs] = useState<IngestJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  
+  const [autoApproveIngest, setAutoApproveIngest] = useState(true);
+
   // Tab state
   const [activeTab, setActiveTab] = useState<"file" | "url">("file");
   
@@ -54,6 +57,30 @@ export default function IngestPage() {
     return () => clearInterval(interval);
   }, [currentTeamId, fetchJobs]);
 
+  useEffect(() => {
+    if (!currentTeamId) return;
+    try {
+      const v = localStorage.getItem(`teamos-ingest-auto-approve-${currentTeamId}`);
+      if (v === "0" || v === "false") setAutoApproveIngest(false);
+      else if (v === "1" || v === "true") setAutoApproveIngest(true);
+    } catch {
+      /* ignore */
+    }
+  }, [currentTeamId]);
+
+  const persistAutoApprove = useCallback(
+    (next: boolean) => {
+      setAutoApproveIngest(next);
+      if (!currentTeamId) return;
+      try {
+        localStorage.setItem(`teamos-ingest-auto-approve-${currentTeamId}`, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+    },
+    [currentTeamId],
+  );
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !currentTeamId) return;
@@ -61,24 +88,36 @@ export default function IngestPage() {
     setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("auto_approve", autoApproveIngest ? "true" : "false");
 
     try {
-      // Note: api.post currently handles JSON. For multipart we might need a custom call or update api.ts
-      // But let's assume we use standard fetch for simplicity in this specific case
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/ingest/${currentTeamId}/file/`, {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
+      const auth = await getApiAuthHeaders();
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"}/ingest/${currentTeamId}/file/`,
+        {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+          headers: { ...auth },
+        },
+      );
+
+      const raw = await res.text();
+      let payload: unknown = raw;
+      try {
+        payload = raw ? JSON.parse(raw) : null;
+      } catch {
+        payload = raw;
+      }
 
       if (res.ok) {
         success("File uploaded successfully! Processing started.");
         fetchJobs();
       } else {
-        toastError("Failed to upload file.");
+        toastError(extractErrorMessage(payload));
       }
-    } catch {
-      toastError("An error occurred during upload.");
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "An error occurred during upload.");
     } finally {
       setUploading(false);
     }
@@ -90,7 +129,7 @@ export default function IngestPage() {
 
     setLoading(true);
     try {
-      await api.post(`/ingest/${currentTeamId}/url/`, { url });
+      await api.post(`/ingest/${currentTeamId}/url/`, { url, auto_approve: autoApproveIngest });
       success("URL submitted! We're crawling the content.");
       setUrl("");
       fetchJobs();
@@ -106,10 +145,19 @@ export default function IngestPage() {
   return (
     <div className="flex flex-col h-full bg-[var(--bg-900)] overflow-y-auto">
       {/* Header */}
-      <div className="flex items-center h-14 border-b border-[var(--border-subtle)] px-6 shrink-0 bg-[var(--surface-1)]">
-        <h2 className="font-semibold text-[var(--text-primary)] flex items-center gap-2">
-          <Upload className="w-5 h-5" /> Knowledge Ingestion
+      <div className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--surface-1)] px-6">
+        <h2 className="flex items-center gap-2 font-semibold text-[var(--text-primary)]">
+          <Upload className="h-5 w-5" /> Knowledge Ingestion
         </h2>
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-muted)]">
+          <input
+            type="checkbox"
+            checked={autoApproveIngest}
+            onChange={(e) => persistAutoApprove(e.target.checked)}
+            className="rounded border-[var(--border-subtle)]"
+          />
+          Auto-approve ingest (off = review required)
+        </label>
       </div>
 
       <div className="max-w-5xl mx-auto w-full p-8 flex flex-col gap-10">
@@ -265,6 +313,9 @@ export default function IngestPage() {
                         {job.ingest_stage_detail && (
                           <div className="text-[10px] text-[var(--text-muted)]">{job.ingest_stage_detail}</div>
                         )}
+                        {job.error ? (
+                          <div className="mt-1 max-w-xs text-[10px] text-[var(--danger)]">{job.error}</div>
+                        ) : null}
                       </td>
                       <td className="px-6 py-4 text-sm text-[var(--text-muted)]">
                         {new Date(job.created_at).toLocaleDateString()}
@@ -283,24 +334,28 @@ export default function IngestPage() {
 }
 
 function StatusBadge({ status }: { status: IngestJob["status"] }) {
-  const styles = {
+  const styles: Record<IngestJob["status"], string> = {
     pending: "bg-gray-500/10 text-gray-500",
     running: "bg-blue-500/10 text-blue-500 animate-pulse",
-    done:    "bg-[var(--success-bg)] text-[var(--success)]",
-    failed:  "bg-[var(--danger-bg)] text-[var(--danger)]",
+    done: "bg-[var(--success-bg)] text-[var(--success)]",
+    failed: "bg-[var(--danger-bg)] text-[var(--danger)]",
+    review_required: "bg-amber-500/10 text-amber-500",
   };
-  
-  const icons = {
-    pending: <Clock className="w-3 h-3" />,
-    running: <Clock className="w-3 h-3" />,
-    done:    <CheckCircle2 className="w-3 h-3" />,
-    failed:  <AlertCircle className="w-3 h-3" />,
+
+  const icons: Record<IngestJob["status"], ReactNode> = {
+    pending: <Clock className="h-3 w-3" />,
+    running: <Clock className="h-3 w-3" />,
+    done: <CheckCircle2 className="h-3 w-3" />,
+    failed: <AlertCircle className="h-3 w-3" />,
+    review_required: <AlertCircle className="h-3 w-3" />,
   };
 
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${styles[status]}`}>
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${styles[status]}`}
+    >
       {icons[status]}
-      {status}
+      {status === "review_required" ? "review" : status}
     </span>
   );
 }

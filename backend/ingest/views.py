@@ -61,6 +61,10 @@ class UrlIngestView(APIView):
         if not url:
             return fail("URL is required.", status_code=status.HTTP_400_BAD_REQUEST, code="url_required")
 
+        auto_approve = request.data.get("auto_approve", True)
+        if isinstance(auto_approve, str):
+            auto_approve = auto_approve.strip().lower() in ("1", "true", "yes", "on")
+
         source_type = "youtube" if _is_youtube_url(url) else "url"
         job = IngestJob.objects.create(
             team=team,
@@ -70,6 +74,7 @@ class UrlIngestView(APIView):
             status="pending",
             ingest_stage="queued",
             ingest_stage_detail="Queued for processing",
+            auto_approve=bool(auto_approve),
         )
         trace_id = get_request_trace_id(request)
         run_ingest_job.delay(str(job.id), trace_id=trace_id)
@@ -96,6 +101,12 @@ class FileIngestView(APIView):
         file_obj = request.FILES.get("file")
         if not file_obj:
             return fail("File is required.", status_code=status.HTTP_400_BAD_REQUEST, code="file_required")
+
+        auto_approve = request.POST.get("auto_approve", "true")
+        if isinstance(auto_approve, str):
+            auto_approve = auto_approve.strip().lower() in ("1", "true", "yes", "on")
+        else:
+            auto_approve = bool(auto_approve)
 
         filename = file_obj.name or ""
         extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
@@ -124,6 +135,7 @@ class FileIngestView(APIView):
                 status="pending",
                 ingest_stage="queued",
                 ingest_stage_detail="Queued for processing",
+                auto_approve=auto_approve,
             )
             job.staging_file.save(filename, ContentFile(raw_bytes), save=True)
             trace_id = get_request_trace_id(request)
@@ -139,6 +151,7 @@ class FileIngestView(APIView):
                 status="pending",
                 ingest_stage="queued",
                 ingest_stage_detail="Queued for processing",
+                auto_approve=auto_approve,
             )
             job.staging_file.save(filename, ContentFile(raw_bytes), save=True)
             trace_id = get_request_trace_id(request)
@@ -154,6 +167,7 @@ class FileIngestView(APIView):
                 status="pending",
                 ingest_stage="queued",
                 ingest_stage_detail="Queued for processing",
+                auto_approve=auto_approve,
             )
             job.staging_file.save(filename, ContentFile(raw_bytes), save=True)
             trace_id = get_request_trace_id(request)
@@ -177,6 +191,7 @@ class FileIngestView(APIView):
                 status="pending",
                 ingest_stage="queued",
                 ingest_stage_detail="Queued for processing",
+                auto_approve=auto_approve,
             )
             trace_id = get_request_trace_id(request)
             run_ingest_job.delay(str(job.id), source_text, trace_id=trace_id)

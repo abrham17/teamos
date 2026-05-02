@@ -68,6 +68,7 @@ export function ChatInterface() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [voicePhase, setVoicePhase] = useState<VoiceOverlayPhase>("idle");
@@ -88,11 +89,12 @@ export function ChatInterface() {
 
   voiceOpenRef.current = voiceOpen;
 
-  /* Bootstrap: always have a session so input is never permanently disabled */
+  /* Bootstrap: load or create a session; typing stays enabled when only session id is missing */
   useEffect(() => {
     if (!currentTeamId) return;
     let cancelled = false;
     setSessionReady(false);
+    setBootstrapError(null);
     (async () => {
       try {
         const data = await api.get<ChatSession[]>(`/chat/${currentTeamId}/sessions/`);
@@ -102,17 +104,33 @@ export function ChatInterface() {
           setActiveSessionId((prev) =>
             prev && data.some((s) => s.id === prev) ? prev : data[0].id,
           );
+          setBootstrapError(null);
         } else {
-          const created = await api.post<ChatSession>(`/chat/${currentTeamId}/sessions/`, {
-            title: "New Chat",
-          });
+          let created: ChatSession | null = null;
+          let lastErr: unknown = null;
+          for (let attempt = 0; attempt < 2 && !created; attempt++) {
+            try {
+              created = await api.post<ChatSession>(`/chat/${currentTeamId}/sessions/`, {
+                title: "New Chat",
+              });
+            } catch (e) {
+              lastErr = e;
+              console.error(e);
+            }
+          }
           if (cancelled) return;
+          if (!created) {
+            throw lastErr instanceof Error ? lastErr : new Error("Could not create chat session");
+          }
           setSessions([created]);
           setActiveSessionId(created.id);
+          setBootstrapError(null);
         }
       } catch (e) {
         console.error(e);
-        toastError("Could not start chat. Check you are signed in.");
+        const msg = "Could not start chat. Check you are signed in and try again.";
+        setBootstrapError(msg);
+        toastError(msg);
       } finally {
         if (!cancelled) setSessionReady(true);
       }
@@ -122,6 +140,38 @@ export function ChatInterface() {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- toastError identity must not re-run bootstrap
   }, [currentTeamId]);
+
+  const retryBootstrap = useCallback(() => {
+    if (!currentTeamId) return;
+    setBootstrapError(null);
+    setSessionReady(false);
+    void (async () => {
+      try {
+        const data = await api.get<ChatSession[]>(`/chat/${currentTeamId}/sessions/`);
+        setSessions(data);
+        if (data.length > 0) {
+          setActiveSessionId((prev) =>
+            prev && data.some((s) => s.id === prev) ? prev : data[0].id,
+          );
+          setBootstrapError(null);
+        } else {
+          const created = await api.post<ChatSession>(`/chat/${currentTeamId}/sessions/`, {
+            title: "New Chat",
+          });
+          setSessions([created]);
+          setActiveSessionId(created.id);
+          setBootstrapError(null);
+        }
+      } catch (e) {
+        console.error(e);
+        const msg = "Could not start chat. Check you are signed in and try again.";
+        setBootstrapError(msg);
+        toastError(msg);
+      } finally {
+        setSessionReady(true);
+      }
+    })();
+  }, [currentTeamId, toastError]);
 
   useEffect(() => {
     if (!currentTeamId) return;
@@ -430,6 +480,10 @@ export function ChatInterface() {
   const handleSend = async () => {
     const text = input.trim();
     if (!text) return;
+    if (!activeSessionId) {
+      toastError("Chat session is not ready. Tap Retry or wait for the session to load.");
+      return;
+    }
     setInput("");
     await sendUserMessage(text, { speakReply: false });
   };
@@ -528,7 +582,10 @@ export function ChatInterface() {
     );
   }
 
-  const inputDisabled = isStreaming || !activeSessionId || !sessionReady;
+  /** Allow typing while session is preparing or after a failed bootstrap; only send requires a session. */
+  const inputTypingDisabled = isStreaming || !sessionReady;
+  const sendDisabled =
+    isStreaming || !sessionReady || !activeSessionId || !input.trim();
 
   return (
     <div className="flex h-full w-full bg-[var(--bg-900)]">
@@ -586,6 +643,18 @@ export function ChatInterface() {
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex shrink-0 items-center justify-end gap-2 border-b border-[var(--border-subtle)] px-6 py-3">
+          {bootstrapError ? (
+            <div className="mr-auto flex max-w-md flex-col gap-1 text-left text-xs text-[var(--text-muted)]">
+              <span className="text-[var(--text-secondary)]">{bootstrapError}</span>
+              <button
+                type="button"
+                onClick={() => retryBootstrap()}
+                className="self-start rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-1)] px-3 py-1.5 text-[var(--text-primary)] hover:bg-[var(--bg-800)]"
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={openVoiceOverlayAndListen}
@@ -693,7 +762,7 @@ export function ChatInterface() {
             <button
               type="button"
               onClick={openVoiceOverlayAndListen}
-              disabled={inputDisabled}
+              disabled={sendDisabled}
               title="Voice chat"
               aria-label="Open voice chat"
               className="flex shrink-0 items-center justify-center rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] px-4 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-800)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
@@ -711,7 +780,11 @@ export function ChatInterface() {
             <input
               className="w-full rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] py-4 pl-5 pr-14 text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--border-subtle)] focus:ring-1 focus:ring-[var(--border-subtle)] disabled:cursor-not-allowed disabled:opacity-50"
               placeholder={
-                sessionReady ? "Ask TeamOS anything…" : "Preparing your chat…"
+                !sessionReady
+                  ? "Preparing your chat…"
+                  : !activeSessionId
+                    ? "Type a message — connect a session with Retry above, or wait…"
+                    : "Ask TeamOS anything…"
               }
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -721,13 +794,13 @@ export function ChatInterface() {
                   void handleSend();
                 }
               }}
-              disabled={inputDisabled}
+              disabled={inputTypingDisabled}
               aria-busy={!sessionReady}
             />
             <button
               type="button"
               onClick={() => void handleSend()}
-              disabled={inputDisabled || !input.trim()}
+              disabled={sendDisabled}
               className="absolute right-3 top-3 rounded-xl bg-[var(--accent)] p-2 text-[var(--bg-950)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
             >
               <Send className="h-5 w-5" />

@@ -11,9 +11,15 @@ from teamos_project.entitlements import check_quota
 from teamos_project.trace import get_request_trace_id
 from product_analytics.services import record_first_once
 from .models import WikiPage, PageTemplate
+from ingest.models import IngestJob, WikiChangeSet
+from ingest.serializers import IngestJobSerializer
+from ingest.pipeline import approve_wiki_changeset, reject_wiki_changeset, run_pipeline
 from .serializers import (
-    WikiPageListSerializer, WikiPageDetailSerializer,
-    WikiPageCreateSerializer, PageTemplateSerializer,
+    WikiPageListSerializer,
+    WikiPageDetailSerializer,
+    WikiPageCreateSerializer,
+    PageTemplateSerializer,
+    WikiChangeSetSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -230,3 +236,124 @@ class PageTemplateListView(APIView):
             Q(is_builtin=True) | Q(team_id=team_id)
         )
         return ok(PageTemplateSerializer(templates, many=True).data)
+
+
+class WikiPagePublishView(APIView):
+    """
+    POST /api/wiki/:team_id/pages/:slug/publish/
+    Runs ingest-style governance on the current page body (sync). ``auto_approve`` in JSON body
+    controls whether a WikiChangeSet is created for manual review.
+    """
+
+    permission_classes = [IsAuthenticated, CanEditWiki]
+
+    def post(self, request, team_id, slug):
+        try:
+            page = WikiPage.objects.get(team_id=team_id, slug=slug, is_deleted=False)
+        except WikiPage.DoesNotExist:
+            return fail("Wiki page not found.", status_code=404, code="wiki_page_not_found")
+
+        raw_auto = request.data.get("auto_approve", True)
+        if isinstance(raw_auto, str):
+            auto_approve = raw_auto.strip().lower() in ("1", "true", "yes", "on")
+        else:
+            auto_approve = bool(raw_auto)
+
+        job = IngestJob.objects.create(
+            team=page.team,
+            created_by=request.user,
+            source_type="markdown",
+            source_filename=f"{page.slug}.md",
+            wiki_page=page,
+            auto_approve=auto_approve,
+            status="pending",
+            ingest_stage="queued",
+            ingest_stage_detail="Wiki publish",
+        )
+        trace_id = get_request_trace_id(request)
+        try:
+            run_pipeline(job, source_text=page.content or "", trace_id=trace_id)
+        except Exception as e:
+            logger.exception("Wiki publish pipeline failed")
+            job.refresh_from_db()
+            job.status = "failed"
+            job.error = str(e)
+            job.ingest_stage = "failed"
+            job.ingest_stage_detail = str(e)[:200]
+            job.save(update_fields=["status", "error", "ingest_stage", "ingest_stage_detail", "updated_at"])
+            return fail("Publish failed.", status_code=500, code="publish_failed", details={"error": str(e)})
+
+        job.refresh_from_db()
+        if job.status == "review_required":
+            cs = getattr(job, "changeset", None)
+            payload = {
+                "mode": "review_required",
+                "job": IngestJobSerializer(job).data,
+                "changeset": WikiChangeSetSerializer(cs).data if cs else None,
+            }
+            return ok(payload)
+        return ok({"mode": "completed", "job": IngestJobSerializer(job).data})
+
+
+class WikiPendingChangeSetListView(APIView):
+    """GET /api/wiki/:team_id/changesets/pending/"""
+
+    permission_classes = [IsAuthenticated, CanEditWiki]
+
+    def get(self, request, team_id):
+        qs = (
+            WikiChangeSet.objects.filter(
+                job__team_id=team_id,
+                status=WikiChangeSet.STATUS_PENDING,
+                job__status="review_required",
+            )
+            .select_related("job", "job__wiki_page")
+            .order_by("-created_at")[:50]
+        )
+        return ok(WikiChangeSetSerializer(qs, many=True).data)
+
+
+class WikiChangeSetApproveView(APIView):
+    """POST /api/wiki/:team_id/changesets/:changeset_id/approve/"""
+
+    permission_classes = [IsAuthenticated, CanEditWiki]
+
+    def post(self, request, team_id, changeset_id):
+        try:
+            cs = WikiChangeSet.objects.select_related("job", "job__wiki_page").get(
+                id=changeset_id, job__team_id=team_id, status=WikiChangeSet.STATUS_PENDING
+            )
+        except WikiChangeSet.DoesNotExist:
+            return fail("Change set not found.", status_code=404, code="changeset_not_found")
+
+        trace_id = get_request_trace_id(request)
+        try:
+            page = approve_wiki_changeset(cs, trace_id=trace_id)
+        except ValueError as e:
+            return fail(str(e), status_code=400, code="changeset_invalid_state")
+        except Exception:
+            logger.exception("Approve changeset failed")
+            return fail("Could not apply change set.", status_code=500, code="changeset_apply_failed")
+
+        return ok(WikiPageDetailSerializer(page).data)
+
+
+class WikiChangeSetRejectView(APIView):
+    """POST /api/wiki/:team_id/changesets/:changeset_id/reject/"""
+
+    permission_classes = [IsAuthenticated, CanEditWiki]
+
+    def post(self, request, team_id, changeset_id):
+        try:
+            cs = WikiChangeSet.objects.select_related("job").get(
+                id=changeset_id, job__team_id=team_id, status=WikiChangeSet.STATUS_PENDING
+            )
+        except WikiChangeSet.DoesNotExist:
+            return fail("Change set not found.", status_code=404, code="changeset_not_found")
+
+        try:
+            reject_wiki_changeset(cs)
+        except ValueError as e:
+            return fail(str(e), status_code=400, code="changeset_invalid_state")
+
+        return ok({"status": "rejected", "job_id": str(cs.job_id)})

@@ -16,6 +16,54 @@ from ingest.extractors import youtube_text as youtube_extract
 logger = logging.getLogger(__name__)
 
 
+def _chat_json_completion(
+    messages: list,
+    *,
+    default_on_error: dict | None = None,
+) -> dict | None:
+    """
+    Chat completion expecting JSON. Tries json_object mode first (OpenAI / some Groq models),
+    then a plain completion with an instruction to return only JSON — helps Groq when json_object fails.
+    """
+    if not vector_store.openai:
+        return default_on_error
+
+    model = chat_completion_model()
+    raw: str | None = None
+    try:
+        resp = vector_store.openai.chat.completions.create(
+            model=model,
+            messages=messages,
+            response_format={"type": "json_object"},
+        )
+        raw = (resp.choices[0].message.content or "").strip()
+        if raw:
+            return json.loads(raw)
+    except Exception as first:
+        logger.debug("ingest LLM json_object call failed: %s", first, exc_info=True)
+
+    try:
+        with_format = list(messages)
+        if with_format and with_format[-1].get("role") == "user":
+            with_format[-1] = {
+                **with_format[-1],
+                "content": (with_format[-1].get("content") or "")
+                + "\n\nRespond with a single JSON object only, no markdown fences.",
+            }
+        resp = vector_store.openai.chat.completions.create(
+            model=model,
+            messages=with_format,
+        )
+        raw = (resp.choices[0].message.content or "").strip()
+        if not raw:
+            return default_on_error
+        raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        return json.loads(raw)
+    except Exception as second:
+        logger.warning("ingest LLM JSON parse failed after fallback: %s", second)
+        return default_on_error
+
+
 def _set_job_stage(job: IngestJob, stage: str, detail: str = "") -> None:
     job.ingest_stage = stage
     job.ingest_stage_detail = detail
@@ -34,28 +82,26 @@ def _derive_chunk_config(team_plan: str) -> tuple[int, int]:
 
 def _detect_template_and_type(text: str) -> tuple[str, str]:
     """Uses AI to categorize the document type and suggested template."""
-    if not vector_store.openai:
-        return "standard", "Standard Page"
-
     prompt = (
         "Analyze this text and categorize its document type. "
         "Types: 'decision_record', 'project_brief', 'meeting_notes', 'sop', 'standard'. "
         'Return JSON: {"type": "...", "template_name": "..."}'
     )
-    try:
-        resp = vector_store.openai.chat.completions.create(
-            model=chat_completion_model(),
-            messages=[{"role": "system", "content": prompt}, {"role": "user", "content": text[:2000]}],
-            response_format={"type": "json_object"},
-        )
-        data = json.loads(resp.choices[0].message.content)
-        return data.get("type", "standard"), data.get("template_name", "Standard Page")
-    except Exception:
+    data = _chat_json_completion(
+        [{"role": "system", "content": prompt}, {"role": "user", "content": text[:2000]}],
+        default_on_error={"type": "standard", "template_name": "Standard Page"},
+    )
+    if not data:
         return "standard", "Standard Page"
+    return data.get("type", "standard"), data.get("template_name", "Standard Page")
 
 
 def _analyze_governance(job, new_text: str):
-    results = vector_store.search_similar_pages(job.team.id, new_text[:1000], limit=5)
+    try:
+        results = vector_store.search_similar_pages(job.team.id, new_text[:1000], limit=5)
+    except Exception:
+        logger.exception("Governance vector search failed for job %s", job.id)
+        results = []
     related_content = [
         f"PAGE: {res.payload.get('page_title')}\nCONTENT: {res.payload.get('content')[:500]}" for res in results
     ]
@@ -67,23 +113,28 @@ def _analyze_governance(job, new_text: str):
         "related_pages": [res.payload.get("page_title") for res in results],
     }
 
-    if vector_store.openai:
-        prompt = (
-            f"Compare this new information with existing wiki knowledge.\n\nNEW INFO:\n{new_text[:2000]}\n\n"
-            f"EXISTING KNOWLEDGE:\n{context}\n\nIdentify contradictions. Respond in JSON: "
-            '{"contradictions": ["..."], "additions": ["..."]}'
-        )
-        try:
-            resp = vector_store.openai.chat.completions.create(
-                model=chat_completion_model(),
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
-            )
-            diff_summary = json.loads(resp.choices[0].message.content)
-        except Exception:
-            pass
+    prompt = (
+        f"Compare this new information with existing wiki knowledge.\n\nNEW INFO:\n{new_text[:2000]}\n\n"
+        f"EXISTING KNOWLEDGE:\n{context}\n\nIdentify contradictions. Respond in JSON: "
+        '{"contradictions": ["..."], "additions": ["..."]}'
+    )
+    merged = _chat_json_completion(
+        [{"role": "user", "content": prompt}],
+        default_on_error=None,
+    )
+    if isinstance(merged, dict):
+        diff_summary = {
+            "contradictions": merged.get("contradictions") or [],
+            "additions": merged.get("additions") or [],
+            "related_pages": diff_summary["related_pages"],
+        }
 
-    WikiChangeSet.objects.create(job=job, proposed_content=new_text, diff_summary=diff_summary)
+    WikiChangeSet.objects.create(
+        job=job,
+        proposed_content=new_text,
+        diff_summary=diff_summary,
+        status=WikiChangeSet.STATUS_PENDING,
+    )
 
 
 def _slug_for_ingested_page(team, title: str) -> str:
@@ -136,6 +187,124 @@ def _persist_chunks(page: WikiPage, chunks: list[str]) -> int:
     return len(rows)
 
 
+def _prune_pipeline_semantic_edges(page: WikiPage) -> None:
+    """Remove vector-inferred edges so re-ingest can rebuild without stale contradictions."""
+    try:
+        from graph_engine.models import GraphEdge
+
+        GraphEdge.objects.filter(
+            from_page=page,
+            created_by="pipeline",
+            edge_type__in=["semantic", "ai_inferred"],
+        ).delete()
+    except Exception:
+        logger.exception("Failed pruning pipeline edges for page %s", page.id)
+
+
+def _materialize_and_index(
+    job: IngestJob,
+    parsed_text: str,
+    page_type: str,
+    template_name: str,
+    trace_id: str | None,
+    *,
+    prune_semantic: bool = False,
+) -> tuple[WikiPage, bool, int]:
+    _set_job_stage(job, "materializing", "Creating/updating wiki page")
+    from wiki.services.reindex import reindex_wiki_page
+
+    title = _derive_title(job, parsed_text)
+    created = False
+
+    if job.wiki_page_id:
+        page = job.wiki_page
+        if prune_semantic:
+            _prune_pipeline_semantic_edges(page)
+        page.content = parsed_text
+        page.raw_content = parsed_text
+        page.page_type = page_type
+        fm = dict(page.frontmatter or {})
+        fm["template"] = template_name
+        page.frontmatter = fm
+        page.save(update_fields=["content", "raw_content", "page_type", "frontmatter", "updated_at"])
+    else:
+        page, created = WikiPage.objects.get_or_create(
+            team=job.team,
+            title=title,
+            defaults={
+                "slug": _slug_for_ingested_page(job.team, title),
+                "content": parsed_text,
+                "raw_content": parsed_text,
+                "created_by": job.created_by,
+                "page_type": page_type,
+                "frontmatter": {"template": template_name},
+            },
+        )
+        if not created:
+            if prune_semantic:
+                _prune_pipeline_semantic_edges(page)
+            page.content = parsed_text
+            page.raw_content = parsed_text
+            page.save(update_fields=["content", "raw_content", "updated_at"])
+
+    _set_job_stage(job, "vectorizing", "Chunking and embedding content")
+    chunk_count = reindex_wiki_page(page, body_text=parsed_text, trace_id=trace_id, queue_graph=True)
+    _set_job_stage(job, "graph_sync", "Wiring graph relationships")
+
+    job.chunk_count = chunk_count
+    job.status = "done"
+    job.ingest_stage = "completed"
+    job.ingest_stage_detail = "Ingestion completed successfully"
+    job.wiki_page = page
+    job.save(
+        update_fields=[
+            "chunk_count",
+            "status",
+            "ingest_stage",
+            "ingest_stage_detail",
+            "wiki_page",
+            "updated_at",
+        ]
+    )
+
+    KnowledgeActivity.objects.create(
+        team=job.team,
+        user=job.created_by,
+        event_type="ingest_create" if created else "ingest_merge",
+        page=page,
+        summary=f"AI {'created' if created else 'updated'} {template_name}: {page.title}",
+        metadata={"job_id": str(job.id), "page_type": page_type},
+    )
+    return page, created, chunk_count
+
+
+def approve_wiki_changeset(cs: WikiChangeSet, trace_id: str | None = None) -> WikiPage:
+    """Apply a pending change set (post-review) and mark it approved."""
+    if cs.status != WikiChangeSet.STATUS_PENDING:
+        raise ValueError("Change set is not pending review.")
+    job = cs.job
+    text = cs.proposed_content
+    page_type, template_name = _detect_template_and_type(text)
+    page, _created, _chunk = _materialize_and_index(
+        job, text, page_type, template_name, trace_id, prune_semantic=True
+    )
+    cs.status = WikiChangeSet.STATUS_APPROVED
+    cs.save(update_fields=["status", "updated_at"])
+    return page
+
+
+def reject_wiki_changeset(cs: WikiChangeSet) -> None:
+    if cs.status != WikiChangeSet.STATUS_PENDING:
+        raise ValueError("Change set is not pending review.")
+    job = cs.job
+    cs.status = WikiChangeSet.STATUS_REJECTED
+    cs.save(update_fields=["status", "updated_at"])
+    job.status = "failed"
+    job.ingest_stage = "failed"
+    job.ingest_stage_detail = "Change set rejected by reviewer"
+    job.save(update_fields=["status", "ingest_stage", "ingest_stage_detail", "updated_at"])
+
+
 def _clear_staging_file(job: IngestJob) -> None:
     try:
         if getattr(job, "staging_file", None) and job.staging_file:
@@ -168,52 +337,5 @@ def run_pipeline(job: IngestJob, source_text: str = "", trace_id: str | None = N
         job.save(update_fields=["status"])
         return
 
-    _set_job_stage(job, "materializing", "Creating/updating wiki page")
-    title = _derive_title(job, parsed_text)
-    page, created = WikiPage.objects.get_or_create(
-        team=job.team,
-        title=title,
-        defaults={
-            "slug": _slug_for_ingested_page(job.team, title),
-            "content": parsed_text,
-            "raw_content": parsed_text,
-            "created_by": job.created_by,
-            "page_type": page_type,
-            "frontmatter": {"template": template_name},
-        },
-    )
-    if not created:
-        page.content = parsed_text
-        page.raw_content = parsed_text
-        page.save(update_fields=["content", "raw_content", "updated_at"])
-
-    _set_job_stage(job, "vectorizing", "Chunking and embedding content")
-    from wiki.services.reindex import reindex_wiki_page
-
-    chunk_count = reindex_wiki_page(page, body_text=parsed_text, trace_id=trace_id, queue_graph=True)
-    _set_job_stage(job, "graph_sync", "Wiring graph relationships")
-
-    job.chunk_count = chunk_count
-    job.status = "done"
-    job.ingest_stage = "completed"
-    job.ingest_stage_detail = "Ingestion completed successfully"
-    job.wiki_page = page
-    job.save(
-        update_fields=[
-            "chunk_count",
-            "status",
-            "ingest_stage",
-            "ingest_stage_detail",
-            "wiki_page",
-            "updated_at",
-        ]
-    )
-
-    KnowledgeActivity.objects.create(
-        team=job.team,
-        user=job.created_by,
-        event_type="ingest_create" if created else "ingest_merge",
-        page=page,
-        summary=f"AI {'created' if created else 'updated'} {template_name}: {page.title}",
-        metadata={"job_id": str(job.id), "page_type": page_type},
-    )
+    prune = bool(job.wiki_page_id and job.auto_approve)
+    _materialize_and_index(job, parsed_text, page_type, template_name, trace_id, prune_semantic=prune)

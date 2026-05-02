@@ -16,6 +16,7 @@ class IngestJobSerializer(serializers.ModelSerializer):
             "chunk_count",
             "error",
             "wiki_page",
+            "auto_approve",
             "created_at",
             "updated_at",
         ]
