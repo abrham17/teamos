@@ -78,3 +78,28 @@ class CanIngest(BasePermission):
 
         request.team_membership = membership
         return has_minimum_role(membership, "editor")
+
+
+class CanEditPlans(BasePermission):
+    """
+    Read allowed for members, write allowed for editor/owner.
+    """
+
+    message = "Editor or owner role required."
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        team_id = _resolve_team_id(view, request)
+        if not team_id:
+            return True
+
+        membership = getattr(request, "team_membership", None) or get_team_membership(request.user, team_id)
+        if not membership:
+            return False
+
+        request.team_membership = membership
+        if request.method in SAFE_METHODS:
+            return True
+        return has_minimum_role(membership, "editor")

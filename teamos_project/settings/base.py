@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "billing",
     "product_analytics",
     "presence",
+    "planning",
 ]
 
 MIDDLEWARE = [

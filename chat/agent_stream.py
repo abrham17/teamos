@@ -6,10 +6,16 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 from chat.models import ChatSession
-from chat.tools import ToolContext, execute_tool, openai_tool_schemas
+from chat.tools import (
+    ToolContext,
+    execute_plan_tool,
+    execute_tool,
+    openai_plan_tool_schemas,
+    openai_tool_schemas,
+)
 from ingest.vectors import vector_store
 from teamos_project.llm_config import chat_completion_model, get_llm_backend
 
@@ -27,12 +33,19 @@ AGENT_SYSTEM_PREFIX = (
     "Do not invent slugs: obtain them from wiki_search_pages or from the retrieval context.\n\n"
 )
 
+PLAN_AGENT_SYSTEM_PREFIX = (
+    "You are the TeamOS Plan Agent. You manage projects, tasks, and milestones for the team. "
+    "Use tools to create or update plan entities precisely. Keep edits minimal and correct. "
+    "When relevant, include timeline and ownership updates. "
+    "After tool execution, respond with a short Markdown summary of what changed.\n\n"
+)
 
-def _build_messages(session: ChatSession, context_str: str) -> list[dict[str, Any]]:
-    system = AGENT_SYSTEM_PREFIX + (
-        "Retrieved wiki excerpts (may be partial):\n" + context_str
+
+def _build_messages(session: ChatSession, context_str: str, system_prefix: str) -> list[dict[str, Any]]:
+    system = system_prefix + (
+        "Retrieved team knowledge excerpts (may be partial):\n" + context_str
         if context_str.strip()
-        else "No retrieval snippets were returned for this query; use wiki_search_pages if you need context."
+        else "No retrieval snippets were returned for this query."
     )
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
     recent = list(session.messages.order_by("-created_at")[:12])
@@ -49,6 +62,44 @@ def iter_agent_sse_events(
     ctx: ToolContext,
     state: dict[str, Any],
 ) -> Iterator[str]:
+    yield from _iter_tool_agent_sse_events(
+        session=session,
+        context_str=context_str,
+        ctx=ctx,
+        state=state,
+        system_prefix=AGENT_SYSTEM_PREFIX,
+        tools=openai_tool_schemas(),
+        execute=execute_tool,
+    )
+
+
+def iter_plan_agent_sse_events(
+    session: ChatSession,
+    context_str: str,
+    ctx: ToolContext,
+    state: dict[str, Any],
+) -> Iterator[str]:
+    yield from _iter_tool_agent_sse_events(
+        session=session,
+        context_str=context_str,
+        ctx=ctx,
+        state=state,
+        system_prefix=PLAN_AGENT_SYSTEM_PREFIX,
+        tools=openai_plan_tool_schemas(),
+        execute=execute_plan_tool,
+    )
+
+
+def _iter_tool_agent_sse_events(
+    *,
+    session: ChatSession,
+    context_str: str,
+    ctx: ToolContext,
+    state: dict[str, Any],
+    system_prefix: str,
+    tools: list[dict[str, Any]],
+    execute: Callable[[str, str, ToolContext], dict[str, Any]],
+) -> Iterator[str]:
     state["ok"] = False
     llm = vector_store.openai
     if not llm:
@@ -56,12 +107,11 @@ def iter_agent_sse_events(
         return
 
     if get_llm_backend() == "groq":
-        yield f"event: error\ndata: {json.dumps({'detail': 'Wiki agent mode is only available with LLM_BACKEND=openai (tool calling). Use Ask mode or switch backend.'})}\n\n"
+        yield f"event: error\ndata: {json.dumps({'detail': 'Tool agent modes are only available with LLM_BACKEND=openai (tool calling). Use Ask mode or switch backend.'})}\n\n"
         return
 
-    messages = _build_messages(session, context_str)
+    messages = _build_messages(session, context_str, system_prefix)
     model_name = chat_completion_model()
-    tools = openai_tool_schemas()
     tool_trace: list[dict[str, Any]] = []
     tools_executed = 0
 
@@ -103,7 +153,7 @@ def iter_agent_sse_events(
                 name = tc.function.name
                 arguments = tc.function.arguments or "{}"
                 yield f"event: tool_call\ndata: {json.dumps({'name': name, 'arguments': arguments})}\n\n"
-                result = execute_tool(name, arguments, ctx)
+                result = execute(name, arguments, ctx)
                 tool_trace.append({"name": name, "arguments": arguments, "result": result})
                 yield f"event: tool_result\ndata: {json.dumps({'name': name, 'ok': result.get('ok'), 'result': result})}\n\n"
                 messages.append(

@@ -155,5 +155,43 @@ class VectorStore:
             with_payload=True,
         )
 
+    def upsert_plan_chunks(self, team_id: str, project_id: str, chunks_data: list):
+        """
+        chunks_data: list of dicts with
+        {id, content, index, project_name, source_kind, source_ref_id, title}
+        """
+        collection_name = self.ensure_collection(str(team_id))
+        points = []
+        for chunk in chunks_data:
+            vector = self._get_embedding(chunk["content"])
+            points.append(
+                rest.PointStruct(
+                    id=chunk["id"],
+                    vector=vector,
+                    payload={
+                        "source_type": "plan",
+                        "project_id": str(project_id),
+                        "project_name": chunk["project_name"],
+                        "source_kind": chunk["source_kind"],
+                        "source_ref_id": chunk.get("source_ref_id"),
+                        "title": chunk["title"],
+                        "chunk_index": chunk["index"],
+                        "chunk_id": chunk["id"],
+                        "content": chunk["content"],
+                        "team_id": str(team_id),
+                    },
+                )
+            )
+        self.qdrant.upsert(collection_name=collection_name, points=points)
+
+    def delete_points(self, team_id: str, point_ids: list[str]):
+        if not point_ids:
+            return
+        collection_name = self.ensure_collection(str(team_id))
+        self.qdrant.delete(
+            collection_name=collection_name,
+            points_selector=rest.PointIdsList(points=point_ids),
+        )
+
 
 vector_store = VectorStore()

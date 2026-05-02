@@ -31,19 +31,19 @@ def estimate_tokens(text: str) -> int:
 
 
 def _build_ask_system_prompt(context_str: str) -> str:
-    """Strict RAG when wiki context exists; general assistant when search returned nothing."""
+    """Strict RAG when team knowledge context exists; general assistant otherwise."""
     ctx = (context_str or "").strip()
     if not ctx:
         return (
-            "You are the TeamOS AI. No wiki excerpts were retrieved for this question "
-            "(the team wiki may be empty, not yet indexed, or search is temporarily unavailable). "
+            "You are the TeamOS AI. No team knowledge excerpts were retrieved for this question "
+            "(wiki/planning knowledge may be empty, not yet indexed, or search is temporarily unavailable). "
             "Answer helpfully using your general knowledge. Begin by briefly noting that the answer is not sourced "
-            "from this team's wiki. Do not invent wiki page titles or slugs. "
+            "from this team's indexed knowledge. Do not invent source titles or slugs. "
             "Format answers in GitHub-flavored Markdown: use ### headings, bullet lists, and fenced code blocks "
             "for formulas or code."
         )
     return (
-        "You are the TeamOS AI. Answer based ONLY on the provided Wiki context. "
+        "You are the TeamOS AI. Answer based ONLY on the provided team knowledge context. "
         "If the information is not in the context, say you don't know. "
         "Cite sources by using [Source Title]. "
         "If you find a contradiction, point it out. "
@@ -59,7 +59,7 @@ def _build_ask_system_prompt(context_str: str) -> str:
 
 
 def _retrieve_wiki_citations(team_id, user_message: str) -> tuple[list, str]:
-    """Vector search → citation payloads + flattened context string for prompts."""
+    """Vector search → wiki + plan citation payloads + flattened context."""
     limit = int(getattr(settings, "CHAT_RAG_RESULT_LIMIT", 10) or 10)
     max_chars = int(getattr(settings, "CHAT_RAG_MAX_CONTEXT_CHARS", 5000) or 5000)
 
@@ -75,21 +75,50 @@ def _retrieve_wiki_citations(team_id, user_message: str) -> tuple[list, str]:
     citations = []
     context_blocks = []
     for res in results:
-        page_id = res.payload.get("page_id")
-        title = res.payload.get("page_title", "Untitled")
-        snippet = res.payload.get("content", "")
-        chunk_id = res.payload.get("chunk_id")
-        anchor_hint = res.payload.get("heading") or res.payload.get("section") or ""
+        payload = res.payload or {}
+        source_type = payload.get("source_type") or "wiki"
+        snippet = payload.get("content", "")
+        chunk_id = payload.get("chunk_id")
 
+        if source_type == "plan":
+            project_id = payload.get("project_id")
+            project_name = payload.get("project_name", "Untitled Project")
+            source_kind = payload.get("source_kind", "project")
+            source_ref_id = payload.get("source_ref_id")
+            title = payload.get("title") or f"{source_kind.title()} — {project_name}"
+
+            citations.append(
+                {
+                    "source": "plan",
+                    "project_id": project_id,
+                    "project_name": project_name,
+                    "source_kind": source_kind,
+                    "source_ref_id": source_ref_id,
+                    "title": title,
+                    "snippet": snippet[:200],
+                    "score": float(res.score),
+                    "chunk_id": chunk_id,
+                }
+            )
+            context_blocks.append(
+                f"SOURCE: {title} (Plan: {project_name})\nCONTENT: {snippet}"
+            )
+            continue
+
+        page_id = payload.get("page_id")
+        title = payload.get("page_title", "Untitled")
+        anchor_hint = payload.get("heading") or payload.get("section") or ""
         slug = "unknown"
         try:
-            p = WikiPage.objects.only("slug").get(id=page_id)
-            slug = p.slug
+            if page_id:
+                p = WikiPage.objects.only("slug").get(id=page_id)
+                slug = p.slug
         except Exception:
             pass
 
         citations.append(
             {
+                "source": "wiki",
                 "page_id": page_id,
                 "page_title": title,
                 "page_slug": slug,
@@ -140,8 +169,10 @@ class ChatCapabilitiesView(APIView):
         return ok(
             {
                 "can_edit_wiki": has_minimum_role(m, "editor"),
+                "can_edit_plans": has_minimum_role(m, "editor"),
                 "can_ingest": has_minimum_role(m, "editor"),
                 "agent_mode_available": agent_ok,
+                "plan_mode_available": agent_ok,
             }
         )
 
@@ -228,7 +259,7 @@ class ChatQueryStreamView(APIView):
     """
     POST /api/chat/:team_id/sessions/:session_id/query/
     Ask mode: RAG + stream (default). Agent mode: tool loop + stream (editors, OpenAI backend only).
-    Body: { "message": "...", "mode": "ask" | "agent" }
+    Body: { "message": "...", "mode": "ask" | "agent" | "plan" }
     """
     permission_classes = [IsAuthenticated, IsTeamMember]
 
@@ -243,15 +274,16 @@ class ChatQueryStreamView(APIView):
             return fail("Message required.", status_code=400, code="message_required")
 
         mode = (request.data.get("mode") or "ask").strip().lower()
-        if mode not in ("ask", "agent"):
+        if mode not in ("ask", "agent", "plan"):
             return fail("Invalid mode.", status_code=400, code="invalid_mode")
 
-        if mode == "agent":
+        if mode in ("agent", "plan"):
             if not has_minimum_role(request.team_membership, "editor"):
-                return fail("Wiki agent requires editor or owner role.", status_code=403, code="agent_forbidden")
+                code = "agent_forbidden" if mode == "agent" else "plan_forbidden"
+                return fail("Editor or owner role required.", status_code=403, code=code)
             if get_llm_backend() != "openai":
                 return fail(
-                    "Wiki agent is unavailable for this deployment (requires OpenAI tool calling).",
+                    "Tool modes are unavailable for this deployment (requires OpenAI tool calling).",
                     status_code=503,
                     code="agent_backend_unavailable",
                 )
@@ -279,7 +311,7 @@ class ChatQueryStreamView(APIView):
         membership = request.team_membership
 
         def event_stream():
-            yield f"event: status\ndata: {json.dumps({'status': 'Searching team wiki...'})}\n\n"
+            yield f"event: status\ndata: {json.dumps({'status': 'Searching team knowledge...'})}\n\n"
 
             try:
                 citations, context_str = _retrieve_wiki_citations(team_id, user_message)
@@ -334,12 +366,15 @@ class ChatQueryStreamView(APIView):
                         metadata={"model": model_name, "mode": "ask"},
                     )
                 else:
-                    from chat.agent_stream import iter_agent_sse_events
+                    from chat.agent_stream import iter_agent_sse_events, iter_plan_agent_sse_events
                     from chat.tools import ToolContext
 
                     ctx = ToolContext(user=request.user, team_id=str(team_id), membership=membership)
                     agent_state: dict = {}
-                    for line in iter_agent_sse_events(session, context_str, ctx, agent_state):
+                    iterator = (
+                        iter_plan_agent_sse_events if mode == "plan" else iter_agent_sse_events
+                    )
+                    for line in iterator(session, context_str, ctx, agent_state):
                         yield line
 
                     if agent_state.get("ok"):
@@ -351,7 +386,7 @@ class ChatQueryStreamView(APIView):
                             role="assistant",
                             content=full_content,
                             citations=citations,
-                            metadata={"mode": "agent", "tool_trace": tool_trace},
+                            metadata={"mode": mode, "tool_trace": tool_trace},
                         )
                         model_name = chat_completion_model()
                         approx = estimate_tokens(context_str) + estimate_tokens(user_message) + estimate_tokens(
@@ -364,7 +399,7 @@ class ChatQueryStreamView(APIView):
                             prompt_tokens=max(approx // 2, 1),
                             completion_tokens=max(approx // 2, 1),
                             total_tokens=approx,
-                            metadata={"model": model_name, "mode": "agent"},
+                            metadata={"model": model_name, "mode": mode},
                         )
 
                 if ChatMessage.objects.filter(session__team=session.team, role="assistant").count() == 1:
