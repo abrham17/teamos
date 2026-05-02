@@ -15,6 +15,7 @@ from django.utils.text import slugify
 from wiki.models import WikiPage, PageChunk
 from ingest.models import IngestJob, WikiChangeSet, KnowledgeActivity
 from ingest.vectors import vector_store
+from teamos_project.llm_config import chat_completion_model
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ def _detect_template_and_type(text: str) -> tuple[str, str]:
     )
     try:
         resp = vector_store.openai.chat.completions.create(
-            model="gpt-4o",
+            model=chat_completion_model(),
             messages=[{"role": "system", "content": prompt}, {"role": "user", "content": text[:2000]}],
             response_format={"type": "json_object"}
         )
@@ -101,7 +102,7 @@ def _analyze_governance(job, new_text: str):
         prompt = f"Compare this new information with existing wiki knowledge.\n\nNEW INFO:\n{new_text[:2000]}\n\nEXISTING KNOWLEDGE:\n{context}\n\nIdentify contradictions. Respond in JSON: {{\"contradictions\": [\"...\"], \"additions\": [\"...\"]}}"
         try:
             resp = vector_store.openai.chat.completions.create(
-                model="gpt-4o",
+                model=chat_completion_model(),
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
@@ -121,10 +122,19 @@ def _slug_for_ingested_page(team, title: str) -> str:
 
 
 def _derive_title(job, source_text: str) -> str:
+    text = (source_text or "").strip()
+    m = re.search(r"^\s*#\s+(.+?)\s*$", text[:4000], re.MULTILINE)
+    if m:
+        return m.group(1).strip()[:120]
     if job.source_type == "repo":
         return f"Repo: {urlparse(job.source_url).path.strip('/')}"[:120]
     if job.source_url:
         return (urlparse(job.source_url).path.strip("/") or "Ingested URL")[:120]
+    fn = (getattr(job, "source_filename", None) or "").strip()
+    if fn and "." in fn:
+        stem = fn.rsplit(".", 1)[0].replace("-", " ").replace("_", " ").strip()
+        if stem:
+            return stem[:120]
     return "Ingested Content"
 
 

@@ -1,32 +1,84 @@
+import hashlib
 import logging
+import random
 from django.conf import settings
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 
 logger = logging.getLogger(__name__)
 
+
 class VectorStore:
+    """
+    Qdrant + OpenAI-compatible SDK.
+
+    - ``LLM_BACKEND=groq`` (development): chat completions go to Groq; embeddings use
+      ``OPENAI_API_KEY`` if set, otherwise deterministic local vectors.
+    - ``LLM_BACKEND=openai`` (production): one OpenAI client for chat + embeddings when key set.
+    """
+
     def __init__(self):
         self.qdrant = QdrantClient(
             url=settings.QDRANT_URL,
             api_key=settings.QDRANT_API_KEY,
         )
-        self.openai = None
+        backend = getattr(settings, "LLM_BACKEND", "openai").lower()
+        self._llm_backend = backend
+
+        self._embed_client: OpenAI | None = None
         if settings.OPENAI_API_KEY:
+            self._embed_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+        self.openai: OpenAI | None = None
+        if backend == "groq" and getattr(settings, "GROQ_API_KEY", ""):
+            self.openai = OpenAI(
+                api_key=settings.GROQ_API_KEY,
+                base_url=getattr(
+                    settings,
+                    "GROQ_API_BASE",
+                    "https://api.groq.com/openai/v1",
+                ),
+            )
+        elif settings.OPENAI_API_KEY:
             self.openai = OpenAI(api_key=settings.OPENAI_API_KEY)
+            if self._embed_client is None:
+                self._embed_client = self.openai
+
+    def _mock_embedding(self, text: str, dim: int = 1536) -> list[float]:
+        """
+        Deterministic unit vector from text so local/Qdrant semantic search
+        differentiates pages without OpenAI (all-zero vectors collapse similarity).
+        """
+        digest = hashlib.sha256((text or "").encode("utf-8", errors="ignore")).hexdigest()
+        rng = random.Random(digest)
+        vec = [rng.gauss(0.0, 1.0) for _ in range(dim)]
+        mag = sum(x * x for x in vec) ** 0.5
+        if mag <= 0:
+            return [0.0] * dim
+        return [x / mag for x in vec]
 
     def _get_embedding(self, text: str, model: str = "text-embedding-3-small"):
-        if not self.openai:
-            # Mock embedding (all zeros) if no API key
-            logger.warning("No OpenAI API key found, using mock embeddings.")
-            return [0.0] * 1536
-        
-        response = self.openai.embeddings.create(
-            input=[text.replace("\n", " ")],
-            model=model
-        )
-        return response.data[0].embedding
+        embedder = self._embed_client
+        if not embedder:
+            logger.warning(
+                "No OpenAI embedding client (set OPENAI_API_KEY for vectors, or use deterministic fallback)."
+            )
+            return self._mock_embedding(text)
+
+        try:
+            response = embedder.embeddings.create(
+                input=[text.replace("\n", " ")],
+                model=model,
+            )
+            return response.data[0].embedding
+        except OpenAIError as exc:
+            logger.warning(
+                "OpenAI embedding failed (%s: %s); using deterministic local fallback.",
+                type(exc).__name__,
+                exc,
+            )
+            return self._mock_embedding(text)
 
     def ensure_collection(self, team_id: str, vector_size: int = 1536):
         collection_name = f"team_{team_id}"
@@ -69,17 +121,26 @@ class VectorStore:
             collection_name=collection_name,
             points=points
         )
+
     def search_similar_pages(self, team_id: str, query_text: str, limit: int = 5):
         collection_name = self.ensure_collection(str(team_id))
         vector = self._get_embedding(query_text)
-        
-        results = self.qdrant.search(
+
+        if hasattr(self.qdrant, "query_points"):
+            resp = self.qdrant.query_points(
+                collection_name=collection_name,
+                query=vector,
+                limit=limit,
+                with_payload=True,
+            )
+            return list(resp.points)
+
+        return self.qdrant.search(
             collection_name=collection_name,
             query_vector=vector,
             limit=limit,
-            with_payload=True
+            with_payload=True,
         )
-        
-        return results
+
 
 vector_store = VectorStore()

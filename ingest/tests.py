@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -9,9 +9,53 @@ from accounts.models import Team, User
 from accounts.models import TeamMember
 from wiki.models import WikiPage, PageChunk
 from ingest.models import IngestJob, AsyncDeadLetter
-from ingest.pipeline import run_pipeline
+from types import SimpleNamespace
+
+from openai import OpenAIError
+
+from ingest.pipeline import _derive_title, run_pipeline
 from ingest.tasks import infer_ai_edges, run_ingest_job, wire_page_graph
+from ingest.vectors import VectorStore
 from teamos_project.dead_letter import record_dead_letter
+
+class VectorStoreEmbeddingFallbackTests(TestCase):
+    """_get_embedding uses deterministic vectors when OpenAI is missing or errors."""
+
+    def test_no_openai_uses_mock_shape(self):
+        vs = VectorStore.__new__(VectorStore)
+        vs._embed_client = None
+        emb = VectorStore._get_embedding(vs, "chunk text")
+        self.assertEqual(len(emb), 1536)
+        self.assertAlmostEqual(sum(x * x for x in emb), 1.0, places=5)
+
+    def test_openai_error_falls_back_to_same_mock_as_no_key(self):
+        vs_fail = VectorStore.__new__(VectorStore)
+        vs_fail._embed_client = MagicMock()
+        vs_fail._embed_client.embeddings.create.side_effect = OpenAIError(
+            "simulated embedding failure"
+        )
+
+        vs_no = VectorStore.__new__(VectorStore)
+        vs_no._embed_client = None
+
+        text = "reliability SLOs and authentication"
+        self.assertEqual(
+            VectorStore._get_embedding(vs_fail, text),
+            VectorStore._get_embedding(vs_no, text),
+        )
+
+
+class DeriveTitleTests(TestCase):
+    def test_h1_becomes_title(self):
+        job = SimpleNamespace(source_type="markdown", source_url="", source_filename="")
+        t = _derive_title(job, "# My Roadmap\n\nBody here.")
+        self.assertEqual(t, "My Roadmap")
+
+    def test_filename_fallback(self):
+        job = SimpleNamespace(source_type="markdown", source_url="", source_filename="release_notes.md")
+        t = _derive_title(job, "no heading here")
+        self.assertEqual(t, "release notes")
+
 
 class IngestionPipelineTest(TestCase):
     def setUp(self):
@@ -22,8 +66,13 @@ class IngestionPipelineTest(TestCase):
         )
         self.team = Team.objects.create(name="Test Team", slug="test-team", created_by=self.user)
 
-    def test_url_ingestion_materialization(self):
-        """Tests that a basic text ingestion creates a page and chunks."""
+    @patch("ingest.tasks.wire_page_graph.delay")
+    @patch("ingest.pipeline.vector_store")
+    def test_url_ingestion_materialization(self, mock_vector_store, _mock_wire_delay):
+        """Creates a page and chunks; Qdrant and graph wiring are mocked (no live vector DB)."""
+        mock_vector_store.ensure_collection.return_value = "team_test"
+        mock_vector_store.upsert_chunks.return_value = None
+
         job = IngestJob.objects.create(
             team=self.team,
             created_by=self.user,

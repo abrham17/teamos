@@ -198,6 +198,11 @@ CELERY_BEAT_SCHEDULE = {
 # --- External APIs ---
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+# development.py sets LLM_BACKEND to "groq" for local testing; production.py sets "openai".
+LLM_BACKEND = os.environ.get("LLM_BACKEND", "openai")
+GROQ_API_BASE = os.environ.get("GROQ_API_BASE", "https://api.groq.com/openai/v1")
+GROQ_CHAT_MODEL = os.environ.get("GROQ_CHAT_MODEL", "llama-3.1-8b-instant")
+OPENAI_CHAT_MODEL = os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
