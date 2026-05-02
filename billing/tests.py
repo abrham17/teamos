@@ -5,14 +5,52 @@ import time
 from unittest.mock import patch
 
 from django.conf import settings
-from django.test import override_settings
+from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from accounts.models import Team, TeamMember, User
 from billing.models import BillingWebhookEvent, TeamSubscription
+from billing.pricing import PRO_USD_MAX, PRO_USD_MIN, compute_quote, public_plan_catalog
 from billing.tasks import reconcile_pending_billing_webhooks
 from product_analytics.models import ProductEvent
+
+
+class PricingModuleTests(TestCase):
+    """Unit tests for billing.pricing."""
+
+    def test_pro_clamped_to_band(self):
+        for seats in (5, 12, 40, 100):
+            for usage in ("low", "standard", "high"):
+                q = compute_quote(plan_key="pro", seat_count=seats, usage_tier=usage)
+                self.assertGreaterEqual(q.monthly_total_usd, PRO_USD_MIN)
+                self.assertLessEqual(q.monthly_total_usd, PRO_USD_MAX)
+
+    def test_pro_monotonic_in_seats_low_usage(self):
+        prev = 0.0
+        for seats in range(20, 85, 5):
+            q = compute_quote(plan_key="pro", seat_count=seats, usage_tier="low")
+            self.assertGreaterEqual(q.monthly_total_usd, prev - 0.01)
+            prev = q.monthly_total_usd
+
+    def test_enterprise_above_pro_cap(self):
+        q = compute_quote(plan_key="enterprise", seat_count=15, usage_tier="standard")
+        self.assertGreater(q.monthly_total_usd, PRO_USD_MAX)
+
+    def test_team_below_pro_min(self):
+        q = compute_quote(plan_key="team", seat_count=25, usage_tier="high")
+        self.assertLess(q.monthly_total_usd, PRO_USD_MIN)
+
+    def test_variant_key_stable(self):
+        a = compute_quote(plan_key="pro", seat_count=10, usage_tier="standard")
+        b = compute_quote(plan_key="pro", seat_count=10, usage_tier="standard")
+        self.assertEqual(a.variant_key, b.variant_key)
+        self.assertEqual(a.monthly_total_cents, b.monthly_total_cents)
+
+    def test_catalog_has_four_plans(self):
+        cat = public_plan_catalog()
+        keys = {p["key"] for p in cat["plans"]}
+        self.assertEqual(keys, {"free", "team", "pro", "enterprise"})
 
 
 @override_settings(
@@ -56,6 +94,27 @@ class BillingApiTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.assertTrue(res.data["success"])
         self.assertEqual(res.data["data"]["provider"], "paddle")
+        self.assertIn("quote", res.data["data"])
+        self.assertEqual(res.data["data"]["quote"]["plan_key"], "team")
+
+    def test_checkout_rejects_quote_mismatch(self):
+        self.client.force_authenticate(user=self.owner)
+        url = f"/api/billing/{self.team.id}/checkout-session/"
+        res = self.client.post(
+            url,
+            {
+                "plan_key": "team",
+                "seat_count": 10,
+                "usage_tier": "standard",
+                "monthly_total_cents": 1,
+                "success_url": "https://app.example.com/billing/success",
+                "cancel_url": "https://app.example.com/billing/cancel",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(res.data["success"])
+        self.assertEqual(res.data["error"]["code"], "quote_mismatch")
 
     def test_webhook_idempotent_processing(self):
         payload = {
@@ -85,6 +144,8 @@ class BillingApiTests(APITestCase):
         self.assertTrue(first.data["success"])
         self.assertTrue(BillingWebhookEvent.objects.get(provider="paddle", event_id="evt_123").processed)
         self.assertEqual(TeamSubscription.objects.filter(team=self.team).count(), 1)
+        self.team.refresh_from_db()
+        self.assertEqual(self.team.plan, "team")
 
         second = self.client.post(
             url,
@@ -189,6 +250,8 @@ class StripeBillingApiTests(APITestCase):
         self.assertEqual(sub.provider, "stripe")
         self.assertEqual(sub.plan_key, "team")
         self.assertEqual(sub.status, "active")
+        self.team.refresh_from_db()
+        self.assertEqual(self.team.plan, "team")
         self.assertTrue(ProductEvent.objects.filter(team=self.team, event_name="subscription_started").exists())
 
 
@@ -228,6 +291,24 @@ class BillingReconcileTests(APITestCase):
         event = BillingWebhookEvent.objects.get(event_id="evt_pending_1")
         self.assertTrue(event.processed)
         self.assertEqual(TeamSubscription.objects.filter(team=self.team).count(), 1)
+
+    def test_plans_catalog_is_public(self):
+        res = self.client.get("/api/billing/plans/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data["success"])
+        keys = {p["key"] for p in res.data["data"]["plans"]}
+        self.assertEqual(keys, {"free", "team", "pro", "enterprise"})
+
+    def test_quote_endpoint(self):
+        res = self.client.post(
+            "/api/billing/quote/",
+            {"plan_key": "pro", "seat_count": 40, "usage_tier": "high"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data["success"])
+        self.assertGreaterEqual(res.data["data"]["monthly_total_usd"], 100)
+        self.assertLessEqual(res.data["data"]["monthly_total_usd"], 300)
 
     def test_staff_can_queue_reconcile_job(self):
         self.client.force_authenticate(user=self.admin)

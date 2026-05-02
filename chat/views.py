@@ -1,13 +1,15 @@
 import json
 import logging
-import time
-from django.http import StreamingHttpResponse
+
+from django.http import HttpResponse, StreamingHttpResponse
+from openai import OpenAI
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.conf import settings
 
 from accounts.permissions import IsTeamMember
+from accounts.team_access import has_minimum_role
 from ingest.vectors import vector_store
 from wiki.models import WikiPage
 from teamos_project.entitlements import check_quota
@@ -15,14 +17,141 @@ from product_analytics.services import record_first_once
 from .models import ChatSession, ChatMessage, ChatTokenUsage
 from .serializers import ChatSessionSerializer
 from teamos_project.api_response import ok, fail
-from teamos_project.llm_config import chat_completion_model
+from teamos_project.llm_config import chat_completion_model, get_llm_backend
 
 logger = logging.getLogger(__name__)
+
+TTS_MAX_CHARS = 4000
+TTS_ALLOWED_VOICES = frozenset({"alloy", "echo", "fable", "onyx", "nova", "shimmer"})
 
 
 def estimate_tokens(text: str) -> int:
     # Lightweight approximation: ~4 chars/token for English-like text.
     return max(1, len((text or "").strip()) // 4)
+
+
+def _retrieve_wiki_citations(team_id, user_message: str) -> tuple[list, str]:
+    """Vector search → citation payloads + flattened context string for prompts."""
+    limit = int(getattr(settings, "CHAT_RAG_RESULT_LIMIT", 10) or 10)
+    max_chars = int(getattr(settings, "CHAT_RAG_MAX_CONTEXT_CHARS", 5000) or 5000)
+
+    results = vector_store.search_similar_pages(team_id, user_message, limit=limit)
+    citations = []
+    context_blocks = []
+    for res in results:
+        page_id = res.payload.get("page_id")
+        title = res.payload.get("page_title", "Untitled")
+        snippet = res.payload.get("content", "")
+        chunk_id = res.payload.get("chunk_id")
+        anchor_hint = res.payload.get("heading") or res.payload.get("section") or ""
+
+        slug = "unknown"
+        try:
+            p = WikiPage.objects.only("slug").get(id=page_id)
+            slug = p.slug
+        except Exception:
+            pass
+
+        citations.append(
+            {
+                "page_id": page_id,
+                "page_title": title,
+                "page_slug": slug,
+                "snippet": snippet[:200],
+                "score": float(res.score),
+                "chunk_id": chunk_id,
+                "anchor_hint": anchor_hint,
+            }
+        )
+        context_blocks.append(f"SOURCE: {title}\nCONTENT: {snippet}")
+
+    # Drop lowest-ranked tail chunks until under character budget (results are best-first).
+    while context_blocks:
+        candidate = "\n\n".join(context_blocks)
+        if len(candidate) <= max_chars:
+            break
+        if len(context_blocks) > 1:
+            context_blocks.pop()
+            citations.pop()
+        else:
+            block = context_blocks[0]
+            sep = "\nCONTENT: "
+            idx = block.find(sep)
+            if idx == -1:
+                context_blocks[0] = block[:max_chars]
+            else:
+                head = block[: idx + len(sep)]
+                body = block[idx + len(sep) :]
+                keep = max(0, max_chars - len(head))
+                context_blocks[0] = head + body[:keep]
+                citations[0]["snippet"] = body[: min(200, keep)]
+            break
+
+    context_str = "\n\n".join(context_blocks)
+    if len(context_str) > max_chars:
+        context_str = context_str[:max_chars]
+    return citations, context_str
+
+
+class ChatCapabilitiesView(APIView):
+    """GET /api/chat/:team_id/capabilities/ — UI hints for chat modes."""
+
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
+    def get(self, request, team_id):
+        m = request.team_membership
+        agent_ok = get_llm_backend() == "openai"
+        return ok(
+            {
+                "can_edit_wiki": has_minimum_role(m, "editor"),
+                "can_ingest": has_minimum_role(m, "editor"),
+                "agent_mode_available": agent_ok,
+            }
+        )
+
+
+class ChatTTSView(APIView):
+    """
+    POST /api/chat/:team_id/tts/
+    Body: { "text": "...", "voice": "alloy" } (voice optional).
+    Returns audio/mpeg bytes from OpenAI speech API.
+    """
+
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
+    def post(self, request, team_id):
+        text = (request.data.get("text") or "").strip()
+        if not text:
+            return fail("Text required.", status_code=400, code="text_required")
+
+        text = text[:TTS_MAX_CHARS]
+        voice = (request.data.get("voice") or settings.OPENAI_TTS_DEFAULT_VOICE or "alloy").lower()
+        if voice not in TTS_ALLOWED_VOICES:
+            voice = "alloy"
+
+        if not settings.OPENAI_API_KEY:
+            return fail(
+                "TTS is not configured (OPENAI_API_KEY).",
+                status_code=503,
+                code="tts_unconfigured",
+            )
+
+        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        model = settings.OPENAI_TTS_MODEL or "tts-1"
+        try:
+            binary = client.audio.speech.create(
+                model=model,
+                voice=voice,
+                input=text,
+                response_format="mp3",
+            )
+            audio_bytes = binary.read()
+        except Exception as e:
+            logger.exception("OpenAI TTS failed: %s", e)
+            return fail("TTS generation failed.", status_code=502, code="tts_failed")
+
+        return HttpResponse(audio_bytes, content_type="audio/mpeg")
+
 
 class ChatSessionListView(APIView):
     permission_classes = [IsAuthenticated, IsTeamMember]
@@ -62,7 +191,8 @@ class ChatSessionDetailView(APIView):
 class ChatQueryStreamView(APIView):
     """
     POST /api/chat/:team_id/sessions/:session_id/query/
-    Implements a High-Performance Citational RAG Pipeline.
+    Ask mode: RAG + stream (default). Agent mode: tool loop + stream (editors, OpenAI backend only).
+    Body: { "message": "...", "mode": "ask" | "agent" }
     """
     permission_classes = [IsAuthenticated, IsTeamMember]
 
@@ -75,6 +205,21 @@ class ChatQueryStreamView(APIView):
         user_message = request.data.get("message", "").strip()
         if not user_message:
             return fail("Message required.", status_code=400, code="message_required")
+
+        mode = (request.data.get("mode") or "ask").strip().lower()
+        if mode not in ("ask", "agent"):
+            return fail("Invalid mode.", status_code=400, code="invalid_mode")
+
+        if mode == "agent":
+            if not has_minimum_role(request.team_membership, "editor"):
+                return fail("Wiki agent requires editor or owner role.", status_code=403, code="agent_forbidden")
+            if get_llm_backend() != "openai":
+                return fail(
+                    "Wiki agent is unavailable for this deployment (requires OpenAI tool calling).",
+                    status_code=503,
+                    code="agent_backend_unavailable",
+                )
+
         quota = check_quota(session.team, "token_consume")
         if not quota.allowed:
             return fail(
@@ -84,124 +229,132 @@ class ChatQueryStreamView(APIView):
                 details=quota.to_details(),
             )
 
-        # 1. Save user message
-        ChatMessage.objects.create(session=session, role="user", content=user_message)
+        ChatMessage.objects.create(
+            session=session,
+            role="user",
+            content=user_message,
+            metadata={"mode": mode},
+        )
 
-        # 2. Update title if needed
         if session.messages.count() <= 2:
             session.title = user_message[:50] + ("..." if len(user_message) > 50 else "")
             session.save()
 
+        membership = request.team_membership
+
         def event_stream():
-            # Step 1: Retrieval
             yield f"event: status\ndata: {json.dumps({'status': 'Searching team wiki...'})}\n\n"
-            
+
             try:
-                # Query vector store (Qdrant)
-                results = vector_store.search_similar_pages(team_id, user_message, limit=10)
-                
-                citations = []
-                context_blocks = []
-                for res in results:
-                    page_id = res.payload.get("page_id")
-                    title = res.payload.get("page_title", "Untitled")
-                    snippet = res.payload.get("content", "")
-                    chunk_id = res.payload.get("chunk_id")
-                    anchor_hint = res.payload.get("heading") or res.payload.get("section") or ""
-                    
-                    # Try to get slug for frontend navigation
-                    slug = "unknown"
-                    try:
-                        p = WikiPage.objects.only("slug").get(id=page_id)
-                        slug = p.slug
-                    except: pass
-
-                    citations.append({
-                        "page_id": page_id,
-                        "page_title": title,
-                        "page_slug": slug,
-                        "snippet": snippet[:200],
-                        "score": float(res.score),
-                        "chunk_id": chunk_id,
-                        "anchor_hint": anchor_hint,
-                    })
-                    context_blocks.append(f"SOURCE: {title}\nCONTENT: {snippet}")
-
+                citations, context_str = _retrieve_wiki_citations(team_id, user_message)
                 yield f"event: citations\ndata: {json.dumps({'citations': citations})}\n\n"
-                
-                # Step 2: Generation
                 yield f"event: status\ndata: {json.dumps({'status': 'Thinking...'})}\n\n"
-                
-                context_str = "\n\n".join(context_blocks)
-                system_prompt = (
-                    "You are the TeamOS AI. Answer based ONLY on the provided Wiki context. "
-                    "If the information is not in the context, say you don't know. "
-                    "Cite sources by using [Source Title]. "
-                    "If you find a contradiction, point it out. "
-                    "Format answers in GitHub-flavored Markdown: use ### headings, bullet lists, and fenced code "
-                    "blocks for formulas or code. "
-                    "When the context includes numeric, time-series, or tabular data (e.g. daily trading rows), "
-                    "summarize it in a Markdown pipe table with clear column headers; do not invent numbers. "
-                    "When a small chart would clarify trends and the values are in the context, add a diagram using "
-                    "a fenced code block with language tag `mermaid` (e.g. xychart-beta or a simple flowchart). "
-                    "Always close every ```mermaid block with ``` on its own line. "
-                    "Context:\n" + context_str
-                )
 
-                # Build history
-                history = [{"role": "system", "content": system_prompt}]
-                recent_messages = list(session.messages.order_by("-created_at")[:10])
-                for msg in reversed(recent_messages):
-                    history.append({"role": msg.role, "content": msg.content})
+                tool_trace_for_done: list = []
 
-                llm = vector_store.openai
-                if not llm:
-                    yield f"event: error\ndata: {json.dumps({'detail': 'Chat LLM is not configured (set GROQ_API_KEY for development or OPENAI_API_KEY for production).'})}\n\n"
-                    return
+                if mode == "ask":
+                    system_prompt = (
+                        "You are the TeamOS AI. Answer based ONLY on the provided Wiki context. "
+                        "If the information is not in the context, say you don't know. "
+                        "Cite sources by using [Source Title]. "
+                        "If you find a contradiction, point it out. "
+                        "Format answers in GitHub-flavored Markdown: use ### headings, bullet lists, and fenced code "
+                        "blocks for formulas or code. "
+                        "When the context includes numeric, time-series, or tabular data (e.g. daily trading rows), "
+                        "summarize it in a Markdown pipe table with clear column headers; do not invent numbers. "
+                        "When a small chart would clarify trends and the values are in the context, add a diagram using "
+                        "a fenced code block with language tag `mermaid` (e.g. xychart-beta or a simple flowchart). "
+                        "Always close every ```mermaid block with ``` on its own line. "
+                        "Context:\n" + context_str
+                    )
 
-                model_name = chat_completion_model()
-                full_content = ""
-                stream = llm.chat.completions.create(
-                    model=model_name,
-                    messages=history,
-                    stream=True,
-                )
+                    history = [{"role": "system", "content": system_prompt}]
+                    recent_messages = list(session.messages.order_by("-created_at")[:10])
+                    for msg in reversed(recent_messages):
+                        history.append({"role": msg.role, "content": msg.content})
 
-                for chunk in stream:
-                    token = chunk.choices[0].delta.content or ""
-                    if token:
-                        full_content += token
-                        yield f"event: chunk\ndata: {json.dumps({'token': token})}\n\n"
+                    llm = vector_store.openai
+                    if not llm:
+                        yield f"event: error\ndata: {json.dumps({'detail': 'Chat LLM is not configured (set GROQ_API_KEY for development or OPENAI_API_KEY for production).'})}\n\n"
+                        return
 
-                # Finalize
-                ChatMessage.objects.create(
-                    session=session,
-                    role="assistant",
-                    content=full_content,
-                    citations=citations
-                )
-                prompt_tokens = estimate_tokens(system_prompt) + estimate_tokens(user_message)
-                completion_tokens = estimate_tokens(full_content)
-                ChatTokenUsage.objects.create(
-                    team=session.team,
-                    user=request.user,
-                    session=session,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    total_tokens=prompt_tokens + completion_tokens,
-                    metadata={"model": model_name},
-                )
+                    model_name = chat_completion_model()
+                    full_content = ""
+                    stream = llm.chat.completions.create(
+                        model=model_name,
+                        messages=history,
+                        stream=True,
+                    )
+
+                    for chunk in stream:
+                        token = chunk.choices[0].delta.content or ""
+                        if token:
+                            full_content += token
+                            yield f"event: chunk\ndata: {json.dumps({'token': token})}\n\n"
+
+                    ChatMessage.objects.create(
+                        session=session,
+                        role="assistant",
+                        content=full_content,
+                        citations=citations,
+                        metadata={"mode": "ask"},
+                    )
+                    prompt_tokens = estimate_tokens(system_prompt) + estimate_tokens(user_message)
+                    completion_tokens = estimate_tokens(full_content)
+                    ChatTokenUsage.objects.create(
+                        team=session.team,
+                        user=request.user,
+                        session=session,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=prompt_tokens + completion_tokens,
+                        metadata={"model": model_name, "mode": "ask"},
+                    )
+                else:
+                    from chat.agent_stream import iter_agent_sse_events
+                    from chat.tools import ToolContext
+
+                    ctx = ToolContext(user=request.user, team_id=str(team_id), membership=membership)
+                    agent_state: dict = {}
+                    for line in iter_agent_sse_events(session, context_str, ctx, agent_state):
+                        yield line
+
+                    if agent_state.get("ok"):
+                        full_content = agent_state.get("full_text") or ""
+                        tool_trace = agent_state.get("tool_trace") or []
+                        tool_trace_for_done = list(tool_trace)
+                        ChatMessage.objects.create(
+                            session=session,
+                            role="assistant",
+                            content=full_content,
+                            citations=citations,
+                            metadata={"mode": "agent", "tool_trace": tool_trace},
+                        )
+                        model_name = chat_completion_model()
+                        approx = estimate_tokens(context_str) + estimate_tokens(user_message) + estimate_tokens(
+                            json.dumps(tool_trace)
+                        ) + estimate_tokens(full_content)
+                        ChatTokenUsage.objects.create(
+                            team=session.team,
+                            user=request.user,
+                            session=session,
+                            prompt_tokens=max(approx // 2, 1),
+                            completion_tokens=max(approx // 2, 1),
+                            total_tokens=approx,
+                            metadata={"model": model_name, "mode": "agent"},
+                        )
+
                 if ChatMessage.objects.filter(session__team=session.team, role="assistant").count() == 1:
                     record_first_once(
                         event_name="first_chat_answer_received",
                         team=session.team,
                         user=request.user,
-                        properties={"session_id": str(session.id)},
+                        properties={"session_id": str(session.id), "mode": mode},
                     )
-                yield f"event: done\ndata: {json.dumps({'status': 'done'})}\n\n"
+                yield f"event: done\ndata: {json.dumps({'status': 'done', 'mode': mode, 'tool_trace': tool_trace_for_done})}\n\n"
 
             except Exception as e:
-                logger.error(f"Chat stream failed: {e}")
+                logger.error("Chat stream failed: %s", e)
                 yield f"event: error\ndata: {json.dumps({'detail': str(e)})}\n\n"
 
         response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")

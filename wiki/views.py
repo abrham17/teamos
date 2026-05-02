@@ -75,15 +75,14 @@ class WikiPageListView(APIView):
                 user=request.user,
                 properties={"page_id": str(page.id), "page_slug": page.slug},
             )
-        # trigger graph wiring async
-        from ingest.tasks import wire_page_graph
         trace_id = get_request_trace_id(request)
         try:
-            wire_page_graph.delay(str(page.id), trace_id=trace_id)
+            from wiki.services.reindex import reindex_wiki_page
+
+            reindex_wiki_page(page, trace_id=trace_id, queue_graph=True)
         except Exception:
-            # Keep user-facing write path resilient if broker/workers are temporarily unavailable.
             logger.exception(
-                "Failed to queue graph wiring after wiki page creation",
+                "Failed to reindex wiki page after creation",
                 extra={"team_id": str(membership.team_id), "page_id": str(page.id), "trace_id": trace_id},
             )
         return ok(WikiPageDetailSerializer(page).data, status_code=201)
@@ -125,14 +124,14 @@ class WikiPageDetailView(APIView):
         if request.data.get("title") and new_title != old_title:
             page.slug = unique_slug(page.team, new_title, exclude_id=page.id)
         page.save()
-        # re-wire graph after content update
-        from ingest.tasks import wire_page_graph
         trace_id = get_request_trace_id(request)
         try:
-            wire_page_graph.delay(str(page.id), trace_id=trace_id)
+            from wiki.services.reindex import reindex_wiki_page
+
+            reindex_wiki_page(page, trace_id=trace_id, queue_graph=True)
         except Exception:
             logger.exception(
-                "Failed to queue graph wiring after wiki page update",
+                "Failed to reindex wiki page after update",
                 extra={"team_id": str(page.team_id), "page_id": str(page.id), "trace_id": trace_id},
             )
         return ok(WikiPageDetailSerializer(page).data)

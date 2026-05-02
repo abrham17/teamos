@@ -30,8 +30,13 @@ Incremental==24.11.0
 kombu==5.6.2
 msgpack==1.1.2
 oauthlib==3.3.1
+openai==2.33.0
 packaging==26.2
 pillow==12.2.0
+pypdf==6.9.2
+python-docx==1.1.2
+pytesseract==0.3.13
+youtube-transcript-api==0.6.2
 prompt_toolkit==3.0.52
 psycopg2-binary==2.9.12
 py-ubjson==0.16.1

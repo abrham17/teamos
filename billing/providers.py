@@ -1,14 +1,21 @@
 import hashlib
 import hmac
 import json
+import logging
 import time
 from datetime import timezone as dt_timezone
 from dataclasses import dataclass
+from urllib.parse import quote as urlquote
 
+import requests
 from django.conf import settings
 from django.utils import timezone
 
+from accounts.models import Team
 from billing.models import TeamSubscription
+from billing.pricing import PriceQuote
+
+logger = logging.getLogger(__name__)
 
 
 class BillingError(Exception):
@@ -21,10 +28,34 @@ class CheckoutSession:
     external_checkout_id: str
 
 
+def _canonical_team_plan(plan_key: str) -> str | None:
+    raw = (plan_key or "").strip().lower()
+    for k in ("enterprise", "pro", "team", "free"):
+        if raw == k or raw.startswith(f"{k}_"):
+            return k
+    return None
+
+
+def _apply_team_plan_from_subscription(subscription: TeamSubscription) -> None:
+    if subscription.status != "active":
+        return
+    canonical = _canonical_team_plan(subscription.plan_key)
+    if canonical and canonical in dict(Team.PLAN_CHOICES):
+        Team.objects.filter(id=subscription.team_id).update(plan=canonical)
+
+
 class BaseBillingProvider:
     provider_name = "base"
 
-    def create_checkout_session(self, *, team, plan_key: str, success_url: str, cancel_url: str) -> CheckoutSession:
+    def create_checkout_session(
+        self,
+        *,
+        team,
+        plan_key: str,
+        success_url: str,
+        cancel_url: str,
+        quote: PriceQuote | None = None,
+    ) -> CheckoutSession:
         raise NotImplementedError
 
     def verify_and_parse_webhook(self, *, headers, body_bytes: bytes) -> dict:
@@ -34,13 +65,122 @@ class BaseBillingProvider:
         raise NotImplementedError
 
 
+def _paddle_price_id_for_plan(plan_key: str) -> str:
+    mapping = {
+        "team": getattr(settings, "PADDLE_PRICE_ID_TEAM", "") or "",
+        "pro": getattr(settings, "PADDLE_PRICE_ID_PRO", "") or "",
+        "enterprise": getattr(settings, "PADDLE_PRICE_ID_ENTERPRISE", "") or "",
+    }
+    return mapping.get(plan_key, "")
+
+
+def _paddle_create_transaction_live(
+    *,
+    team,
+    plan_key: str,
+    success_url: str,
+    cancel_url: str,
+    quote: PriceQuote,
+) -> CheckoutSession | None:
+    api_key = (getattr(settings, "PADDLE_API_KEY", None) or "").strip()
+    price_id = _paddle_price_id_for_plan(plan_key)
+    base = (getattr(settings, "PADDLE_API_BASE", None) or "https://sandbox-api.paddle.com").rstrip("/")
+    if not api_key or not price_id:
+        return None
+
+    url = f"{base}/transactions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    body: dict = {
+        "items": [{"price_id": price_id, "quantity": 1}],
+        "custom_data": {
+            "team_id": str(team.id),
+            "plan_key": plan_key,
+            "variant_key": quote.variant_key,
+            "seat_count": str(quote.seat_count),
+            "usage_tier": quote.usage_tier,
+            "monthly_total_cents": str(quote.monthly_total_cents),
+        },
+    }
+    # Paddle Billing: optional checkout settings for redirect after payment
+    checkout_obj: dict = {"url": success_url}
+    preview = (getattr(settings, "PADDLE_CHECKOUT_PREVIEW", None) or "").strip()
+    if preview:
+        checkout_obj["preview"] = True
+    body["checkout"] = checkout_obj
+
+    try:
+        resp = requests.post(url, headers=headers, json=body, timeout=30)
+    except requests.RequestException as exc:
+        logger.warning("paddle_transaction_request_failed", extra={"error": str(exc)})
+        return None
+
+    if resp.status_code >= 400:
+        logger.warning(
+            "paddle_transaction_http_error",
+            extra={"status": resp.status_code, "body": resp.text[:500]},
+        )
+        return None
+
+    try:
+        payload = resp.json()
+    except json.JSONDecodeError:
+        logger.warning("paddle_transaction_invalid_json", extra={"text": resp.text[:200]})
+        return None
+
+    data = payload.get("data") or payload
+    checkout = data.get("checkout") if isinstance(data, dict) else None
+    checkout_url = ""
+    external_id = ""
+    if isinstance(checkout, dict):
+        checkout_url = (checkout.get("url") or "").strip()
+    if not checkout_url and isinstance(data, dict):
+        checkout_url = (data.get("checkout_url") or "").strip()
+    if isinstance(data, dict):
+        external_id = str(data.get("id") or data.get("transaction_id") or "")
+
+    if not checkout_url:
+        logger.warning("paddle_transaction_missing_checkout_url", extra={"payload_keys": list(payload.keys())})
+        return None
+
+    return CheckoutSession(checkout_url=checkout_url, external_checkout_id=external_id or f"pdl_{team.id}_{quote.variant_key}")
+
+
 class PaddleBillingProvider(BaseBillingProvider):
     provider_name = "paddle"
 
-    def create_checkout_session(self, *, team, plan_key: str, success_url: str, cancel_url: str) -> CheckoutSession:
-        # Adapter boundary ready for Paddle API integration.
-        checkout_id = f"pdl_{team.id}_{plan_key}"
-        checkout_url = f"{success_url}?billing_provider=paddle&checkout_id={checkout_id}&plan={plan_key}"
+    def create_checkout_session(
+        self,
+        *,
+        team,
+        plan_key: str,
+        success_url: str,
+        cancel_url: str,
+        quote: PriceQuote | None = None,
+    ) -> CheckoutSession:
+        if quote is None:
+            from billing.pricing import compute_quote
+
+            quote = compute_quote(plan_key=plan_key, seat_count=10, usage_tier="standard")
+
+        live = _paddle_create_transaction_live(
+            team=team,
+            plan_key=plan_key,
+            success_url=success_url,
+            cancel_url=cancel_url,
+            quote=quote,
+        )
+        if live:
+            return live
+
+        checkout_id = f"pdl_{team.id}_{quote.variant_key}"
+        sep = "&" if "?" in success_url else "?"
+        checkout_url = (
+            f"{success_url}{sep}billing_provider=paddle&checkout_id={checkout_id}"
+            f"&plan={plan_key}&variant={quote.variant_key}&cancel_url={urlquote(cancel_url, safe='')}"
+        )
         return CheckoutSession(checkout_url=checkout_url, external_checkout_id=checkout_id)
 
     def verify_and_parse_webhook(self, *, headers, body_bytes: bytes) -> dict:
@@ -86,9 +226,15 @@ class PaddleBillingProvider(BaseBillingProvider):
         subscription.status = str(data.get("status") or subscription.status)
         period_end = data.get("current_period_end")
         if period_end:
-            subscription.current_period_end = timezone.datetime.fromisoformat(period_end)
+            try:
+                subscription.current_period_end = timezone.datetime.fromisoformat(
+                    str(period_end).replace("Z", "+00:00"),
+                )
+            except ValueError:
+                pass
         subscription.metadata = {"event_type": event.get("type")}
         subscription.save()
+        _apply_team_plan_from_subscription(subscription)
         if subscription.status == "active" and prev_status != "active":
             record_first_once(
                 event_name="subscription_started",
@@ -101,10 +247,25 @@ class PaddleBillingProvider(BaseBillingProvider):
 class StripeBillingProvider(BaseBillingProvider):
     provider_name = "stripe"
 
-    def create_checkout_session(self, *, team, plan_key: str, success_url: str, cancel_url: str) -> CheckoutSession:
-        # Adapter boundary ready for Stripe checkout session creation.
-        checkout_id = f"strp_{team.id}_{plan_key}"
-        checkout_url = f"{success_url}?billing_provider=stripe&checkout_id={checkout_id}&plan={plan_key}"
+    def create_checkout_session(
+        self,
+        *,
+        team,
+        plan_key: str,
+        success_url: str,
+        cancel_url: str,
+        quote: PriceQuote | None = None,
+    ) -> CheckoutSession:
+        if quote is None:
+            from billing.pricing import compute_quote
+
+            quote = compute_quote(plan_key=plan_key, seat_count=10, usage_tier="standard")
+        checkout_id = f"strp_{team.id}_{quote.variant_key}"
+        sep = "&" if "?" in success_url else "?"
+        checkout_url = (
+            f"{success_url}{sep}billing_provider=stripe&checkout_id={checkout_id}"
+            f"&plan={plan_key}&variant={quote.variant_key}"
+        )
         return CheckoutSession(checkout_url=checkout_url, external_checkout_id=checkout_id)
 
     def verify_and_parse_webhook(self, *, headers, body_bytes: bytes) -> dict:
@@ -148,6 +309,7 @@ class StripeBillingProvider(BaseBillingProvider):
             subscription.current_period_end = timezone.datetime.fromtimestamp(int(period_end), tz=dt_timezone.utc)
         subscription.metadata = {"event_type": event.get("type"), "provider_payload": obj}
         subscription.save()
+        _apply_team_plan_from_subscription(subscription)
         if subscription.status == "active" and prev_status != "active":
             record_first_once(
                 event_name="subscription_started",

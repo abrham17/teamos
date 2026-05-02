@@ -1,13 +1,43 @@
 from django.utils import timezone
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 
 from accounts.models import TeamMember
 from teamos_project.api_response import fail, ok
 
 from .models import BillingWebhookEvent
+from .pricing import compute_quote, public_plan_catalog
 from .providers import BillingError, get_billing_provider
 from .tasks import reconcile_pending_billing_webhooks
+
+
+class BillingPlansCatalogView(APIView):
+    """Public marketing catalog — prices derived from same module as checkout quotes."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return ok(public_plan_catalog())
+
+
+class BillingQuoteView(APIView):
+    """Public quote for home page / calculators (no team required)."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        try:
+            seat_raw = request.data.get("seat_count", 10)
+            seat_count = int(seat_raw) if seat_raw is not None else 10
+        except (TypeError, ValueError):
+            return fail("seat_count must be an integer.", status_code=400, code="invalid_quote_params")
+        plan_key = (request.data.get("plan_key") or "").strip()
+        usage_tier = (request.data.get("usage_tier") or "standard").strip()
+        try:
+            quote = compute_quote(plan_key=plan_key, seat_count=seat_count, usage_tier=usage_tier)
+        except ValueError as exc:
+            return fail(str(exc), status_code=400, code="invalid_quote_params")
+        return ok(quote.as_dict())
 
 
 class CreateCheckoutSessionView(APIView):
@@ -28,18 +58,53 @@ class CreateCheckoutSessionView(APIView):
                 code="billing_checkout_params_required",
             )
 
+        if plan_key not in ("team", "pro", "enterprise"):
+            return fail("plan_key must be team, pro, or enterprise.", status_code=400, code="invalid_plan_key")
+
+        try:
+            seat_raw = request.data.get("seat_count")
+            if seat_raw is None:
+                catalog = public_plan_catalog()
+                defaults = {p["key"]: p["seat_default"] for p in catalog["plans"]}
+                seat_count = int(defaults.get(plan_key, 10))
+            else:
+                seat_count = int(seat_raw)
+        except (TypeError, ValueError):
+            return fail("seat_count must be an integer.", status_code=400, code="invalid_checkout_params")
+
+        usage_tier = (request.data.get("usage_tier") or "standard").strip()
+        try:
+            quote = compute_quote(plan_key=plan_key, seat_count=seat_count, usage_tier=usage_tier)
+        except ValueError as exc:
+            return fail(str(exc), status_code=400, code="invalid_checkout_params")
+
+        client_cents = request.data.get("monthly_total_cents")
+        if client_cents is not None:
+            try:
+                client_cents_int = int(client_cents)
+            except (TypeError, ValueError):
+                return fail("monthly_total_cents must be an integer.", status_code=400, code="invalid_checkout_params")
+            if client_cents_int != quote.monthly_total_cents:
+                return fail(
+                    "Quoted amount does not match server pricing; refresh and try again.",
+                    status_code=400,
+                    code="quote_mismatch",
+                )
+
         provider = get_billing_provider()
         session = provider.create_checkout_session(
             team=membership.team,
             plan_key=plan_key,
             success_url=success_url,
             cancel_url=cancel_url,
+            quote=quote,
         )
         return ok(
             {
                 "provider": provider.provider_name,
                 "checkout_url": session.checkout_url,
                 "external_checkout_id": session.external_checkout_id,
+                "quote": quote.as_dict(),
             },
             status_code=201,
         )

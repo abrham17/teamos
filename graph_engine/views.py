@@ -72,10 +72,14 @@ class GraphNodeView(APIView):
         for e in GraphEdge.objects.filter(to_page=page).select_related("from_page"):
             neighbors.append({"page_id": str(e.from_page_id), "title": e.from_page.title,
                                "slug": e.from_page.slug, "direction": "in", "type": e.edge_type})
+        text = re.sub(r"[#*`_\[\]()]", "", page.content or "")
+        content_excerpt = text[:900].strip()
         return ok({
             "id": str(page.id), "title": page.title, "slug": page.slug,
             "type": page.page_type, "summary": page.summary,
             "frontmatter": page.frontmatter, "neighbors": neighbors,
+            "source_url": page.source_url or "",
+            "content_excerpt": content_excerpt,
         })
 
 

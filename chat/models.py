@@ -31,6 +31,8 @@ class ChatMessage(models.Model):
     content = models.TextField()
     citations = models.JSONField(default=list, blank=True)
     # Citations format: [{"chunk_id": "uuid", "page_title": "title", "page_slug": "slug", "text_snippet": "...", "score": 0.9}]
+    metadata = models.JSONField(default=dict, blank=True)
+    # e.g. {"mode": "ask"|"agent", "tool_trace": [...]} for user/assistant agent turns
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -20,15 +20,29 @@ class IngestJob(models.Model):
         ("done", "Done"), ("failed", "Failed"),
     ]
     SOURCE_CHOICES = [
-        ("url", "URL"), ("pdf", "PDF"), ("docx", "DOCX"), ("markdown", "Markdown"), ("repo", "Repository"),
+        ("url", "URL"),
+        ("pdf", "PDF"),
+        ("docx", "DOCX"),
+        ("markdown", "Markdown"),
+        ("repo", "Repository"),
+        ("youtube", "YouTube"),
+        ("image", "Image (OCR)"),
+        ("code_zip", "Code zip"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="ingest_jobs")
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
-    source_type = models.CharField(max_length=20, choices=SOURCE_CHOICES)
+    source_type = models.CharField(max_length=32, choices=SOURCE_CHOICES)
     source_url = models.URLField(blank=True)
     source_filename = models.CharField(max_length=300, blank=True)
+    staging_file = models.FileField(
+        upload_to="ingest_staging/%Y/%m/",
+        blank=True,
+        null=True,
+        help_text="Temporary binary upload (PDF, DOCX, image, zip); deleted after extract.",
+    )
+    source_metadata = models.JSONField(default=dict, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     ingest_stage = models.CharField(max_length=30, choices=STAGE_CHOICES, default="queued")
     ingest_stage_detail = models.CharField(max_length=200, blank=True)
