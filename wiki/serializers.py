@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from ingest.models import WikiChangeSet
 from .models import WikiPage, PageTemplate
 
 
@@ -40,3 +41,31 @@ class PageTemplateSerializer(serializers.ModelSerializer):
     class Meta:
         model = PageTemplate
         fields = ["id", "name", "page_type", "default_content", "default_frontmatter", "is_builtin"]
+
+
+class WikiChangeSetSerializer(serializers.ModelSerializer):
+    job_id = serializers.UUIDField(source="job.id", read_only=True)
+    wiki_slug = serializers.SerializerMethodField()
+    baseline_content = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WikiChangeSet
+        fields = [
+            "id",
+            "job_id",
+            "status",
+            "proposed_content",
+            "diff_summary",
+            "wiki_slug",
+            "baseline_content",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_wiki_slug(self, obj):
+        wp = getattr(obj.job, "wiki_page", None)
+        return wp.slug if wp else None
+
+    def get_baseline_content(self, obj):
+        wp = getattr(obj.job, "wiki_page", None)
+        return (wp.content or "") if wp else ""

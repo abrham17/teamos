@@ -64,11 +64,23 @@ class WikiChangeSet(models.Model):
     """
     A 'Knowledge Pull Request'. Holds proposed changes for review.
     """
+
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_REJECTED, "Rejected"),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     job = models.OneToOneField(IngestJob, on_delete=models.CASCADE, related_name="changeset")
     proposed_content = models.TextField()  # The synthesized merge
-    diff_summary = models.JSONField(default=dict) # {"contradictions": [], "additions": []}
+    diff_summary = models.JSONField(default=dict)  # {"contradictions": [], "additions": []}
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class KnowledgeActivity(models.Model):

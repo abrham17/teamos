@@ -7,7 +7,7 @@ from rest_framework.test import APITestCase
 
 from accounts.models import Team, TeamMember, User
 from chat.models import ChatMessage, ChatSession, ChatTokenUsage
-from chat.views import _retrieve_wiki_citations
+from chat.views import _build_ask_system_prompt, _retrieve_wiki_citations
 from wiki.models import WikiPage
 
 
@@ -247,6 +247,23 @@ class WikiCitationAssemblyTests(APITestCase):
         citations, ctx = _retrieve_wiki_citations("team-1", "q")
         self.assertEqual(citations, [])
         self.assertEqual(ctx, "")
+
+    @patch("chat.views.vector_store.search_similar_pages")
+    def test_retrieve_search_failure_returns_empty(self, mock_search):
+        mock_search.side_effect = RuntimeError("qdrant down")
+        citations, ctx = _retrieve_wiki_citations("team-1", "q")
+        self.assertEqual(citations, [])
+        self.assertEqual(ctx, "")
+
+    def test_build_ask_prompt_empty_context_is_general_mode(self):
+        p = _build_ask_system_prompt("")
+        self.assertIn("No wiki excerpts", p)
+        self.assertNotIn("Answer based ONLY on the provided Wiki context", p)
+
+    def test_build_ask_prompt_with_context_is_rag_mode(self):
+        p = _build_ask_system_prompt("SOURCE: Foo\nCONTENT: bar")
+        self.assertIn("Answer based ONLY on the provided Wiki context", p)
+        self.assertIn("Foo", p)
 
 
 class ChatToolTests(APITestCase):
