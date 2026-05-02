@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getApiAuthHeaders } from "@/lib/api";
-import { buildChatCitationHref } from "@/lib/chatCitationLink";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { Send, Bot, User, FileText, Mic } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { Send, Bot, User, Mic } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { VoiceChatOverlay, type VoiceOverlayPhase } from "@/components/chat/VoiceChatOverlay";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
+import { ChatCitationList } from "@/components/chat/ChatCitationList";
+import { ChatModeSelect, type ChatMode } from "@/components/chat/ChatModeSelect";
+import { ChatAgentToolTimeline, type AgentToolStep } from "@/components/chat/ChatAgentToolTimeline";
 
 type ChatSession = { id: string; title: string };
 type Citation = {
@@ -19,8 +20,20 @@ type Citation = {
   chunk_id?: string;
   snippet?: string;
 };
-type ChatMessage = { id: string; role: "user" | "assistant"; content: string; citations?: Citation[] };
+type ChatMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  citations?: Citation[];
+  metadata?: Record<string, unknown>;
+  toolSteps?: AgentToolStep[];
+};
 type SessionDetailResponse = { messages?: ChatMessage[] };
+type ChatCapabilities = {
+  can_edit_wiki: boolean;
+  can_ingest: boolean;
+  agent_mode_available: boolean;
+};
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
@@ -29,9 +42,23 @@ function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
   return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null;
 }
 
+function agentStepsForMessage(m: ChatMessage): AgentToolStep[] {
+  if (m.toolSteps?.length) return m.toolSteps;
+  const tr = m.metadata?.tool_trace;
+  if (!Array.isArray(tr)) return [];
+  return tr.map((row: unknown) => {
+    const r = row as { name?: string; arguments?: string; result?: { ok?: boolean } };
+    return {
+      name: r.name ?? "",
+      arguments: r.arguments,
+      ok: r.result?.ok,
+      result: r.result,
+    };
+  });
+}
+
 export function ChatInterface() {
   const { currentTeamId } = useWikiStore();
-  const router = useRouter();
   const { error: toastError } = useToast();
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -48,9 +75,14 @@ export function ChatInterface() {
   const [voiceInterim, setVoiceInterim] = useState("");
   const [voiceListening, setVoiceListening] = useState(false);
 
+  const [chatMode, setChatMode] = useState<ChatMode>("ask");
+  const [chatCaps, setChatCaps] = useState<ChatCapabilities | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const voiceOpenRef = useRef(false);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsObjectUrlRef = useRef<string | null>(null);
 
   const speechSupported = typeof window !== "undefined" && Boolean(getSpeechRecognitionCtor());
 
@@ -92,6 +124,41 @@ export function ChatInterface() {
   }, [currentTeamId]);
 
   useEffect(() => {
+    if (!currentTeamId) return;
+    try {
+      const v = sessionStorage.getItem(`teamos-chat-mode-${currentTeamId}`);
+      if (v === "agent" || v === "ask") setChatMode(v);
+    } catch {
+      /* ignore */
+    }
+  }, [currentTeamId]);
+
+  useEffect(() => {
+    if (!currentTeamId) return;
+    try {
+      sessionStorage.setItem(`teamos-chat-mode-${currentTeamId}`, chatMode);
+    } catch {
+      /* ignore */
+    }
+  }, [currentTeamId, chatMode]);
+
+  useEffect(() => {
+    if (!currentTeamId) return;
+    let cancelled = false;
+    api
+      .get<ChatCapabilities>(`/chat/${currentTeamId}/capabilities/`)
+      .then((data) => {
+        if (!cancelled && data) setChatCaps(data);
+      })
+      .catch(() => {
+        if (!cancelled) setChatCaps(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTeamId]);
+
+  useEffect(() => {
     if (!currentTeamId || !activeSessionId) return;
     api
       .get<SessionDetailResponse>(`/chat/${currentTeamId}/sessions/${activeSessionId}/`)
@@ -105,29 +172,69 @@ export function ChatInterface() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isStreaming]);
 
-  const speak = useCallback((text: string) => {
-    if (!text.trim() || typeof window === "undefined") return;
-    try {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate = 1;
-      u.pitch = 1;
-      window.speechSynthesis.speak(u);
-    } catch {
-      /* ignore */
+  const stopTts = useCallback(() => {
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause();
+      ttsAudioRef.current.src = "";
+      ttsAudioRef.current = null;
+    }
+    if (ttsObjectUrlRef.current) {
+      URL.revokeObjectURL(ttsObjectUrlRef.current);
+      ttsObjectUrlRef.current = null;
     }
   }, []);
 
+  const speakWithTts = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || !currentTeamId) return;
+      stopTts();
+      try {
+        const auth = await getApiAuthHeaders();
+        const res = await fetch(`${API_BASE}/chat/${currentTeamId}/tts/`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...auth,
+          },
+          credentials: "include",
+          body: JSON.stringify({ text: trimmed, voice: "alloy" }),
+        });
+        if (!res.ok) {
+          toastError("Voice playback unavailable.");
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        ttsObjectUrlRef.current = url;
+        const audio = new Audio(url);
+        ttsAudioRef.current = audio;
+        audio.addEventListener("ended", stopTts);
+        audio.addEventListener("error", () => {
+          stopTts();
+          toastError("Could not play voice reply.");
+        });
+        await audio.play();
+      } catch {
+        stopTts();
+        toastError("Voice playback failed.");
+      }
+    },
+    [currentTeamId, stopTts, toastError],
+  );
+
   const sendUserMessage = useCallback(
-    async (userMsg: string, options?: { speakReply?: boolean }) => {
+    async (userMsg: string, options?: { speakReply?: boolean; mode?: ChatMode }) => {
       const trimmed = userMsg.trim();
       if (!trimmed || !currentTeamId || !activeSessionId || isStreaming) return;
+
+      const mode = options?.mode ?? chatMode;
 
       setIsStreaming(true);
       setStatus("Connecting...");
       setMessages((prev) => [
         ...prev,
-        { role: "user", content: trimmed, id: `u-${Date.now()}` },
+        { role: "user", content: trimmed, id: `u-${Date.now()}`, metadata: { mode } },
       ]);
 
       const auth = await getApiAuthHeaders();
@@ -137,6 +244,7 @@ export function ChatInterface() {
         content: "",
         citations: [],
         id: assistantId,
+        toolSteps: mode === "agent" ? [] : undefined,
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
@@ -150,13 +258,20 @@ export function ChatInterface() {
               ...auth,
             },
             credentials: "include",
-            body: JSON.stringify({ message: trimmed }),
+            body: JSON.stringify({ message: trimmed, mode }),
           },
         );
 
         if (!res.ok) {
-          const t = await res.text();
-          throw new Error(t || res.statusText);
+          const raw = await res.text();
+          let errText = raw || res.statusText;
+          try {
+            const j = JSON.parse(raw) as { error?: { message?: string } };
+            if (j?.error?.message) errText = j.error.message;
+          } catch {
+            /* keep raw */
+          }
+          throw new Error(errText || res.statusText);
         }
         if (!res.body) throw new Error("No body");
 
@@ -208,7 +323,56 @@ export function ChatInterface() {
                     next[next.length - 1] = { ...working };
                     return next;
                   });
+                } else if (currentEvent === "tool_call") {
+                  const name = String((data as { name?: string }).name ?? "");
+                  const arg = String((data as { arguments?: string }).arguments ?? "");
+                  const steps = [...(working.toolSteps ?? []), { name, arguments: arg }];
+                  working = { ...working, toolSteps: steps };
+                  setMessages((prev) => {
+                    const next = [...prev];
+                    next[next.length - 1] = { ...working };
+                    return next;
+                  });
+                } else if (currentEvent === "tool_result") {
+                  const name = String((data as { name?: string }).name ?? "");
+                  const ok = Boolean((data as { ok?: boolean }).ok);
+                  const result = (data as { result?: unknown }).result;
+                  const steps = [...(working.toolSteps ?? [])];
+                  let li = -1;
+                  for (let i = steps.length - 1; i >= 0; i--) {
+                    if (steps[i].name === name && steps[i].ok === undefined) {
+                      li = i;
+                      break;
+                    }
+                  }
+                  if (li >= 0) {
+                    steps[li] = { ...steps[li], ok, result };
+                  }
+                  working = { ...working, toolSteps: steps };
+                  setMessages((prev) => {
+                    const next = [...prev];
+                    next[next.length - 1] = { ...working };
+                    return next;
+                  });
                 } else if (currentEvent === "done") {
+                  const trace = (data as { tool_trace?: AgentToolStep[] }).tool_trace;
+                  if (trace && trace.length) {
+                    working = {
+                      ...working,
+                      toolSteps: trace.map((t) => ({
+                        name: t.name,
+                        arguments: (t as { arguments?: string }).arguments,
+                        ok: (t as { result?: { ok?: boolean } }).result?.ok,
+                        result: (t as { result?: unknown }).result,
+                      })),
+                      metadata: { ...(working.metadata ?? {}), tool_trace: trace },
+                    };
+                    setMessages((prev) => {
+                      const next = [...prev];
+                      next[next.length - 1] = { ...working };
+                      return next;
+                    });
+                  }
                   setIsStreaming(false);
                   setStatus("");
                   if (voiceOpenRef.current) {
@@ -220,7 +384,7 @@ export function ChatInterface() {
                     );
                   }
                   if (options?.speakReply && working.content) {
-                    speak(working.content);
+                    void speakWithTts(working.content);
                   }
                 } else if (currentEvent === "error") {
                   throw new Error(String((data as { detail?: string }).detail ?? "Stream error"));
@@ -247,7 +411,7 @@ export function ChatInterface() {
         setStatus("");
       }
     },
-    [activeSessionId, currentTeamId, isStreaming, speak, toastError],
+    [activeSessionId, chatMode, currentTeamId, isStreaming, speakWithTts, toastError],
   );
 
   const handleNewChat = async () => {
@@ -311,7 +475,7 @@ export function ChatInterface() {
         stopRecognition();
         setVoicePhase("thinking");
         setVoiceCaption("Searching your wiki…");
-        void sendUserMessage(q, { speakReply: true });
+        void sendUserMessage(q, { speakReply: true, mode: chatMode });
       }
     };
 
@@ -334,19 +498,27 @@ export function ChatInterface() {
       toastError("Could not start the microphone.");
       setVoiceListening(false);
     }
-  }, [sendUserMessage, stopRecognition, toastError]);
+  }, [chatMode, sendUserMessage, stopRecognition, toastError]);
 
-  const toggleVoiceMic = () => {
+  const toggleVoiceOrb = useCallback(() => {
     if (voiceListening) stopRecognition();
     else startRecognition();
-  };
+  }, [voiceListening, stopRecognition, startRecognition]);
+
+  const openVoiceOverlayAndListen = useCallback(() => {
+    setVoiceOpen(true);
+    setVoiceInterim("");
+    queueMicrotask(() => {
+      startRecognition();
+    });
+  }, [startRecognition]);
 
   useEffect(() => {
     return () => {
       stopRecognition();
-      if (typeof window !== "undefined") window.speechSynthesis.cancel();
+      stopTts();
     };
-  }, [stopRecognition]);
+  }, [stopRecognition, stopTts]);
 
   if (!currentTeamId) {
     return (
@@ -365,10 +537,10 @@ export function ChatInterface() {
         onClose={() => {
           setVoiceOpen(false);
           stopRecognition();
+          stopTts();
           setVoiceCaption("");
           setVoiceInterim("");
           setVoicePhase("idle");
-          if (typeof window !== "undefined") window.speechSynthesis.cancel();
         }}
         phase={voicePhase}
         caption={voiceCaption}
@@ -376,7 +548,7 @@ export function ChatInterface() {
         listening={voiceListening}
         speechSupported={speechSupported}
         micDisabled={isStreaming}
-        onToggleMic={toggleVoiceMic}
+        onOrbClick={toggleVoiceOrb}
       />
 
       {/* Sidebar */}
@@ -416,12 +588,8 @@ export function ChatInterface() {
         <div className="flex shrink-0 items-center justify-end gap-2 border-b border-[var(--border-subtle)] px-6 py-3">
           <button
             type="button"
-            onClick={() => {
-              setVoiceOpen(true);
-              setVoiceCaption("Tap the mic and ask your question.");
-              setVoicePhase("idle");
-            }}
-            className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            onClick={openVoiceOverlayAndListen}
+            className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-subtle)] hover:bg-[var(--bg-800)]"
           >
             <Mic className="h-4 w-4" />
             Voice chat
@@ -431,8 +599,8 @@ export function ChatInterface() {
         <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-6">
           {messages.length === 0 && (
             <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
-              <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-[var(--border-subtle)] bg-[var(--surface-1)] shadow-xl">
-                <Bot className="h-10 w-10 text-[var(--accent)]" />
+              <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-[var(--border-subtle)] bg-[var(--surface-1)]">
+                <Bot className="h-10 w-10 text-[var(--text-muted)]" />
               </div>
               <h2 className="mb-2 text-xl font-bold text-[var(--text-primary)]">Team Intelligence Chat</h2>
               <p className="max-w-sm text-[var(--text-muted)]">
@@ -454,16 +622,19 @@ export function ChatInterface() {
               className={`mx-auto flex w-full max-w-4xl gap-4 ${m.role === "user" ? "justify-end" : "justify-start"}`}
             >
               {m.role === "assistant" && (
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--surface-1)] shadow-sm">
-                  <Bot className="h-4 w-4 text-[var(--accent)]" />
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--surface-1)]">
+                  <Bot className="h-4 w-4 text-[var(--text-muted)]" />
                 </div>
               )}
 
               <div className={`flex max-w-[85%] flex-col gap-2 ${m.role === "user" ? "items-end" : "items-start"}`}>
+                {m.role === "assistant" && agentStepsForMessage(m).length > 0 ? (
+                  <ChatAgentToolTimeline steps={agentStepsForMessage(m)} />
+                ) : null}
                 <div
-                  className={`rounded-2xl p-4 text-[15px] leading-relaxed shadow-sm ${
+                  className={`rounded-2xl p-4 text-[15px] leading-relaxed ${
                     m.role === "user"
-                      ? "bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] font-medium text-[var(--bg-950)]"
+                      ? "border border-[var(--border-subtle)] bg-[var(--accent)] font-medium text-[var(--bg-950)]"
                       : "border border-[var(--border-subtle)] bg-[var(--surface-1)] text-[var(--text-primary)]"
                   }`}
                 >
@@ -474,31 +645,11 @@ export function ChatInterface() {
                   )}
                 </div>
 
-                {m.citations && m.citations.length > 0 && (
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    {m.citations.map((c: Citation, idx: number) => (
-                      <button
-                        type="button"
-                        key={idx}
-                        onClick={() => router.push(buildChatCitationHref(c))}
-                        className="group flex items-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-800)] px-3 py-1.5 text-xs text-[var(--text-muted)] transition-all hover:border-[var(--accent)] hover:text-[var(--accent)]"
-                        title={c.anchor_hint ? `Jump hint: ${c.anchor_hint}` : "Open source page"}
-                      >
-                        <FileText className="h-3 w-3" />
-                        <span>{c.page_title}</span>
-                        {c.confidence ? (
-                          <span className="ml-1 rounded-md bg-[var(--bg-950)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--accent)] opacity-70 group-hover:opacity-100">
-                            {Math.round(c.confidence * 100)}%
-                          </span>
-                        ) : null}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                {m.citations && m.citations.length > 0 ? <ChatCitationList citations={m.citations} /> : null}
               </div>
 
               {m.role === "user" && (
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-800)] shadow-sm">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-800)]">
                   <User className="h-4 w-4 text-[var(--text-muted)]" />
                 </div>
               )}
@@ -508,21 +659,21 @@ export function ChatInterface() {
 
           {isStreaming && (
             <div className="mx-auto flex w-full max-w-4xl justify-start gap-4">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--surface-1)] shadow-sm">
-                <Bot className="h-4 w-4 text-[var(--accent)]" />
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--surface-1)]">
+                <Bot className="h-4 w-4 text-[var(--text-muted)]" />
               </div>
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-1.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] px-4 py-3">
                   <span
-                    className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]"
+                    className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)]"
                     style={{ animation: "bounce-dot 1.4s infinite ease-in-out both" }}
                   />
                   <span
-                    className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]"
+                    className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)]"
                     style={{ animation: "bounce-dot 1.4s infinite ease-in-out both 0.2s" }}
                   />
                   <span
-                    className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]"
+                    className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)]"
                     style={{ animation: "bounce-dot 1.4s infinite ease-in-out both 0.4s" }}
                   />
                 </div>
@@ -538,10 +689,27 @@ export function ChatInterface() {
         </div>
 
         <div className="shrink-0 border-t border-[var(--border-subtle)] bg-[var(--bg-900)] p-6">
-          <div className="group relative mx-auto max-w-4xl">
-            <div className="pointer-events-none absolute inset-0 rounded-2xl bg-[var(--accent)] opacity-0 blur-xl transition-opacity group-focus-within:opacity-5" />
+          <div className="relative mx-auto flex max-w-4xl items-stretch gap-2">
+            <button
+              type="button"
+              onClick={openVoiceOverlayAndListen}
+              disabled={inputDisabled}
+              title="Voice chat"
+              aria-label="Open voice chat"
+              className="flex shrink-0 items-center justify-center rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] px-4 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-800)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Mic className="h-5 w-5" />
+            </button>
+            <ChatModeSelect
+              value={chatMode}
+              onChange={setChatMode}
+              capabilities={
+                chatCaps ?? { can_edit_wiki: false, can_ingest: false, agent_mode_available: false }
+              }
+            />
+            <div className="relative min-w-0 flex-1">
             <input
-              className="w-full rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] py-4 pl-5 pr-14 text-[var(--text-primary)] shadow-lg outline-none transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent-subtle)] disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] py-4 pl-5 pr-14 text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--border-subtle)] focus:ring-1 focus:ring-[var(--border-subtle)] disabled:cursor-not-allowed disabled:opacity-50"
               placeholder={
                 sessionReady ? "Ask TeamOS anything…" : "Preparing your chat…"
               }
@@ -560,10 +728,11 @@ export function ChatInterface() {
               type="button"
               onClick={() => void handleSend()}
               disabled={inputDisabled || !input.trim()}
-              className="absolute right-3 top-3 rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] p-2 text-[var(--bg-950)] shadow-md transition-all hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-30 disabled:grayscale"
+              className="absolute right-3 top-3 rounded-xl bg-[var(--accent)] p-2 text-[var(--bg-950)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
             >
               <Send className="h-5 w-5" />
             </button>
+            </div>
           </div>
         </div>
       </div>

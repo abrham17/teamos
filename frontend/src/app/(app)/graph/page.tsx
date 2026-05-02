@@ -11,7 +11,11 @@ import {
   type GraphNode,
   type GraphEdge,
 } from "@/components/graph/CytoscapeViewer";
-import { GraphHoverPreview, type GraphHoverPreviewResolved } from "@/components/graph/GraphHoverPreview";
+import {
+  GraphHoverPreview,
+  type GraphHoverPreviewResolved,
+  type GraphNodeHoverDetail,
+} from "@/components/graph/GraphHoverPreview";
 import { GraphToolbar }  from "@/components/graph/GraphToolbar";
 import { NodeInspector, type LinkedNode } from "@/components/graph/NodeInspector";
 import { GraphLegend }   from "@/components/graph/GraphLegend";
@@ -57,6 +61,8 @@ export default function GraphPage() {
   const [layout, setLayout]             = useState("cose");
   const [analyticsMode, setAnalyticsMode] = useState<"simple" | "advanced">("simple");
   const [hoverPayload, setHoverPayload] = useState<GraphHoverPayload | null>(null);
+  const [nodeHoverDetail, setNodeHoverDetail] = useState<GraphNodeHoverDetail | null>(null);
+  const [nodeHoverDetailLoading, setNodeHoverDetailLoading] = useState(false);
 
   const cyRef = useRef<CytoscapeRef>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -85,7 +91,48 @@ export default function GraphPage() {
 
   useEffect(() => {
     setHoverPayload(null);
+    setNodeHoverDetail(null);
+    setNodeHoverDetailLoading(false);
   }, [data]);
+
+  const hoveredNodeId =
+    hoverPayload?.kind === "node" ? hoverPayload.id : null;
+
+  /* Debounced rich hover for graph nodes (keyed by id only — not viewport bbox) */
+  useEffect(() => {
+    if (!currentTeamId || !hoveredNodeId) {
+      setNodeHoverDetail(null);
+      setNodeHoverDetailLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setNodeHoverDetail(null);
+    setNodeHoverDetailLoading(false);
+
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      setNodeHoverDetailLoading(true);
+      api
+        .get<GraphNodeHoverDetail>(`/graph/${currentTeamId}/nodes/${hoveredNodeId}/`)
+        .then((detail) => {
+          if (cancelled) return;
+          setNodeHoverDetail(detail);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setNodeHoverDetail(null);
+        })
+        .finally(() => {
+          if (cancelled) return;
+          setNodeHoverDetailLoading(false);
+        });
+    }, 200);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [currentTeamId, hoveredNodeId]);
 
   /* ── Graph chrome motion (toolbar, overlays, legend — not Cytoscape nodes) ── */
   useLayoutEffect(() => {
@@ -263,7 +310,13 @@ export default function GraphPage() {
               onNodeDoubleClick={setSelectedNodeId}
               onHoverChange={handleHoverChange}
             />
-            <GraphHoverPreview resolved={hoverResolved} />
+            <GraphHoverPreview
+              resolved={hoverResolved}
+              hoverPayload={hoverPayload}
+              containerRef={canvasWrapRef}
+              nodeHoverDetail={nodeHoverDetail}
+              nodeHoverDetailLoading={nodeHoverDetailLoading}
+            />
           </div>
         )}
 

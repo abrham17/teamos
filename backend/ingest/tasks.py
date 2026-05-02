@@ -203,7 +203,18 @@ def run_ingest_job(self, job_id: str, source_text: str = "", trace_id: str | Non
         job.ingest_stage_detail = "Job accepted by worker"
         job.error = ""
         job.save(update_fields=["status", "ingest_stage", "ingest_stage_detail", "error", "updated_at"])
-        run_pipeline(job, source_text=source_text or "", trace_id=trace_id)
+        try:
+            run_pipeline(job, source_text=source_text or "", trace_id=trace_id)
+        finally:
+            # Ensure staging binary is removed if pipeline exited early or errored before clear.
+            try:
+                job.refresh_from_db()
+                if job.staging_file:
+                    job.staging_file.delete(save=False)
+                    job.staging_file = None
+                    job.save(update_fields=["staging_file", "updated_at"])
+            except Exception:
+                logger.exception("ingest staging cleanup failed for job %s", job_id)
         job.status = "done"
         job.ingest_stage = "completed"
         job.ingest_stage_detail = "Ingestion completed successfully"

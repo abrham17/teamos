@@ -56,6 +56,13 @@ PLAN_LIMITS = {
         "seat_manage": 250,
         "token_consume": 5000000,
     },
+    "enterprise": {
+        "wiki_page_create": 20000,
+        "ingest_job_create": 50000,
+        "export_job_create": 20000,
+        "seat_manage": 2000,
+        "token_consume": 50000000,
+    },
 }
 
 

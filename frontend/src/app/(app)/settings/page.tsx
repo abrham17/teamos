@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useWikiStore } from "@/stores/useWikiStore";
 import { api } from "@/lib/api";
+import { fetchBillingQuote, startTeamCheckout } from "@/lib/billingCheckout";
 import {
   getPendingActionMessage,
   isConfirmActionDisabled,
@@ -49,10 +50,6 @@ interface MeResponse {
   email: string;
 }
 
-interface CheckoutSessionResponse {
-  checkout_url?: string;
-}
-
 function toErrorMessage(err: unknown, fallback: string): string {
   if (err instanceof Error && err.message) return err.message;
   return fallback;
@@ -72,6 +69,26 @@ export default function SettingsPage() {
   const [confirmationInput, setConfirmationInput] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
   const inviteEmailRef = useRef<HTMLInputElement | null>(null);
+  const [billingCheckoutPrefs, setBillingCheckoutPrefs] = useState<{
+    plan_key: "team" | "pro" | "enterprise";
+    seat_count: number;
+    usage_tier: "low" | "standard" | "high";
+  }>({ plan_key: "team", seat_count: 8, usage_tier: "standard" });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    const bp = sp.get("billing_plan");
+    const seats = sp.get("seats");
+    const usage = sp.get("usage");
+    setBillingCheckoutPrefs((prev) => {
+      let next = { ...prev };
+      if (bp === "team" || bp === "pro" || bp === "enterprise") next = { ...next, plan_key: bp };
+      if (seats && !Number.isNaN(Number(seats))) next = { ...next, seat_count: Math.max(1, Number(seats)) };
+      if (usage === "low" || usage === "standard" || usage === "high") next = { ...next, usage_tier: usage };
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (!currentTeamId) return;
@@ -199,14 +216,26 @@ export default function SettingsPage() {
 
   const handleUpgradePlan = async () => {
     if (!currentTeamId) return;
+    if (team?.my_role !== "owner") {
+      error("Only the team owner can start checkout.");
+      return;
+    }
     try {
       await api.post(`/analytics/${currentTeamId}/events/upgrade-clicked/`, {
         surface: "settings_team_profile",
       });
+      const quote = await fetchBillingQuote({
+        plan_key: billingCheckoutPrefs.plan_key,
+        seat_count: billingCheckoutPrefs.seat_count,
+        usage_tier: billingCheckoutPrefs.usage_tier,
+      });
       const successUrl = `${window.location.origin}/settings?billing=success`;
       const cancelUrl = `${window.location.origin}/settings?billing=cancel`;
-      const checkout = await api.post<CheckoutSessionResponse>(`/billing/${currentTeamId}/checkout-session/`, {
-        plan_key: "team",
+      const checkout = await startTeamCheckout(currentTeamId, {
+        plan_key: quote.plan_key,
+        seat_count: quote.seat_count,
+        usage_tier: quote.usage_tier,
+        monthly_total_cents: quote.monthly_total_cents,
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
@@ -292,13 +321,66 @@ export default function SettingsPage() {
                 <div className="text-xl font-semibold">{team?.name || 'Loading...'}</div>
               </div>
               <div className="flex items-center gap-3">
-                {team?.plan !== "pro" && (
-                  <button
-                    onClick={handleUpgradePlan}
-                    className="px-3 py-2 rounded border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)]/10 text-sm"
-                  >
-                    Upgrade plan
-                  </button>
+                {team?.my_role === "owner" && team?.plan !== "enterprise" && (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-[var(--text-dim)]">
+                      Plan
+                      <select
+                        value={billingCheckoutPrefs.plan_key}
+                        onChange={(e) =>
+                          setBillingCheckoutPrefs((p) => ({
+                            ...p,
+                            plan_key: e.target.value as "team" | "pro" | "enterprise",
+                          }))
+                        }
+                        className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-900)] px-2 py-1.5 text-xs text-[var(--text-primary)] capitalize"
+                      >
+                        <option value="team">Team</option>
+                        <option value="pro">Pro</option>
+                        <option value="enterprise">Enterprise</option>
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-[var(--text-dim)]">
+                      Seats
+                      <input
+                        type="number"
+                        min={1}
+                        max={250}
+                        value={billingCheckoutPrefs.seat_count}
+                        onChange={(e) =>
+                          setBillingCheckoutPrefs((p) => ({
+                            ...p,
+                            seat_count: Math.max(1, Math.min(250, Number(e.target.value) || 1)),
+                          }))
+                        }
+                        className="w-16 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-900)] px-2 py-1.5 text-xs text-[var(--text-primary)]"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-[var(--text-dim)]">
+                      Usage
+                      <select
+                        value={billingCheckoutPrefs.usage_tier}
+                        onChange={(e) =>
+                          setBillingCheckoutPrefs((p) => ({
+                            ...p,
+                            usage_tier: e.target.value as "low" | "standard" | "high",
+                          }))
+                        }
+                        className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-900)] px-2 py-1.5 text-xs text-[var(--text-primary)]"
+                      >
+                        <option value="low">Light</option>
+                        <option value="standard">Standard</option>
+                        <option value="high">Heavy</option>
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleUpgradePlan}
+                      className="px-3 py-2 rounded border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)]/10 text-sm"
+                    >
+                      Upgrade plan
+                    </button>
+                  </div>
                 )}
                 <div>
                 <div className="text-[var(--text-muted)] text-sm mb-1">Current Plan</div>

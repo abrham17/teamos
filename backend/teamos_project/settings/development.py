@@ -36,3 +36,15 @@ CELERY_TASK_EAGER_PROPAGATES = True
 # Production uses OpenAI only (see production.py). Override with LLM_BACKEND=openai if needed.
 LLM_BACKEND = os.environ.get("LLM_BACKEND", "groq")
 
+OPENAI_EMBEDDING_MODEL = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+_explicit_det = os.environ.get("USE_DETERMINISTIC_EMBEDDINGS")
+if _explicit_det is not None and str(_explicit_det).strip() != "":
+    USE_DETERMINISTIC_EMBEDDINGS = str(_explicit_det).lower() in ("1", "true", "yes")
+else:
+    # Free dev embeddings: deterministic vectors unless an OpenAI key is present.
+    USE_DETERMINISTIC_EMBEDDINGS = not bool((OPENAI_API_KEY or "").strip())
+
+# Tighter RAG budget in dev (override via env).
+CHAT_RAG_MAX_CONTEXT_CHARS = int(os.environ.get("CHAT_RAG_MAX_CONTEXT_CHARS", "5000"))
+CHAT_RAG_RESULT_LIMIT = int(os.environ.get("CHAT_RAG_RESULT_LIMIT", "10"))
+

@@ -1,5 +1,11 @@
 # teamos
 
+## Run the stack
+
+For Postgres/Redis/Qdrant/Daphne/Celery, environment variables, and dev vs production behavior (Groq, deterministic embeddings, wiki agent), see [docs/LOCAL_AND_DOCKER.md](docs/LOCAL_AND_DOCKER.md).
+
+For turning off dev-only LLM/embeddings behavior in production (and what not to delete blindly), see [docs/PRODUCTION_DEV_ONLY_STRIPPING.md](docs/PRODUCTION_DEV_ONLY_STRIPPING.md).
+
 ## Docs Contract Validation
 
 Run the docs contract checker:

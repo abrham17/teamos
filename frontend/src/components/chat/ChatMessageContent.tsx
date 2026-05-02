@@ -151,7 +151,7 @@ const mdComponents: Components = {
   a: ({ href, children }) => (
     <a
       href={href}
-      className="font-medium text-[var(--accent)] underline decoration-[var(--accent)]/40 underline-offset-2 hover:decoration-[var(--accent)]"
+      className="font-medium text-[var(--text-secondary)] underline decoration-[var(--border-subtle)] underline-offset-2 hover:text-[var(--text-primary)] hover:decoration-[var(--text-dim)]"
       target="_blank"
       rel="noopener noreferrer"
     >
@@ -159,7 +159,7 @@ const mdComponents: Components = {
     </a>
   ),
   blockquote: ({ children }) => (
-    <blockquote className="my-3 border-l-2 border-[var(--accent)]/60 pl-3 text-[var(--text-muted)]">
+    <blockquote className="my-3 border-l-2 border-[var(--border-subtle)] pl-3 text-[var(--text-muted)]">
       {children}
     </blockquote>
   ),
@@ -210,7 +210,7 @@ export function ChatMessageContent({ content, streaming }: ChatMessageContentPro
         if (inline) {
           return (
             <code
-              className="rounded bg-[var(--bg-800)] px-1.5 py-0.5 font-mono text-[13px] text-[var(--accent)]"
+              className="rounded bg-[var(--bg-800)] px-1.5 py-0.5 font-mono text-[13px] text-[var(--text-secondary)]"
               {...rest}
             >
               {children}

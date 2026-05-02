@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 from accounts.models import Team, User
@@ -13,14 +13,36 @@ from types import SimpleNamespace
 
 from openai import OpenAIError
 
+from ingest.extractors import pdf_text, url_fetch, youtube_text
+from ingest.extractors.dispatch import extract_plain_text
 from ingest.pipeline import _derive_title, run_pipeline
 from ingest.tasks import infer_ai_edges, run_ingest_job, wire_page_graph
 from ingest.vectors import VectorStore
 from teamos_project.dead_letter import record_dead_letter
+from teamos_project.llm_env import production_llm_backend_from_env
+
+
+class ProductionLlmBackendEnvTests(SimpleTestCase):
+    def test_forces_openai_by_default(self):
+        self.assertEqual(production_llm_backend_from_env({}), "openai")
+        self.assertEqual(
+            production_llm_backend_from_env({"LLM_BACKEND": "groq"}),
+            "openai",
+        )
+
+    def test_escape_hatch_allows_groq(self):
+        env = {"ALLOW_NON_OPENAI_LLM_IN_PRODUCTION": "1", "LLM_BACKEND": "groq"}
+        self.assertEqual(production_llm_backend_from_env(env), "groq")
+
+    def test_escape_hatch_invalid_backend_becomes_openai(self):
+        env = {"ALLOW_NON_OPENAI_LLM_IN_PRODUCTION": "1", "LLM_BACKEND": "mistral"}
+        self.assertEqual(production_llm_backend_from_env(env), "openai")
+
 
 class VectorStoreEmbeddingFallbackTests(TestCase):
     """_get_embedding uses deterministic vectors when OpenAI is missing or errors."""
 
+    @override_settings(USE_DETERMINISTIC_EMBEDDINGS=False, OPENAI_EMBEDDING_DIMENSIONS=1536)
     def test_no_openai_uses_mock_shape(self):
         vs = VectorStore.__new__(VectorStore)
         vs._embed_client = None
@@ -28,6 +50,7 @@ class VectorStoreEmbeddingFallbackTests(TestCase):
         self.assertEqual(len(emb), 1536)
         self.assertAlmostEqual(sum(x * x for x in emb), 1.0, places=5)
 
+    @override_settings(USE_DETERMINISTIC_EMBEDDINGS=False, OPENAI_EMBEDDING_DIMENSIONS=1536)
     def test_openai_error_falls_back_to_same_mock_as_no_key(self):
         vs_fail = VectorStore.__new__(VectorStore)
         vs_fail._embed_client = MagicMock()
@@ -44,6 +67,32 @@ class VectorStoreEmbeddingFallbackTests(TestCase):
             VectorStore._get_embedding(vs_no, text),
         )
 
+    @override_settings(
+        USE_DETERMINISTIC_EMBEDDINGS=False,
+        OPENAI_EMBEDDING_MODEL="custom-embedding-model-for-test",
+        OPENAI_EMBEDDING_DIMENSIONS=1536,
+    )
+    def test_openai_embedding_uses_model_from_settings(self):
+        vs = VectorStore.__new__(VectorStore)
+        mock_emb = MagicMock()
+        mock_emb.embedding = [0.1] * 1536
+        vs._embed_client = MagicMock()
+        vs._embed_client.embeddings.create.return_value = MagicMock(data=[mock_emb])
+        VectorStore._get_embedding(vs, "hello world")
+        vs._embed_client.embeddings.create.assert_called_once()
+        self.assertEqual(
+            vs._embed_client.embeddings.create.call_args.kwargs["model"],
+            "custom-embedding-model-for-test",
+        )
+
+    @override_settings(USE_DETERMINISTIC_EMBEDDINGS=True, OPENAI_EMBEDDING_DIMENSIONS=1536)
+    def test_deterministic_short_circuits_without_openai_call(self):
+        vs = VectorStore.__new__(VectorStore)
+        vs._embed_client = MagicMock()
+        emb = VectorStore._get_embedding(vs, "forced local")
+        vs._embed_client.embeddings.create.assert_not_called()
+        self.assertEqual(len(emb), 1536)
+
 
 class DeriveTitleTests(TestCase):
     def test_h1_becomes_title(self):
@@ -56,6 +105,72 @@ class DeriveTitleTests(TestCase):
         t = _derive_title(job, "no heading here")
         self.assertEqual(t, "release notes")
 
+    def test_youtube_title_from_oembed_line(self):
+        job = SimpleNamespace(
+            source_type="youtube",
+            source_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            source_filename="",
+        )
+        t = _derive_title(job, "Title: Never Gonna Give You Up\n\nDescription here")
+        self.assertEqual(t, "Never Gonna Give You Up")
+
+
+class YoutubeVideoIdTests(SimpleTestCase):
+    def test_parse_watch_url(self):
+        self.assertEqual(
+            youtube_text.youtube_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+            "dQw4w9WgXcQ",
+        )
+
+    def test_parse_short_url(self):
+        self.assertEqual(
+            youtube_text.youtube_video_id("https://youtu.be/dQw4w9WgXcQ"),
+            "dQw4w9WgXcQ",
+        )
+
+
+class UrlSsrFTests(SimpleTestCase):
+    def test_blocks_loopback_hostname(self):
+        with self.assertRaises(ValueError):
+            url_fetch._assert_url_safe("http://127.0.0.1:8080/internal")
+
+
+class PdfExtractTests(SimpleTestCase):
+    def test_extract_pdf_minimal(self):
+        try:
+            from io import BytesIO
+
+            from pypdf import PdfWriter
+        except ImportError:
+            self.skipTest("pypdf not installed")
+        writer = PdfWriter()
+        writer.add_blank_page(width=72, height=72)
+        buf = BytesIO()
+        writer.write(buf)
+        text = pdf_text.extract_pdf_text(buf.getvalue())
+        self.assertIsInstance(text, str)
+
+
+class ExtractDispatchTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="ex-user",
+            email="ex@example.com",
+            password="x",
+        )
+        self.team = Team.objects.create(name="Ex Team", slug="ex-team", created_by=self.user)
+
+    def test_markdown_uses_passed_source_text(self):
+        job = IngestJob.objects.create(
+            team=self.team,
+            created_by=self.user,
+            source_type="markdown",
+            source_filename="a.md",
+            auto_approve=False,
+        )
+        out = extract_plain_text(job, source_text="# Hello\nbody")
+        self.assertIn("Hello", out)
+
 
 class IngestionPipelineTest(TestCase):
     def setUp(self):
@@ -67,11 +182,13 @@ class IngestionPipelineTest(TestCase):
         self.team = Team.objects.create(name="Test Team", slug="test-team", created_by=self.user)
 
     @patch("ingest.tasks.wire_page_graph.delay")
+    @patch("wiki.services.reindex.vector_store")
     @patch("ingest.pipeline.vector_store")
-    def test_url_ingestion_materialization(self, mock_vector_store, _mock_wire_delay):
+    def test_url_ingestion_materialization(self, mock_pipeline_vector_store, mock_reindex_vector_store, _mock_wire_delay):
         """Creates a page and chunks; Qdrant and graph wiring are mocked (no live vector DB)."""
-        mock_vector_store.ensure_collection.return_value = "team_test"
-        mock_vector_store.upsert_chunks.return_value = None
+        for mock_vector_store in (mock_pipeline_vector_store, mock_reindex_vector_store):
+            mock_vector_store.ensure_collection.return_value = "team_test"
+            mock_vector_store.upsert_chunks.return_value = None
 
         job = IngestJob.objects.create(
             team=self.team,
@@ -98,7 +215,9 @@ class IngestionPipelineTest(TestCase):
         self.assertEqual(job.status, "done")
         self.assertEqual(job.chunk_count, chunks.count())
 
-    def test_repo_ingestion_path_mock(self):
+    @patch("ingest.pipeline.vector_store.search_similar_pages", return_value=[])
+    @patch("ingest.extractors.dispatch.repo.fetch_repo_text", return_value="mocked repo content")
+    def test_repo_ingestion_path_mock(self, _mock_repo_text, _mock_search):
         """Verifies the repo ingestion path handles source_type correctly."""
         job = IngestJob.objects.create(
             team=self.team,
@@ -107,13 +226,11 @@ class IngestionPipelineTest(TestCase):
             source_url="https://github.com/example/repo",
             auto_approve=False
         )
-        
-        # Mocking the text extraction to avoid actual git clone in tests
-        run_pipeline(job, source_text="mocked repo content")
+
+        run_pipeline(job, source_text="ignored for repo type")
         
         job.refresh_from_db()
-        # Should be 'pending' because auto_approve=False
-        self.assertEqual(job.status, "pending")
+        self.assertEqual(job.status, "review_required")
         self.assertEqual(job.raw_data, "mocked repo content")
         
         # Verify no wiki page created yet
@@ -154,6 +271,18 @@ class IngestApiTests(APITestCase):
         self.assertEqual(res.data["data"]["ingest_stage"], "queued")
         mocked_delay.assert_called_once()
         self.assertIn("trace_id", mocked_delay.call_args.kwargs)
+
+    @patch("ingest.views.run_ingest_job.delay")
+    def test_youtube_url_sets_source_type(self, _mock_delay):
+        self.client.force_authenticate(user=self.editor)
+        url = f"/api/ingest/{self.team.id}/url/"
+        res = self.client.post(
+            url,
+            {"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data["data"]["source_type"], "youtube")
 
     def test_url_ingest_requires_url(self):
         self.client.force_authenticate(user=self.editor)
@@ -199,6 +328,15 @@ class IngestApiTests(APITestCase):
         self.assertFalse(res.data["success"])
         self.assertEqual(res.data["error"]["code"], "file_required")
 
+    @patch("ingest.views.run_ingest_job.delay")
+    def test_unsupported_file_type_rejected(self, _mock_delay):
+        self.client.force_authenticate(user=self.editor)
+        url = f"/api/ingest/{self.team.id}/file/"
+        upload = SimpleUploadedFile("data.bin", b"\x00\x01\x02", content_type="application/octet-stream")
+        res = self.client.post(url, {"file": upload})
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res.data["error"]["code"], "unsupported_file_type")
+
     def test_viewer_cannot_create_ingest_jobs(self):
         self.client.force_authenticate(user=self.viewer)
         url = f"/api/ingest/{self.team.id}/url/"
@@ -224,20 +362,14 @@ class IngestApiTests(APITestCase):
     def test_free_plan_blocks_url_ingest_when_limit_reached(self, mocked_delay):
         self.team.plan = "free"
         self.team.save(update_fields=["plan"])
-        IngestJob.objects.create(
-            team=self.team,
-            created_by=self.owner,
-            source_type="url",
-            source_url="https://example.com/1",
-            status="done",
-        )
-        IngestJob.objects.create(
-            team=self.team,
-            created_by=self.owner,
-            source_type="url",
-            source_url="https://example.com/2",
-            status="done",
-        )
+        for i in range(10):
+            IngestJob.objects.create(
+                team=self.team,
+                created_by=self.owner,
+                source_type="url",
+                source_url=f"https://example.com/{i}",
+                status="done",
+            )
         self.client.force_authenticate(user=self.editor)
         url = f"/api/ingest/{self.team.id}/url/"
         res = self.client.post(url, {"url": "https://example.com/3"}, format="json")

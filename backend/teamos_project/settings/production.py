@@ -1,6 +1,12 @@
 from .base import *
+import logging
 import os
+
 import dj_database_url
+
+from teamos_project.llm_env import production_llm_backend_from_env
+
+logger = logging.getLogger(__name__)
 
 DEBUG = False
 
@@ -58,5 +64,13 @@ QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
 # Groq / OpenAI API Keys
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-# Production: OpenAI for chat, ingest LLM, and embeddings (override only if you know what you are doing).
-LLM_BACKEND = os.environ.get("LLM_BACKEND", "openai")
+# Production: force OpenAI for LLM unless ALLOW_NON_OPENAI_LLM_IN_PRODUCTION=1.
+LLM_BACKEND = production_llm_backend_from_env(os.environ)
+USE_DETERMINISTIC_EMBEDDINGS = False
+
+# Larger assembled RAG context for production (override via env).
+CHAT_RAG_MAX_CONTEXT_CHARS = int(os.environ.get("CHAT_RAG_MAX_CONTEXT_CHARS", "100000"))
+CHAT_RAG_RESULT_LIMIT = int(os.environ.get("CHAT_RAG_RESULT_LIMIT", "30"))
+
+if not QDRANT_URL:
+    logger.critical("QDRANT_URL is not set; vector search and ingest will fail until configured.")

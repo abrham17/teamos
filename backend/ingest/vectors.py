@@ -1,10 +1,13 @@
 import hashlib
 import logging
 import random
+
 from django.conf import settings
+from openai import OpenAI, OpenAIError
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
-from openai import OpenAI, OpenAIError
+
+from teamos_project.llm_config import effective_embedding_dimensions, embedding_model_name
 
 logger = logging.getLogger(__name__)
 
@@ -14,8 +17,9 @@ class VectorStore:
     Qdrant + OpenAI-compatible SDK.
 
     - ``LLM_BACKEND=groq`` (development): chat completions go to Groq; embeddings use
-      ``OPENAI_API_KEY`` if set, otherwise deterministic local vectors.
-    - ``LLM_BACKEND=openai`` (production): one OpenAI client for chat + embeddings when key set.
+      ``OPENAI_API_KEY`` when configured and ``USE_DETERMINISTIC_EMBEDDINGS`` is false,
+      otherwise deterministic local vectors.
+    - ``LLM_BACKEND=openai`` (production): OpenAI client for chat + embeddings when key set.
     """
 
     def __init__(self):
@@ -58,13 +62,20 @@ class VectorStore:
             return [0.0] * dim
         return [x / mag for x in vec]
 
-    def _get_embedding(self, text: str, model: str = "text-embedding-3-small"):
+    def _get_embedding(self, text: str, model: str | None = None):
+        dim = effective_embedding_dimensions()
+        if getattr(settings, "USE_DETERMINISTIC_EMBEDDINGS", False):
+            return self._mock_embedding(text, dim=dim)
+
+        if model is None:
+            model = embedding_model_name()
+
         embedder = self._embed_client
         if not embedder:
             logger.warning(
                 "No OpenAI embedding client (set OPENAI_API_KEY for vectors, or use deterministic fallback)."
             )
-            return self._mock_embedding(text)
+            return self._mock_embedding(text, dim=dim)
 
         try:
             response = embedder.embeddings.create(
@@ -78,18 +89,20 @@ class VectorStore:
                 type(exc).__name__,
                 exc,
             )
-            return self._mock_embedding(text)
+            return self._mock_embedding(text, dim=dim)
 
-    def ensure_collection(self, team_id: str, vector_size: int = 1536):
+    def ensure_collection(self, team_id: str, vector_size: int | None = None):
+        if vector_size is None:
+            vector_size = effective_embedding_dimensions()
         collection_name = f"team_{team_id}"
         collections = self.qdrant.get_collections().collections
         if not any(c.name == collection_name for c in collections):
-            logger.info(f"Creating Qdrant collection: {collection_name}")
+            logger.info("Creating Qdrant collection: %s", collection_name)
             self.qdrant.create_collection(
                 collection_name=collection_name,
                 vectors_config=rest.VectorParams(
                     size=vector_size,
-                    distance=rest.Distance.COSINE
+                    distance=rest.Distance.COSINE,
                 ),
             )
         return collection_name
@@ -100,7 +113,7 @@ class VectorStore:
         """
         collection_name = self.ensure_collection(str(team_id))
         points = []
-        
+
         for chunk in chunks_data:
             vector = self._get_embedding(chunk["content"])
             points.append(
@@ -112,14 +125,14 @@ class VectorStore:
                         "page_title": chunk["title"],
                         "chunk_index": chunk["index"],
                         "content": chunk["content"],
-                        "team_id": str(team_id)
-                    }
+                        "team_id": str(team_id),
+                    },
                 )
             )
-        
+
         self.qdrant.upsert(
             collection_name=collection_name,
-            points=points
+            points=points,
         )
 
     def search_similar_pages(self, team_id: str, query_text: str, limit: int = 5):

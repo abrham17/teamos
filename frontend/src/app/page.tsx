@@ -30,18 +30,25 @@ export default function Home() {
             description="Ask questions and get answers linked back to exact team sources."
           />
         </div>
+      </div>
 
-        <div className="mt-10 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-6">
-          <div className="flex items-center gap-2 text-[var(--text-primary)] font-medium">
+      <section
+        className="w-full shrink-0 border-y border-[var(--border-subtle)] bg-[var(--surface-1)]/50 py-12 sm:py-16"
+        aria-labelledby="home-experience-heading"
+      >
+        <div className="mx-auto w-full max-w-6xl px-4 sm:px-6">
+          <div className="flex items-center gap-2 text-[var(--text-primary)] font-medium" id="home-experience-heading">
             <GitBranch className="w-4 h-4 text-[var(--accent)]" /> How users experience TeamOS
           </div>
-          <p className="mt-3 text-sm text-[var(--text-muted)] leading-relaxed">
+          <p className="mt-4 max-w-none text-sm leading-relaxed text-[var(--text-muted)] sm:text-base">
             Users typically start by creating a team and inviting members, then import docs or URLs into the knowledge base.
             TeamOS organizes this into wiki pages and a graph. From there, anyone in the workspace can ask questions in chat and
             get grounded answers with citations. The result is shared memory that survives handoffs, onboarding, and fast-moving projects.
           </p>
         </div>
+      </section>
 
+      <div className="mx-auto w-full max-w-6xl shrink-0 px-4 py-10 sm:px-6">
         <HomePricing />
       </div>
     </main>

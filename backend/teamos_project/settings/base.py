@@ -203,9 +203,41 @@ LLM_BACKEND = os.environ.get("LLM_BACKEND", "openai")
 GROQ_API_BASE = os.environ.get("GROQ_API_BASE", "https://api.groq.com/openai/v1")
 GROQ_CHAT_MODEL = os.environ.get("GROQ_CHAT_MODEL", "llama-3.1-8b-instant")
 OPENAI_CHAT_MODEL = os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o")
+OPENAI_EMBEDDING_MODEL = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+# When true, skip OpenAI embedding API and use deterministic local vectors (see ingest.vectors).
+USE_DETERMINISTIC_EMBEDDINGS = os.environ.get("USE_DETERMINISTIC_EMBEDDINGS", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+# Optional override for Qdrant vector size (must match embedding model).
+OPENAI_EMBEDDING_DIMENSIONS = os.environ.get("OPENAI_EMBEDDING_DIMENSIONS") or None
+if OPENAI_EMBEDDING_DIMENSIONS is not None:
+    try:
+        OPENAI_EMBEDDING_DIMENSIONS = int(OPENAI_EMBEDDING_DIMENSIONS)
+    except ValueError:
+        OPENAI_EMBEDDING_DIMENSIONS = None
+# Assembled wiki context for chat RAG (character budget; drop lowest-ranked chunks first).
+CHAT_RAG_MAX_CONTEXT_CHARS = int(os.environ.get("CHAT_RAG_MAX_CONTEXT_CHARS", "5000"))
+CHAT_RAG_RESULT_LIMIT = int(os.environ.get("CHAT_RAG_RESULT_LIMIT", "10"))
+# Chat TTS (OpenAI audio/speech); requires OPENAI_API_KEY even when LLM_BACKEND=groq.
+OPENAI_TTS_MODEL = os.environ.get("OPENAI_TTS_MODEL", "tts-1")
+OPENAI_TTS_DEFAULT_VOICE = os.environ.get("OPENAI_TTS_DEFAULT_VOICE", "alloy")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
+
+# --- Ingest extractors (OSS; limits overridable via env) ---
+INGEST_MAX_URL_BYTES = int(os.environ.get("INGEST_MAX_URL_BYTES", str(5 * 1024 * 1024)))
+INGEST_MAX_UPLOAD_BYTES = int(os.environ.get("INGEST_MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
+INGEST_MAX_REPO_OUTPUT_CHARS = int(os.environ.get("INGEST_MAX_REPO_OUTPUT_CHARS", str(2_000_000)))
+INGEST_MAX_REPO_FILE_BYTES = int(os.environ.get("INGEST_MAX_REPO_FILE_BYTES", str(512 * 1024)))
+INGEST_GIT_CLONE_TIMEOUT_SEC = int(os.environ.get("INGEST_GIT_CLONE_TIMEOUT_SEC", "120"))
+INGEST_URL_FETCH_TIMEOUT_SEC = int(os.environ.get("INGEST_URL_FETCH_TIMEOUT_SEC", "25"))
+INGEST_MAX_ZIP_MEMBERS = int(os.environ.get("INGEST_MAX_ZIP_MEMBERS", "5000"))
+INGEST_MAX_ZIP_UNCOMPRESSED_BYTES = int(
+    os.environ.get("INGEST_MAX_ZIP_UNCOMPRESSED_BYTES", str(20 * 1024 * 1024))
+)
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@teamos.local")
 CLERK_ISSUER = env_str("CLERK_ISSUER", "")
@@ -223,8 +255,8 @@ PLAN_TIERS = {
     "free": {
         "embed_model": "nomic-embed-text",
         "embed_provider": "local",
-        "chunk_size": 300,
-        "chunk_overlap": 30,
+        "chunk_size": 1200,
+        "chunk_overlap": 150,
         "chunking_strategy": "character",
         "retrieve_k": 5,
         "rerank_k": 3,
@@ -237,8 +269,8 @@ PLAN_TIERS = {
     "team": {
         "embed_model": "text-embedding-3-small",
         "embed_provider": "openai",
-        "chunk_size": 512,
-        "chunk_overlap": 64,
+        "chunk_size": 2000,
+        "chunk_overlap": 200,
         "chunking_strategy": "sentence",
         "retrieve_k": 20,
         "rerank_k": 8,
@@ -251,8 +283,8 @@ PLAN_TIERS = {
     "pro": {
         "embed_model": "text-embedding-3-large",
         "embed_provider": "openai",
-        "chunk_size": 1024,
-        "chunk_overlap": 128,
+        "chunk_size": 3500,
+        "chunk_overlap": 350,
         "chunking_strategy": "semantic",
         "retrieve_k": 50,
         "rerank_k": 12,

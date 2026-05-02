@@ -1,13 +1,32 @@
+from urllib.parse import urlparse
+
+from django.core.files.base import ContentFile
+from rest_framework import permissions, status
 from rest_framework.views import APIView
-from rest_framework import status, permissions
-from .models import IngestJob
-from .serializers import IngestJobSerializer
+
 from accounts.models import Team
-from accounts.permissions import IsTeamMember, CanIngest
-from .tasks import run_ingest_job
-from teamos_project.api_response import ok, fail
+from accounts.permissions import CanIngest, IsTeamMember
+from ingest.extractors.limits import max_upload_bytes
+from ingest.models import IngestJob
+from ingest.serializers import IngestJobSerializer
+from ingest.tasks import run_ingest_job
+from teamos_project.api_response import fail, ok
 from teamos_project.entitlements import check_quota
 from teamos_project.trace import get_request_trace_id
+
+_IMAGE_EXTENSIONS = frozenset(
+    {"png", "jpg", "jpeg", "webp", "gif", "tif", "tiff", "bmp"}
+)
+_TEXT_EXTENSIONS = frozenset({"md", "markdown", "txt"})
+
+
+def _is_youtube_url(url: str) -> bool:
+    try:
+        host = (urlparse(url.strip()).hostname or "").lower()
+    except Exception:
+        return False
+    return host.endswith("youtube.com") or host in ("youtu.be", "m.youtube.com", "www.youtu.be")
+
 
 class IngestJobListView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsTeamMember]
@@ -20,6 +39,7 @@ class IngestJobListView(APIView):
         jobs = IngestJob.objects.filter(team=team).order_by("-created_at")[:10]
         serializer = IngestJobSerializer(jobs, many=True)
         return ok(serializer.data)
+
 
 class UrlIngestView(APIView):
     permission_classes = [permissions.IsAuthenticated, CanIngest]
@@ -40,11 +60,12 @@ class UrlIngestView(APIView):
         url = request.data.get("url")
         if not url:
             return fail("URL is required.", status_code=status.HTTP_400_BAD_REQUEST, code="url_required")
-        
+
+        source_type = "youtube" if _is_youtube_url(url) else "url"
         job = IngestJob.objects.create(
             team=team,
             created_by=request.user,
-            source_type="url",
+            source_type=source_type,
             source_url=url,
             status="pending",
             ingest_stage="queued",
@@ -54,6 +75,7 @@ class UrlIngestView(APIView):
         run_ingest_job.delay(str(job.id), trace_id=trace_id)
 
         return ok(IngestJobSerializer(job).data, status_code=status.HTTP_201_CREATED)
+
 
 class FileIngestView(APIView):
     permission_classes = [permissions.IsAuthenticated, CanIngest]
@@ -77,10 +99,6 @@ class FileIngestView(APIView):
 
         filename = file_obj.name or ""
         extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-        source_type = "markdown"
-        if extension in ("pdf", "docx", "md", "markdown"):
-            source_type = extension if extension in ("pdf", "docx") else "markdown"
-
         raw_bytes = file_obj.read()
         if not raw_bytes:
             return fail(
@@ -88,25 +106,84 @@ class FileIngestView(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 code="empty_file_upload",
             )
-        source_text = raw_bytes.decode("utf-8", errors="ignore").strip()
-        if not source_text:
+        max_b = max_upload_bytes()
+        if len(raw_bytes) > max_b:
             return fail(
-                "Could not extract text from uploaded file.",
+                f"File exceeds maximum size ({max_b // (1024 * 1024)} MiB).",
                 status_code=status.HTTP_400_BAD_REQUEST,
-                code="file_text_extraction_failed",
+                code="file_too_large",
             )
 
-        job = IngestJob.objects.create(
-            team=team,
-            created_by=request.user,
-            source_type=source_type,
-            source_filename=filename,
-            status="pending",
-            ingest_stage="queued",
-            ingest_stage_detail="Queued for processing",
+        if extension in ("pdf", "docx"):
+            source_type = extension
+            job = IngestJob.objects.create(
+                team=team,
+                created_by=request.user,
+                source_type=source_type,
+                source_filename=filename,
+                status="pending",
+                ingest_stage="queued",
+                ingest_stage_detail="Queued for processing",
+            )
+            job.staging_file.save(filename, ContentFile(raw_bytes), save=True)
+            trace_id = get_request_trace_id(request)
+            run_ingest_job.delay(str(job.id), "", trace_id=trace_id)
+            return ok(IngestJobSerializer(job).data, status_code=status.HTTP_201_CREATED)
+
+        if extension == "zip":
+            job = IngestJob.objects.create(
+                team=team,
+                created_by=request.user,
+                source_type="code_zip",
+                source_filename=filename,
+                status="pending",
+                ingest_stage="queued",
+                ingest_stage_detail="Queued for processing",
+            )
+            job.staging_file.save(filename, ContentFile(raw_bytes), save=True)
+            trace_id = get_request_trace_id(request)
+            run_ingest_job.delay(str(job.id), "", trace_id=trace_id)
+            return ok(IngestJobSerializer(job).data, status_code=status.HTTP_201_CREATED)
+
+        if extension in _IMAGE_EXTENSIONS:
+            job = IngestJob.objects.create(
+                team=team,
+                created_by=request.user,
+                source_type="image",
+                source_filename=filename,
+                status="pending",
+                ingest_stage="queued",
+                ingest_stage_detail="Queued for processing",
+            )
+            job.staging_file.save(filename, ContentFile(raw_bytes), save=True)
+            trace_id = get_request_trace_id(request)
+            run_ingest_job.delay(str(job.id), "", trace_id=trace_id)
+            return ok(IngestJobSerializer(job).data, status_code=status.HTTP_201_CREATED)
+
+        if extension in _TEXT_EXTENSIONS or extension == "":
+            source_text = raw_bytes.decode("utf-8", errors="ignore").strip()
+            if not source_text:
+                return fail(
+                    "Could not extract text from uploaded file.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    code="file_text_extraction_failed",
+                )
+            source_type = "markdown"
+            job = IngestJob.objects.create(
+                team=team,
+                created_by=request.user,
+                source_type=source_type,
+                source_filename=filename,
+                status="pending",
+                ingest_stage="queued",
+                ingest_stage_detail="Queued for processing",
+            )
+            trace_id = get_request_trace_id(request)
+            run_ingest_job.delay(str(job.id), source_text, trace_id=trace_id)
+            return ok(IngestJobSerializer(job).data, status_code=status.HTTP_201_CREATED)
+
+        return fail(
+            "Unsupported file type for ingest. Use pdf, docx, zip (code), images (png/jpg/…), or markdown/text.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            code="unsupported_file_type",
         )
-
-        trace_id = get_request_trace_id(request)
-        run_ingest_job.delay(str(job.id), source_text, trace_id=trace_id)
-
-        return ok(IngestJobSerializer(job).data, status_code=status.HTTP_201_CREATED)

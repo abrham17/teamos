@@ -19,7 +19,12 @@ class User(AbstractUser):
 
 
 class Team(models.Model):
-    PLAN_CHOICES = [("free", "Free"), ("team", "Team"), ("pro", "Pro")]
+    PLAN_CHOICES = [
+        ("free", "Free"),
+        ("team", "Team"),
+        ("pro", "Pro"),
+        ("enterprise", "Enterprise"),
+    ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=120)

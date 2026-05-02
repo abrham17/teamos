@@ -1,3 +1,6 @@
+from unittest.mock import patch
+
+from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -78,20 +81,14 @@ class WikiApiTests(APITestCase):
     def test_free_plan_blocks_page_creation_when_limit_reached(self):
         self.team.plan = "free"
         self.team.save(update_fields=["plan"])
-        WikiPage.objects.create(
-            team=self.team,
-            title="Existing A",
-            slug="existing-a",
-            content="A",
-            created_by=self.editor,
-        )
-        WikiPage.objects.create(
-            team=self.team,
-            title="Existing B",
-            slug="existing-b",
-            content="B",
-            created_by=self.editor,
-        )
+        for i in range(10):
+            WikiPage.objects.create(
+                team=self.team,
+                title=f"Existing {i}",
+                slug=f"existing-{i}",
+                content="x",
+                created_by=self.editor,
+            )
         self.client.force_authenticate(user=self.editor)
         url = f"/api/wiki/{self.team.id}/pages/"
         res = self.client.post(
@@ -123,3 +120,31 @@ class WikiApiTests(APITestCase):
         url = f"/api/wiki/{self.team.id}/pages/"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class ReindexServiceTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="reindex-user",
+            email="reindex@example.com",
+            password="test-password",
+        )
+        self.team = Team.objects.create(name="Re Team", slug="re-team", created_by=self.user)
+
+    @patch("ingest.tasks.wire_page_graph.delay")
+    @patch("wiki.services.reindex.vector_store")
+    def test_reindex_upserts_chunks(self, mock_vs, _mock_wire):
+        mock_vs.ensure_collection.return_value = "team_x"
+        mock_vs.upsert_chunks.return_value = None
+        page = WikiPage.objects.create(
+            team=self.team,
+            title="Idx Page",
+            slug="idx-page",
+            content="one two three four five six seven eight",
+            created_by=self.user,
+        )
+        from wiki.services.reindex import reindex_wiki_page
+
+        n = reindex_wiki_page(page, queue_graph=True)
+        self.assertGreater(n, 0)
+        mock_vs.upsert_chunks.assert_called_once()
