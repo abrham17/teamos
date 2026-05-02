@@ -58,3 +58,5 @@ QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
 # Groq / OpenAI API Keys
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+# Production: OpenAI for chat, ingest LLM, and embeddings (override only if you know what you are doing).
+LLM_BACKEND = os.environ.get("LLM_BACKEND", "openai")

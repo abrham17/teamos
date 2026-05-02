@@ -249,3 +249,63 @@
   from { transform: translateX(100%); }
   to   { transform: translateX(0); }
 }
+
+/* Graph page — ambient orbs (home-hero energy, behind Cytoscape) */
+.graph-ambient-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(72px);
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.graph-ambient-orb--a {
+  width: min(52vmin, 480px);
+  height: min(52vmin, 480px);
+  left: -12%;
+  top: 8%;
+  background: radial-gradient(circle, rgba(0, 212, 232, 0.42) 0%, transparent 72%);
+  animation: graph-ambient-drift-a 18s ease-in-out infinite;
+}
+
+.graph-ambient-orb--b {
+  width: min(44vmin, 400px);
+  height: min(44vmin, 400px);
+  right: -8%;
+  bottom: 5%;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.38) 0%, transparent 70%);
+  animation: graph-ambient-drift-b 22s ease-in-out infinite;
+}
+
+.graph-ambient-orb--c {
+  width: min(36vmin, 320px);
+  height: min(36vmin, 320px);
+  left: 35%;
+  bottom: 18%;
+  background: radial-gradient(circle, rgba(34, 197, 94, 0.22) 0%, transparent 68%);
+  animation: graph-ambient-drift-c 14s ease-in-out infinite;
+}
+
+@keyframes graph-ambient-drift-a {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.32; }
+  50% { transform: translate(6vw, -5vh) scale(1.08); opacity: 0.52; }
+}
+
+@keyframes graph-ambient-drift-b {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.28; }
+  50% { transform: translate(-5vw, 4vh) scale(1.1); opacity: 0.48; }
+}
+
+@keyframes graph-ambient-drift-c {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.22; }
+  50% { transform: translate(-3vw, -6vh) scale(1.15); opacity: 0.4; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .graph-ambient-orb--a,
+  .graph-ambient-orb--b,
+  .graph-ambient-orb--c {
+    animation: none;
+    opacity: 0.2;
+  }
+}

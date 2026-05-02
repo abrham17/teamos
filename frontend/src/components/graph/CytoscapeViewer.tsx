@@ -24,7 +24,27 @@ export interface GraphEdge {
   to: string;
   type?: string;
   confidence?: number;
+  /** human | pipeline | user — ingest/vector edges are usually pipeline */
+  created_by?: string;
 }
+
+/** Emitted on node hover for preview UI (coordinates relative to graph container). */
+export interface GraphHoverNodePayload {
+  kind: "node";
+  id: string;
+  renderedPosition: { x: number; y: number };
+}
+
+/** Emitted on edge hover for preview UI. */
+export interface GraphHoverEdgePayload {
+  kind: "edge";
+  id: string;
+  sourceId: string;
+  targetId: string;
+  renderedMidpoint: { x: number; y: number };
+}
+
+export type GraphHoverPayload = GraphHoverNodePayload | GraphHoverEdgePayload;
 
 export interface CytoscapeRef {
   zoomIn(): void;
@@ -34,6 +54,8 @@ export interface CytoscapeRef {
   setLayout(name: string): void;
   highlightSearch(query: string): void;
   clearSearch(): void;
+  /** Center and lightly zoom on a node (e.g. after picking a neighbor). */
+  focusNode(id: string): void;
 }
 
 interface Props {
@@ -41,6 +63,8 @@ interface Props {
   edges: GraphEdge[];
   onNodeClick?: (id: string) => void;
   onNodeDoubleClick?: (id: string) => void;
+  /** Hover previews; cleared on background tap and debounced on mouseout. */
+  onHoverChange?: (payload: GraphHoverPayload | null) => void;
 }
 
 type NodeLike = cytoscape.NodeSingular;
@@ -59,21 +83,37 @@ const NODE_COLORS: Record<string, string> = {
 const EDGE_COLORS: Record<string, string> = {
   wikilink:    "#00d4e8",
   ai_inferred: "#a855f7",
+  semantic:    "#c084fc",
   manual:      "#22c55e",
+  citation:    "#fbbf24",
   default:     "#6b7280",
 };
 
+/** Soft outer glow (no stroke) — stronger when nodes are borderless */
+const NODE_OVERLAY: Record<string, string> = {
+  standard:  "rgba(0, 212, 232, 0.42)",
+  meeting:   "rgba(168, 85, 247, 0.44)",
+  decision:  "rgba(249, 115, 22, 0.42)",
+  incident:  "rgba(239, 68, 68, 0.42)",
+  template:  "rgba(34, 197, 94, 0.42)",
+  default:   "rgba(107, 114, 128, 0.38)",
+};
+
 /* ── Component ────────────────────────────────────────────────────── */
+const HOVER_CLEAR_MS = 160;
+
 export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
-  function CytoscapeViewer({ nodes, edges, onNodeClick, onNodeDoubleClick }, ref) {
+  function CytoscapeViewer({ nodes, edges, onNodeClick, onNodeDoubleClick, onHoverChange }, ref) {
     const containerRef     = useRef<HTMLDivElement>(null);
     const cyRef            = useRef<cytoscape.Core | null>(null);
     const onClickRef       = useRef(onNodeClick);
     const onDblClickRef    = useRef(onNodeDoubleClick);
+    const onHoverChangeRef = useRef(onHoverChange);
 
     // Keep callback refs fresh without re-initialising Cytoscape
     useEffect(() => { onClickRef.current    = onNodeClick;       }, [onNodeClick]);
     useEffect(() => { onDblClickRef.current = onNodeDoubleClick; }, [onNodeDoubleClick]);
+    useEffect(() => { onHoverChangeRef.current = onHoverChange; }, [onHoverChange]);
 
     /* ── Imperative handle ── */
     useImperativeHandle(ref, () => ({
@@ -105,7 +145,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
       setLayout(name: string) {
         if (!cyRef.current) return;
         cyRef.current
-          .layout(({ name, animate: true, animationDuration: 500, padding: 60, fit: true } as unknown) as cytoscape.LayoutOptions)
+          .layout(({ name, animate: true, animationDuration: 920, padding: 60, fit: true } as unknown) as cytoscape.LayoutOptions)
           .run();
       },
       highlightSearch(query: string) {
@@ -124,6 +164,22 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
       },
       clearSearch() {
         cyRef.current?.elements().removeClass("faded highlighted");
+      },
+      focusNode(id: string) {
+        const cy = cyRef.current;
+        if (!cy) return;
+        const n = cy.getElementById(id);
+        if (n.empty() || !n.isNode()) return;
+        cy.elements().unselect();
+        n.select();
+        const z = cy.zoom();
+        const targetZoom = Math.min(Math.max(z, 0.85), 1.35);
+        cy.animate({
+          center: { eles: n },
+          zoom: targetZoom,
+          duration: 560,
+          easing: "ease-in-out-cubic",
+        });
       },
     }));
 
@@ -152,6 +208,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
               target:     e.to,
               type:       e.type       || "wikilink",
               confidence: e.confidence ?? 1,
+              created_by: e.created_by ?? "human",
             },
           })),
         },
@@ -189,31 +246,37 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
                 if (d >= 3) return 36;
                 return 28;
               },
-              "border-width":   2,
-              "border-color":   "rgba(255,255,255,0.14)",
-              "border-opacity": 1,
-              "overlay-opacity": 0,
-              "transition-property":       "opacity, border-color, border-width",
-              "transition-duration":       180,
-              "transition-timing-function": "ease",
+              "border-width":   0,
+              "border-opacity": 0,
+              "overlay-color": ((ele: NodeLike) =>
+                NODE_OVERLAY[(ele.data("type") as string) ?? "standard"] ??
+                NODE_OVERLAY.default) as unknown as cytoscape.Css.PropertyValueEdge<cytoscape.Css.Colour>,
+              "overlay-padding": 12,
+              "overlay-opacity": 0.5,
+              "transition-property":
+                "opacity, overlay-opacity, overlay-padding, width, height",
+              "transition-duration":       320,
+              "transition-timing-function": "ease-in-out-cubic",
             },
           },
           /* ── Node: selected ── */
           {
             selector: "node:selected",
             style: {
-              "border-width": 3,
-              "border-color": "rgba(255,255,255,0.9)",
-              "overlay-opacity": 0,
+              "border-width": 0,
+              "border-opacity": 0,
+              "overlay-padding": 18,
+              "overlay-opacity": 0.82,
             },
           },
           /* ── Node: hovered ── */
           {
             selector: "node.hovered",
             style: {
-              "border-width": 2.5,
-              "border-color": "rgba(255,255,255,0.6)",
-              "overlay-opacity": 0,
+              "border-width": 0,
+              "border-opacity": 0,
+              "overlay-padding": 16,
+              "overlay-opacity": 0.88,
             },
           },
           /* ── Faded (search) ── */
@@ -226,8 +289,9 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
             selector: "node.highlighted",
             style: {
               opacity: 1,
-              "border-width": 3,
-              "border-color": "rgba(255,255,255,0.9)",
+              "border-width": 0,
+              "overlay-padding": 16,
+              "overlay-opacity": 0.72,
             },
           },
 
@@ -237,22 +301,26 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
             style: {
               "width": (ele: EdgeLike) => {
                 const conf = (ele.data("confidence") as number) ?? 1;
-                return 0.8 + conf * 2.2;
+                return 1 + conf * 2.4;
               },
               "line-color": (ele: EdgeLike) =>
                 EDGE_COLORS[ele.data("type") as string] ?? EDGE_COLORS.default,
               "line-opacity": (ele: EdgeLike) => {
                 const conf = (ele.data("confidence") as number) ?? 1;
-                return 0.28 + conf * 0.5;
+                return 0.42 + conf * 0.48;
               },
               "target-arrow-color": (ele: EdgeLike) =>
                 EDGE_COLORS[ele.data("type") as string] ?? EDGE_COLORS.default,
               "target-arrow-shape": "triangle",
-              "arrow-scale":        0.7,
-              "curve-style":        "bezier",
+              "arrow-scale":        0.78,
+              "curve-style":        "unbundled-bezier",
+              "control-point-step-size": 72,
+              "control-point-distance": 36,
+              "line-cap":           "round",
               "overlay-opacity":    0,
-              "transition-property": "opacity, line-opacity",
-              "transition-duration": 180,
+              "transition-property": "opacity, line-opacity, width",
+              "transition-duration": 280,
+              "transition-timing-function": "ease-in-out-cubic",
             },
           },
           /* ── Edge: hovered ── */
@@ -261,7 +329,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
             style: {
               "line-opacity": 1,
               "width": (ele: EdgeLike) =>
-                (0.8 + ((ele.data("confidence") as number) ?? 1) * 2.2) * 1.6,
+                (1 + ((ele.data("confidence") as number) ?? 1) * 2.4) * 1.55,
               "overlay-opacity": 0,
             },
           },
@@ -270,13 +338,13 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
         layout: {
           name: "cose",
           animate: true,
-          animationDuration: 700,
+          animationDuration: 1050,
           padding: 60,
-          nodeRepulsion: () => 8000,
-          idealEdgeLength: () => 100,
-          edgeElasticity: () => 200,
-          numIter: 1000,
-          gravity: 80,
+          nodeRepulsion: () => 8500,
+          idealEdgeLength: () => 110,
+          edgeElasticity: () => 220,
+          numIter: 1200,
+          gravity: 72,
           fit: true,
         },
 
@@ -287,14 +355,91 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
 
       cyRef.current = cy;
 
-      /* ── Hover ── */
-      cy.on("mouseover", "node", evt => evt.target.addClass("hovered"));
-      cy.on("mouseout",  "node", evt => evt.target.removeClass("hovered"));
-      cy.on("mouseover", "edge", evt => evt.target.addClass("hovered"));
-      cy.on("mouseout",  "edge", evt => evt.target.removeClass("hovered"));
+      const hoverTargetRef = { kind: null as "node" | "edge" | null, id: null as string | null };
+      let clearHoverTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const cancelClearHover = () => {
+        if (clearHoverTimer) {
+          clearTimeout(clearHoverTimer);
+          clearHoverTimer = null;
+        }
+      };
+
+      const emitHover = () => {
+        const cb = onHoverChangeRef.current;
+        if (!cb) return;
+        if (hoverTargetRef.kind === "node" && hoverTargetRef.id) {
+          const n = cy.getElementById(hoverTargetRef.id);
+          if (!n.empty() && n.isNode()) {
+            const rp = n.renderedPosition();
+            cb({ kind: "node", id: hoverTargetRef.id, renderedPosition: { x: rp.x, y: rp.y } });
+          }
+          return;
+        }
+        if (hoverTargetRef.kind === "edge" && hoverTargetRef.id) {
+          const edge = cy.getElementById(hoverTargetRef.id);
+          if (!edge.empty() && edge.isEdge()) {
+            const rm = edge.renderedMidpoint();
+            cb({
+              kind: "edge",
+              id: hoverTargetRef.id,
+              sourceId: edge.source().id(),
+              targetId: edge.target().id(),
+              renderedMidpoint: { x: rm.x, y: rm.y },
+            });
+          }
+        }
+      };
+
+      const scheduleClearHover = () => {
+        cancelClearHover();
+        clearHoverTimer = setTimeout(() => {
+          hoverTargetRef.kind = null;
+          hoverTargetRef.id = null;
+          onHoverChangeRef.current?.(null);
+          clearHoverTimer = null;
+        }, HOVER_CLEAR_MS);
+      };
+
+      /* ── Hover (preview + cytoscape styling) ── */
+      cy.on("mouseover", "node", evt => {
+        cancelClearHover();
+        evt.target.addClass("hovered");
+        hoverTargetRef.kind = "node";
+        hoverTargetRef.id = evt.target.id();
+        emitHover();
+      });
+      cy.on("mouseout", "node", evt => {
+        evt.target.removeClass("hovered");
+        if (hoverTargetRef.kind === "node" && hoverTargetRef.id === evt.target.id()) {
+          scheduleClearHover();
+        }
+      });
+
+      cy.on("mouseover", "edge", evt => {
+        cancelClearHover();
+        evt.target.addClass("hovered");
+        hoverTargetRef.kind = "edge";
+        hoverTargetRef.id = evt.target.id();
+        emitHover();
+      });
+      cy.on("mouseout", "edge", evt => {
+        evt.target.removeClass("hovered");
+        if (hoverTargetRef.kind === "edge" && hoverTargetRef.id === evt.target.id()) {
+          scheduleClearHover();
+        }
+      });
+
+      cy.on("viewport", () => {
+        if (hoverTargetRef.kind && hoverTargetRef.id) emitHover();
+      });
 
       /* ── Click: select node ── */
       cy.on("tap", "node", evt => {
+        cancelClearHover();
+        onHoverChangeRef.current?.(null);
+        hoverTargetRef.kind = null;
+        hoverTargetRef.id = null;
         onClickRef.current?.(evt.target.id());
       });
 
@@ -302,27 +447,43 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
       cy.on("dbltap", "node", evt => {
         const node = evt.target;
         const hood = node.closedNeighborhood();
-        cy.animate({ fit: { eles: hood, padding: 80 }, duration: 400, easing: "ease-in-out-cubic" });
+        cy.animate({ fit: { eles: hood, padding: 80 }, duration: 520, easing: "ease-in-out-cubic" });
         onDblClickRef.current?.(node.id());
       });
 
-      /* ── Background tap: deselect ── */
+      /* ── Background tap: deselect + clear hover preview ── */
       cy.on("tap", evt => {
-        if (evt.target === cy) cy.elements().unselect();
+        if (evt.target === cy) {
+          cy.elements().unselect();
+          cancelClearHover();
+          hoverTargetRef.kind = null;
+          hoverTargetRef.id = null;
+          onHoverChangeRef.current?.(null);
+        }
       });
 
       return () => {
+        cancelClearHover();
         cy.destroy();
         cyRef.current = null;
       };
     }, [nodes, edges]);
 
     return (
-      <div
-        ref={containerRef}
-        className="w-full h-full select-none"
-        style={{ background: "var(--bg-900)" }}
-      />
+      <div className="relative h-full w-full overflow-hidden bg-[var(--bg-950)] select-none">
+        <div
+          className="pointer-events-none absolute inset-0 z-0 motion-reduce:opacity-30"
+          aria-hidden
+        >
+          <div className="graph-ambient-orb graph-ambient-orb--a" />
+          <div className="graph-ambient-orb graph-ambient-orb--b" />
+          <div className="graph-ambient-orb graph-ambient-orb--c" />
+        </div>
+        <div
+          ref={containerRef}
+          className="relative z-[1] h-full w-full bg-transparent"
+        />
+      </div>
     );
   }
 );

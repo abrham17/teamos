@@ -12,16 +12,18 @@ const NODE_TYPES = [
 ];
 
 const EDGE_TYPES = [
-  { color: "#00d4e8", label: "Wikilink"    },
-  { color: "#a855f7", label: "AI Inferred" },
-  { color: "#22c55e", label: "Manual"      },
+  { color: "#00d4e8", label: "Wiki [[link]]", hint: "from page text" },
+  { color: "#c084fc", label: "Related (ingest)", hint: "vector similarity" },
+  { color: "#a855f7", label: "AI inferred", hint: "legacy" },
+  { color: "#22c55e", label: "Manual" },
+  { color: "#fbbf24", label: "Citation" },
 ];
 
 export function GraphLegend() {
   const [expanded, setExpanded] = useState(true);
 
   return (
-    <div className="absolute bottom-4 left-4 z-10 select-none">
+    <div className="select-none">
       <div
         className="bg-[var(--glass-heavy-bg)] backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl overflow-hidden"
         style={{ boxShadow: "var(--shadow-md)" }}
@@ -60,10 +62,15 @@ export function GraphLegend() {
                 Edges
               </p>
               <div className="flex flex-col gap-1">
-                {EDGE_TYPES.map(({ color, label }) => (
+                {EDGE_TYPES.map(({ color, label, hint }) => (
                   <div key={label} className="flex items-center gap-2">
                     <div className="w-5 h-0.5 rounded-full shrink-0" style={{ background: color }} />
-                    <span className="text-xs text-[var(--text-secondary)]">{label}</span>
+                    <span className="text-xs text-[var(--text-secondary)]">
+                      {label}
+                      {hint ? (
+                        <span className="text-[var(--text-dim)] font-normal"> — {hint}</span>
+                      ) : null}
+                    </span>
                   </div>
                 ))}
               </div>

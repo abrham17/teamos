@@ -1,20 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Share2 } from "lucide-react";
 
 import {
   CytoscapeViewer,
   type CytoscapeRef,
+  type GraphHoverPayload,
   type GraphNode,
   type GraphEdge,
 } from "@/components/graph/CytoscapeViewer";
+import { GraphHoverPreview, type GraphHoverPreviewResolved } from "@/components/graph/GraphHoverPreview";
 import { GraphToolbar }  from "@/components/graph/GraphToolbar";
 import { NodeInspector, type LinkedNode } from "@/components/graph/NodeInspector";
 import { GraphLegend }   from "@/components/graph/GraphLegend";
 import { useWikiStore }  from "@/stores/useWikiStore";
 import { api }           from "@/lib/api";
+import {
+  runGraphChromeEnter,
+  runGraphOverlayEnter,
+} from "@/lib/graphChromeMotion";
 
 interface GraphData {
   nodes: GraphNode[];
@@ -50,8 +56,15 @@ export default function GraphPage() {
   const [searchQuery, setSearchQuery]   = useState("");
   const [layout, setLayout]             = useState("cose");
   const [analyticsMode, setAnalyticsMode] = useState<"simple" | "advanced">("simple");
+  const [hoverPayload, setHoverPayload] = useState<GraphHoverPayload | null>(null);
 
   const cyRef = useRef<CytoscapeRef>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const canvasWrapRef = useRef<HTMLDivElement>(null);
+  const analyticsColRef = useRef<HTMLDivElement>(null);
+  const legendWrapRef = useRef<HTMLDivElement>(null);
+  const loadingWrapRef = useRef<HTMLDivElement>(null);
+  const emptyWrapRef = useRef<HTMLDivElement>(null);
 
   /* ── Fetch graph data ── */
   useEffect(() => {
@@ -70,10 +83,66 @@ export default function GraphPage() {
       .finally(() => setLoading(false));
   }, [currentTeamId, analyticsMode]);
 
+  useEffect(() => {
+    setHoverPayload(null);
+  }, [data]);
+
+  /* ── Graph chrome motion (toolbar, overlays, legend — not Cytoscape nodes) ── */
+  useLayoutEffect(() => {
+    if (!currentTeamId) return undefined;
+
+    if (loading && !data && loadingWrapRef.current) {
+      return runGraphOverlayEnter({ root: loadingWrapRef.current });
+    }
+
+    if (!loading && data && data.nodes.length === 0 && emptyWrapRef.current) {
+      return runGraphOverlayEnter({ root: emptyWrapRef.current });
+    }
+
+    if (!loading && data && data.nodes.length > 0) {
+      const cards = analyticsColRef.current
+        ? Array.from(
+            analyticsColRef.current.querySelectorAll<HTMLElement>(
+              "[data-graph-chrome-card]",
+            ),
+          )
+        : [];
+      return runGraphChromeEnter({
+        toolbar: toolbarRef.current,
+        canvas: canvasWrapRef.current,
+        analyticsCards: cards,
+        legend: legendWrapRef.current,
+      });
+    }
+
+    return undefined;
+  }, [currentTeamId, analyticsMode, loading, data]);
+
   /* ── Derived state ── */
   const selectedNode = selectedNodeId
     ? data?.nodes.find(n => n.id === selectedNodeId) ?? null
     : null;
+
+  const hoverResolved = useMemo((): GraphHoverPreviewResolved | null => {
+    if (!hoverPayload || !data) return null;
+    if (hoverPayload.kind === "node") {
+      const node = data.nodes.find((n) => n.id === hoverPayload.id);
+      if (!node) return null;
+      const degree = data.edges.filter((e) => e.from === node.id || e.to === node.id).length;
+      return { kind: "node", node, degree };
+    }
+    const edge = data.edges.find((e) => e.id === hoverPayload.id);
+    if (!edge) return null;
+    const src = data.nodes.find((n) => n.id === edge.from);
+    const tgt = data.nodes.find((n) => n.id === edge.to);
+    if (!src || !tgt) return null;
+    return {
+      kind: "edge",
+      edge,
+      sourceTitle: src.title,
+      targetTitle: tgt.title,
+    };
+  }, [hoverPayload, data]);
 
   const linkedNodes: LinkedNode[] = selectedNode && data
     ? data.edges
@@ -81,7 +150,15 @@ export default function GraphPage() {
         .map(e => {
           const otherId = e.from === selectedNode.id ? e.to : e.from;
           const node    = data.nodes.find(n => n.id === otherId);
-          return node ? { ...node, edgeType: e.type ?? "wikilink" } : null;
+          if (!node) return null;
+          const linked: LinkedNode = {
+            ...node,
+            edgeId: e.id,
+            edgeType: e.type ?? "wikilink",
+          };
+          if (e.confidence !== undefined) linked.edgeConfidence = e.confidence;
+          if (e.created_by !== undefined) linked.edgeCreatedBy = e.created_by;
+          return linked;
         })
         .filter((n): n is LinkedNode => n !== null)
     : [];
@@ -105,6 +182,15 @@ export default function GraphPage() {
     setSelectedNodeId(id || null);
   }, []);
 
+  const handleHoverChange = useCallback((payload: GraphHoverPayload | null) => {
+    setHoverPayload(payload);
+  }, []);
+
+  const handleSelectLinkedNode = useCallback((id: string) => {
+    setSelectedNodeId(id);
+    cyRef.current?.focusNode(id);
+  }, []);
+
   /* ── Guards ── */
   if (!currentTeamId) {
     return (
@@ -117,26 +203,31 @@ export default function GraphPage() {
   return (
     <div className="flex flex-col h-full bg-[var(--bg-900)]">
       {/* Toolbar */}
-      <GraphToolbar
-        nodeCount={data?.nodes.length ?? 0}
-        edgeCount={data?.edges.length ?? 0}
-        loading={loading}
-        searchQuery={searchQuery}
-        layout={layout}
-        onSearch={handleSearch}
-        onLayoutChange={handleLayoutChange}
-        onZoomIn={() => cyRef.current?.zoomIn()}
-        onZoomOut={() => cyRef.current?.zoomOut()}
-        onFit={() => cyRef.current?.fit()}
-        onExportPng={() => cyRef.current?.exportPng()}
-      />
+      <div ref={toolbarRef} className="shrink-0">
+        <GraphToolbar
+          nodeCount={data?.nodes.length ?? 0}
+          edgeCount={data?.edges.length ?? 0}
+          loading={loading}
+          searchQuery={searchQuery}
+          layout={layout}
+          onSearch={handleSearch}
+          onLayoutChange={handleLayoutChange}
+          onZoomIn={() => cyRef.current?.zoomIn()}
+          onZoomOut={() => cyRef.current?.zoomOut()}
+          onFit={() => cyRef.current?.fit()}
+          onExportPng={() => cyRef.current?.exportPng()}
+        />
+      </div>
 
       {/* Canvas area */}
       <div className="flex-1 relative min-h-0 overflow-hidden">
 
         {/* Loading state */}
         {loading && !data && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-20">
+          <div
+            ref={loadingWrapRef}
+            className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-20"
+          >
             <div
               className="w-10 h-10 rounded-full border-2 border-[var(--accent)] border-t-transparent"
               style={{ animation: "spin 0.75s linear infinite" }}
@@ -147,7 +238,10 @@ export default function GraphPage() {
 
         {/* Empty state */}
         {!loading && data && data.nodes.length === 0 && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-20">
+          <div
+            ref={emptyWrapRef}
+            className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-20"
+          >
             <div className="w-16 h-16 rounded-2xl bg-[var(--surface-1)] border border-[var(--border-subtle)] flex items-center justify-center">
               <Share2 className="w-8 h-8 text-[var(--text-dim)]" />
             </div>
@@ -160,19 +254,29 @@ export default function GraphPage() {
 
         {/* Graph */}
         {data && data.nodes.length > 0 && (
-          <CytoscapeViewer
-            ref={cyRef}
-            nodes={data.nodes}
-            edges={data.edges}
-            onNodeClick={handleNodeClick}
-            onNodeDoubleClick={setSelectedNodeId}
-          />
+          <div ref={canvasWrapRef} className="absolute inset-0">
+            <CytoscapeViewer
+              ref={cyRef}
+              nodes={data.nodes}
+              edges={data.edges}
+              onNodeClick={handleNodeClick}
+              onNodeDoubleClick={setSelectedNodeId}
+              onHoverChange={handleHoverChange}
+            />
+            <GraphHoverPreview resolved={hoverResolved} />
+          </div>
         )}
 
         {/* Analytics overlay */}
         {analytics && data && data.nodes.length > 0 && (
-          <div className="absolute top-3 left-3 z-10 flex flex-col gap-2 max-w-sm">
-            <div className="bg-[var(--glass-heavy-bg)] backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-secondary)]">
+          <div
+            ref={analyticsColRef}
+            className="absolute top-3 left-3 z-10 flex flex-col gap-2 max-w-sm"
+          >
+            <div
+              data-graph-chrome-card
+              className="bg-[var(--glass-heavy-bg)] backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-secondary)]"
+            >
               <div className="font-semibold text-[var(--text-primary)] mb-1">Graph Insights</div>
               <div className="mb-1">
                 <label className="text-[10px] uppercase tracking-wide text-[var(--text-dim)] mr-2">Mode</label>
@@ -192,7 +296,10 @@ export default function GraphPage() {
             </div>
 
             {analytics.orphans.length > 0 && (
-              <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2 text-xs text-amber-300">
+              <div
+                data-graph-chrome-card
+                className="bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2 text-xs text-amber-300"
+              >
                 <div className="font-semibold mb-1">Orphan Warning</div>
                 <div>
                   {analytics.orphans.length} pages have no graph links yet. Add wikilinks to
@@ -202,7 +309,10 @@ export default function GraphPage() {
             )}
 
             {analytics.hubs.length > 0 && (
-              <div className="bg-[var(--glass-heavy-bg)] backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-secondary)]">
+              <div
+                data-graph-chrome-card
+                className="bg-[var(--glass-heavy-bg)] backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-secondary)]"
+              >
                 <div className="font-semibold text-[var(--text-primary)] mb-1">Top hubs</div>
                 <div className="space-y-1">
                   {analytics.hubs.slice(0, 3).map((h) => (
@@ -222,10 +332,18 @@ export default function GraphPage() {
           linkedNodes={linkedNodes}
           onClose={() => setSelectedNodeId(null)}
           onOpenEditor={slug => router.push(`/wiki?page=${slug}`)}
+          onSelectLinkedNode={handleSelectLinkedNode}
         />
 
         {/* Legend (bottom-left overlay) */}
-        {data && data.nodes.length > 0 && <GraphLegend />}
+        {data && data.nodes.length > 0 && (
+          <div
+            ref={legendWrapRef}
+            className="absolute bottom-4 left-4 z-10"
+          >
+            <GraphLegend />
+          </div>
+        )}
       </div>
     </div>
   );

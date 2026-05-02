@@ -49,6 +49,7 @@ class GraphView(APIView):
                 "to": str(e.to_page_id),
                 "type": e.edge_type,
                 "confidence": e.confidence,
+                "created_by": e.created_by,
             }
             for e in edges_qs
         ]

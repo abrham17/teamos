@@ -1,3 +1,5 @@
+import os
+
 from .base import *
 
 DEBUG = True
@@ -29,4 +31,8 @@ SIMPLE_JWT = {
 # Celery settings for local dev (no RabbitMQ/Redis required)
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
+
+# Local testing: Groq OpenAI-compatible API for chat + ingest LLM paths.
+# Production uses OpenAI only (see production.py). Override with LLM_BACKEND=openai if needed.
+LLM_BACKEND = os.environ.get("LLM_BACKEND", "groq")
 

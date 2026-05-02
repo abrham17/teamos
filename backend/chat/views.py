@@ -15,6 +15,7 @@ from product_analytics.services import record_first_once
 from .models import ChatSession, ChatMessage, ChatTokenUsage
 from .serializers import ChatSessionSerializer
 from teamos_project.api_response import ok, fail
+from teamos_project.llm_config import chat_completion_model
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +138,13 @@ class ChatQueryStreamView(APIView):
                     "If the information is not in the context, say you don't know. "
                     "Cite sources by using [Source Title]. "
                     "If you find a contradiction, point it out. "
+                    "Format answers in GitHub-flavored Markdown: use ### headings, bullet lists, and fenced code "
+                    "blocks for formulas or code. "
+                    "When the context includes numeric, time-series, or tabular data (e.g. daily trading rows), "
+                    "summarize it in a Markdown pipe table with clear column headers; do not invent numbers. "
+                    "When a small chart would clarify trends and the values are in the context, add a diagram using "
+                    "a fenced code block with language tag `mermaid` (e.g. xychart-beta or a simple flowchart). "
+                    "Always close every ```mermaid block with ``` on its own line. "
                     "Context:\n" + context_str
                 )
 
@@ -146,12 +154,17 @@ class ChatQueryStreamView(APIView):
                 for msg in reversed(recent_messages):
                     history.append({"role": msg.role, "content": msg.content})
 
-                # Stream from OpenAI
+                llm = vector_store.openai
+                if not llm:
+                    yield f"event: error\ndata: {json.dumps({'detail': 'Chat LLM is not configured (set GROQ_API_KEY for development or OPENAI_API_KEY for production).'})}\n\n"
+                    return
+
+                model_name = chat_completion_model()
                 full_content = ""
-                stream = vector_store.openai.chat.completions.create(
-                    model="gpt-4o", # Or from settings
+                stream = llm.chat.completions.create(
+                    model=model_name,
                     messages=history,
-                    stream=True
+                    stream=True,
                 )
 
                 for chunk in stream:
@@ -176,7 +189,7 @@ class ChatQueryStreamView(APIView):
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                     total_tokens=prompt_tokens + completion_tokens,
-                    metadata={"model": "gpt-4o"},
+                    metadata={"model": model_name},
                 )
                 if ChatMessage.objects.filter(session__team=session.team, role="assistant").count() == 1:
                     record_first_once(

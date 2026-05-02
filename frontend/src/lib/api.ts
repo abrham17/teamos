@@ -21,6 +21,11 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   }
 }
 
+/** Same auth as `api.*` — use for raw `fetch` (e.g. SSE chat stream). */
+export async function getApiAuthHeaders(): Promise<Record<string, string>> {
+  return getAuthHeader();
+}
+
 type Envelope<T = unknown> = {
   success: boolean;
   data?: T;
