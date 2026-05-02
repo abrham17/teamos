@@ -45,15 +45,6 @@ export default function RootLayout({
         <ClerkProvider>
           <ThemeProvider>
             <ToastProvider>
-              <header className="h-12 border-b border-[var(--border-subtle)] bg-[var(--surface-1)] flex items-center justify-end px-4 gap-2">
-                <SignedOut>
-                  <SignInButton />
-                  <SignUpButton />
-                </SignedOut>
-                <SignedIn>
-                  <UserButton />
-                </SignedIn>
-              </header>
               {children}
             </ToastProvider>
           </ThemeProvider>
