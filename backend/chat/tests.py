@@ -178,6 +178,7 @@ class ChatApiTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertTrue(res.data["success"])
         self.assertFalse(res.data["data"]["can_edit_wiki"])
+        self.assertFalse(res.data["data"]["can_edit_plans"])
         self.assertFalse(res.data["data"]["can_ingest"])
 
     def test_query_invalid_mode(self):
@@ -196,6 +197,14 @@ class ChatApiTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(res.data["error"]["code"], "agent_forbidden")
 
+    def test_plan_mode_forbidden_for_viewer(self):
+        self.client.force_authenticate(user=self.user)
+        session = ChatSession.objects.create(team=self.team, created_by=self.user, title="P")
+        url = f"/api/chat/{self.team.id}/sessions/{session.id}/query/"
+        res = self.client.post(url, {"message": "Update roadmap", "mode": "plan"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(res.data["error"]["code"], "plan_forbidden")
+
 
 class WikiCitationAssemblyTests(APITestCase):
     """RAG context assembly limits (settings-driven)."""
@@ -206,6 +215,30 @@ class WikiCitationAssemblyTests(APITestCase):
         with override_settings(CHAT_RAG_RESULT_LIMIT=7, CHAT_RAG_MAX_CONTEXT_CHARS=5000):
             _retrieve_wiki_citations("team-1", "hello")
         mock_search.assert_called_once_with("team-1", "hello", limit=7)
+
+    @patch("chat.views.vector_store.search_similar_pages")
+    def test_retrieve_includes_plan_citation_shape(self, mock_search):
+        mock_search.return_value = [
+            SimpleNamespace(
+                payload={
+                    "source_type": "plan",
+                    "project_id": "proj-1",
+                    "project_name": "Platform Upgrade",
+                    "source_kind": "task",
+                    "source_ref_id": "task-1",
+                    "title": "Task: Upgrade API",
+                    "content": "Upgrade API gateway and deploy in phases.",
+                    "chunk_id": "plan-chunk-1",
+                },
+                score=0.91,
+            )
+        ]
+        citations, context = _retrieve_wiki_citations("team-1", "what next")
+        self.assertEqual(len(citations), 1)
+        self.assertEqual(citations[0]["source"], "plan")
+        self.assertEqual(citations[0]["project_name"], "Platform Upgrade")
+        self.assertEqual(citations[0]["source_kind"], "task")
+        self.assertIn("Platform Upgrade", context)
 
     @patch("chat.views.vector_store.search_similar_pages")
     def test_retrieve_truncates_context_under_char_cap(self, mock_search):
@@ -257,12 +290,12 @@ class WikiCitationAssemblyTests(APITestCase):
 
     def test_build_ask_prompt_empty_context_is_general_mode(self):
         p = _build_ask_system_prompt("")
-        self.assertIn("No wiki excerpts", p)
-        self.assertNotIn("Answer based ONLY on the provided Wiki context", p)
+        self.assertIn("No team knowledge excerpts", p)
+        self.assertNotIn("Answer based ONLY on the provided team knowledge context", p)
 
     def test_build_ask_prompt_with_context_is_rag_mode(self):
         p = _build_ask_system_prompt("SOURCE: Foo\nCONTENT: bar")
-        self.assertIn("Answer based ONLY on the provided Wiki context", p)
+        self.assertIn("Answer based ONLY on the provided team knowledge context", p)
         self.assertIn("Foo", p)
 
 

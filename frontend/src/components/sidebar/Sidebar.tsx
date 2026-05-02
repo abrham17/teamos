@@ -10,6 +10,7 @@ import {
   Book,
   Share2,
   MessageSquare,
+  Target,
   Upload,
   BarChart3,
   Settings,
@@ -38,6 +39,7 @@ interface ClerkGlobal {
 
 const NAV_ITEMS = [
   { href: "/wiki",    icon: Book,           label: "Wiki"   },
+  { href: "/plan",    icon: Target,         label: "Plan"   },
   { href: "/graph",   icon: Share2,         label: "Graph"  },
   { href: "/chat",    icon: MessageSquare,  label: "Chat"   },
   { href: "/ingest",  icon: Upload,         label: "Ingest" },

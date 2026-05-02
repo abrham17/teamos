@@ -1,0 +1,85 @@
+"use client";
+
+import { Search, Target, Plus } from "lucide-react";
+import type { PlanProjectListItem } from "../types";
+
+interface ProjectListPanelProps {
+  projects: PlanProjectListItem[];
+  activeProjectId: string | null;
+  query: string;
+  loading: boolean;
+  onQueryChange: (value: string) => void;
+  onSelectProject: (projectId: string) => void;
+  onNewProject: () => void;
+}
+
+export function ProjectListPanel({
+  projects,
+  activeProjectId,
+  query,
+  loading,
+  onQueryChange,
+  onSelectProject,
+  onNewProject,
+}: ProjectListPanelProps) {
+  return (
+    <aside className="w-[340px] shrink-0 border-r border-[var(--border-subtle)] bg-[var(--surface-1)]">
+      <div className="h-14 border-b border-[var(--border-subtle)] px-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Target className="w-4 h-4 text-[var(--accent)]" />
+          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Planner</h2>
+        </div>
+        <button
+          onClick={onNewProject}
+          className="p-1.5 rounded-lg bg-[var(--accent-subtle)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white transition-all"
+          title="New Project"
+        >
+          <Plus className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="p-4 border-b border-[var(--border-subtle)]">
+        <label className="relative block">
+          <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            placeholder="Search projects..."
+            className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-900)] py-2 pl-9 pr-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+          />
+        </label>
+      </div>
+
+      <div className="overflow-y-auto h-[calc(100%-116px)] p-2">
+        {loading ? (
+          <div className="p-3 text-sm text-[var(--text-muted)]">Loading projects...</div>
+        ) : projects.length === 0 ? (
+          <div className="p-3 text-sm text-[var(--text-muted)]">No projects yet.</div>
+        ) : (
+          projects.map((project) => {
+            const active = project.id === activeProjectId;
+            return (
+              <button
+                key={project.id}
+                onClick={() => onSelectProject(project.id)}
+                className={`w-full text-left p-3 rounded-lg border transition-colors mb-2 ${
+                  active
+                    ? "border-[var(--accent)] bg-[var(--accent-subtle)]"
+                    : "border-transparent hover:border-[var(--border-subtle)] hover:bg-[var(--bg-900)]"
+                }`}
+              >
+                <div className="text-sm font-medium text-[var(--text-primary)]">{project.name}</div>
+                <div className="mt-1 text-xs text-[var(--text-muted)] line-clamp-2">
+                  {project.description || "No description yet."}
+                </div>
+                <div className="mt-2 text-[11px] text-[var(--text-muted)]">
+                  {project.task_count} tasks • {project.milestone_count} milestones
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </aside>
+  );
+}

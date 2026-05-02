@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Command } from "cmdk";
 import { useRouter } from "next/navigation";
-import { FileText, MessageSquare, Share2, Settings, Plus, Search } from "lucide-react";
+import { FileText, MessageSquare, Share2, Settings, Plus, Search, Target } from "lucide-react";
 import { useWikiStore } from "@/stores/useWikiStore";
 
 export function CommandPalette() {
@@ -53,6 +53,9 @@ export function CommandPalette() {
             </Command.Item>
             <Command.Item onSelect={() => { router.push("/chat"); setOpen(false); }} className="flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg cursor-pointer hover:bg-[var(--bg-800)] aria-selected:bg-[var(--bg-800)] aria-selected:text-[var(--accent)] text-[var(--text-primary)]">
               <MessageSquare className="w-4 h-4" /> Ask TeamOS Chat
+            </Command.Item>
+            <Command.Item onSelect={() => { router.push("/plan"); setOpen(false); }} className="flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg cursor-pointer hover:bg-[var(--bg-800)] aria-selected:bg-[var(--bg-800)] aria-selected:text-[var(--accent)] text-[var(--text-primary)]">
+              <Target className="w-4 h-4" /> Open Project Planner
             </Command.Item>
             <Command.Item onSelect={() => { router.push("/graph"); setOpen(false); }} className="flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg cursor-pointer hover:bg-[var(--bg-800)] aria-selected:bg-[var(--bg-800)] aria-selected:text-[var(--accent)] text-[var(--text-primary)]">
               <Share2 className="w-4 h-4" /> View Knowledge Graph

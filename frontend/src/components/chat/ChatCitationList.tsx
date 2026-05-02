@@ -6,8 +6,13 @@ import { FileText } from "lucide-react";
 import { buildChatCitationHref } from "@/lib/chatCitationLink";
 
 export type ChatCitation = {
+  source?: "wiki" | "plan" | string;
+  title?: string;
   page_slug?: string;
   page_title?: string;
+  project_id?: string;
+  project_name?: string;
+  source_kind?: string;
   confidence?: number;
   anchor_hint?: string;
   chunk_id?: string;
@@ -18,7 +23,13 @@ const MANY_THRESHOLD = 4;
 
 function CitationLink({ c, idx }: { c: ChatCitation; idx: number }) {
   const href = buildChatCitationHref(c);
-  const title = c.anchor_hint ? `Jump hint: ${c.anchor_hint}` : "Open source page";
+  const isPlan = (c.source || "").toLowerCase() === "plan";
+  const displayTitle = c.title ?? c.page_title ?? c.project_name ?? c.page_slug ?? "Source";
+  const title = c.anchor_hint
+    ? `Jump hint: ${c.anchor_hint}`
+    : isPlan
+      ? "Open source project plan"
+      : "Open source page";
   return (
     <li key={idx}>
       <Link
@@ -27,7 +38,12 @@ function CitationLink({ c, idx }: { c: ChatCitation; idx: number }) {
         className="inline-flex max-w-full items-center gap-2 rounded-md border border-transparent px-1 py-0.5 text-[var(--text-muted)] underline-offset-2 transition-colors hover:border-[var(--border-subtle)] hover:bg-[var(--bg-800)] hover:text-[var(--text-secondary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--border-subtle)]"
       >
         <FileText className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
-        <span className="min-w-0 truncate">{c.page_title ?? c.page_slug ?? "Source"}</span>
+        <span className="min-w-0 truncate">{displayTitle}</span>
+        {isPlan && c.source_kind ? (
+          <span className="shrink-0 rounded bg-[var(--bg-800)] px-1.5 py-0.5 text-[10px] uppercase text-[var(--text-dim)]">
+            {c.source_kind}
+          </span>
+        ) : null}
         {c.confidence != null ? (
           <span className="shrink-0 tabular-nums text-[10px] text-[var(--text-dim)]">
             {Math.round(c.confidence * 100)}%

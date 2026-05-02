@@ -15,6 +15,8 @@ from django.db.models import Q
 from accounts.models import TeamMember, User
 from graph_engine.analytics import invalidate_team_graph_analytics_cache
 from graph_engine.models import GraphEdge
+from planning.models import Milestone, Project, Task
+from planning.reindex import reindex_project
 from teamos_project.entitlements import check_quota
 from wiki.models import WikiPage
 from wiki.serializers import WikiPageCreateSerializer
@@ -127,6 +129,190 @@ def openai_tool_schemas() -> list[dict[str, Any]]:
                 },
             },
         },
+    ] + openai_plan_tool_schemas()
+
+
+def openai_plan_tool_schemas() -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_list_projects",
+                "description": "List projects for this team.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "limit": {"type": "integer", "default": 20},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_create_project",
+                "description": "Create a planning project.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "description": {"type": "string"},
+                        "status": {"type": "string", "enum": ["active", "on_hold", "completed", "archived"]},
+                    },
+                    "required": ["name"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_generate_draft",
+                "description": "Use the Plan Architect to generate a detailed project draft (tasks, milestones, roles) based on a mission prompt and wiki context.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "prompt": {"type": "string", "description": "The mission or objective for the project."},
+                        "mode": {"type": "string", "enum": ["create", "manage"], "default": "create"},
+                        "project_id": {"type": "string", "description": "ID of existing project if updating."},
+                    },
+                    "required": ["prompt"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_update_project",
+                "description": "Update a planning project by id.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {"type": "string"},
+                        "name": {"type": "string"},
+                        "description": {"type": "string"},
+                        "status": {"type": "string"},
+                    },
+                    "required": ["project_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_create_task",
+                "description": "Create a task inside a project.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {"type": "string"},
+                        "title": {"type": "string"},
+                        "description": {"type": "string"},
+                        "status": {"type": "string"},
+                        "priority": {"type": "string"},
+                        "assignee_id": {"type": "string"},
+                        "start_date": {"type": "string", "description": "YYYY-MM-DD"},
+                        "end_date": {"type": "string", "description": "YYYY-MM-DD"},
+                        "dependency_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of task IDs this task depends on",
+                        },
+                    },
+                    "required": ["project_id", "title"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_update_task",
+                "description": "Update a task by id.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_id": {"type": "string"},
+                        "title": {"type": "string"},
+                        "description": {"type": "string"},
+                        "status": {"type": "string"},
+                        "priority": {"type": "string"},
+                        "assignee_id": {"type": "string"},
+                        "start_date": {"type": "string", "description": "YYYY-MM-DD"},
+                        "end_date": {"type": "string", "description": "YYYY-MM-DD"},
+                        "dependency_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of task IDs this task depends on",
+                        },
+                    },
+                    "required": ["task_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_create_milestone",
+                "description": "Create a milestone inside a project.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {"type": "string"},
+                        "title": {"type": "string"},
+                        "description": {"type": "string"},
+                        "status": {"type": "string"},
+                        "target_date": {"type": "string", "description": "YYYY-MM-DD"},
+                    },
+                    "required": ["project_id", "title"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_update_milestone",
+                "description": "Update a milestone by id.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "milestone_id": {"type": "string"},
+                        "title": {"type": "string"},
+                        "description": {"type": "string"},
+                        "status": {"type": "string"},
+                        "target_date": {"type": "string", "description": "YYYY-MM-DD"},
+                    },
+                    "required": ["milestone_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_delete_task",
+                "description": "Delete a task by ID.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task_id": {"type": "string"},
+                    },
+                    "required": ["task_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_delete_project",
+                "description": "Delete a project by ID.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {"type": "string"},
+                    },
+                    "required": ["project_id"],
+                },
+            },
+        },
     ]
 
 
@@ -156,9 +342,40 @@ def execute_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, Any]:
             return _graph_add_edge(ctx, args)
         if name == "ingest_markdown":
             return _ingest_markdown(ctx, args)
+        if name == "plan_generate_draft":
+            return _plan_generate_draft(ctx, args)
+        if name.startswith("plan_"):
+            return execute_plan_tool(name, arguments, ctx)
         return {"ok": False, "error": f"unknown_tool:{name}"}
     except Exception as e:
         logger.exception("Tool %s failed", name)
+        return {"ok": False, "error": str(e), "tool": name}
+
+
+def execute_plan_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, Any]:
+    args = _parse_args(arguments)
+    try:
+        if name == "plan_list_projects":
+            return _plan_list_projects(ctx, args)
+        if name == "plan_create_project":
+            return _plan_create_project(ctx, args)
+        if name == "plan_update_project":
+            return _plan_update_project(ctx, args)
+        if name == "plan_create_task":
+            return _plan_create_task(ctx, args)
+        if name == "plan_update_task":
+            return _plan_update_task(ctx, args)
+        if name == "plan_create_milestone":
+            return _plan_create_milestone(ctx, args)
+        if name == "plan_update_milestone":
+            return _plan_update_milestone(ctx, args)
+        if name == "plan_delete_task":
+            return _plan_delete_task(ctx, args)
+        if name == "plan_delete_project":
+            return _plan_delete_project(ctx, args)
+        return {"ok": False, "error": f"unknown_tool:{name}"}
+    except Exception as e:
+        logger.exception("Plan tool %s failed", name)
         return {"ok": False, "error": str(e), "tool": name}
 
 
@@ -322,3 +539,218 @@ def _ingest_markdown(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "error": str(e), "job_id": str(job.id)}
 
     return {"ok": True, "job_id": str(job.id), "status": "queued"}
+
+
+def _plan_list_projects(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    query = (args.get("query") or "").strip()
+    limit = min(int(args.get("limit") or 20), 50)
+    projects = Project.objects.filter(team_id=ctx.team_id).order_by("-updated_at")
+    if query:
+        projects = projects.filter(Q(name__icontains=query) | Q(description__icontains=query))
+    rows = [
+        {"id": str(p.id), "name": p.name, "description": p.description, "status": p.status}
+        for p in projects[:limit]
+    ]
+    return {"ok": True, "projects": rows, "count": len(rows)}
+
+
+def _plan_create_project(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from planning.services import create_project as srv_create_project
+
+    name = (args.get("name") or "").strip()
+    if not name:
+        return {"ok": False, "error": "name_required"}
+    
+    project = srv_create_project(
+        team_id=ctx.team_id,
+        user=ctx.user,
+        payload={
+            "name": name,
+            "description": (args.get("description") or "").strip(),
+            "status": args.get("status") or "active",
+        }
+    )
+    reindex_project(project)
+    return {"ok": True, "project_id": str(project.id), "name": project.name, "status": project.status}
+
+
+def _plan_update_project(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from planning.services import get_project_or_none, update_project as srv_update_project
+
+    project_id = (args.get("project_id") or "").strip()
+    if not project_id:
+        return {"ok": False, "error": "project_id_required"}
+    
+    project = get_project_or_none(ctx.team_id, project_id)
+    if not project:
+        return {"ok": False, "error": "project_not_found"}
+
+    payload = {}
+    if "name" in args: payload["name"] = args["name"]
+    if "description" in args: payload["description"] = args["description"]
+    if "status" in args: payload["status"] = args["status"]
+    
+    updated = srv_update_project(project, payload)
+    reindex_project(updated)
+    return {"ok": True, "project_id": str(updated.id), "name": updated.name, "status": updated.status}
+
+
+def _resolve_assignee(team_id: str, assignee_id: Any) -> User | None:
+    if not assignee_id:
+        return None
+    try:
+        membership = TeamMember.objects.select_related("user").get(team_id=team_id, user_id=assignee_id)
+    except TeamMember.DoesNotExist:
+        return None
+    return membership.user
+
+
+def _plan_create_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from planning.services import get_project_or_none, create_task as srv_create_task
+
+    project_id = (args.get("project_id") or "").strip()
+    title = (args.get("title") or "").strip()
+    if not project_id or not title:
+        return {"ok": False, "error": "project_id_and_title_required"}
+    
+    project = get_project_or_none(ctx.team_id, project_id)
+    if not project:
+        return {"ok": False, "error": "project_not_found"}
+
+    assignee = _resolve_assignee(ctx.team_id, args.get("assignee_id"))
+    
+    payload = {
+        "title": title,
+        "description": (args.get("description") or "").strip(),
+        "status": args.get("status") or "todo",
+        "priority": args.get("priority") or "medium",
+        "assignee": assignee,
+        "start_date": args.get("start_date") or None,
+        "end_date": args.get("end_date") or None,
+        "dependency_ids": args.get("dependency_ids") or [],
+    }
+    
+    task = srv_create_task(project=project, user=ctx.user, payload=payload)
+    reindex_project(project)
+    return {"ok": True, "task_id": str(task.id), "project_id": str(project.id), "title": task.title}
+
+
+def _plan_update_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from planning.services import get_task_or_none, update_task as srv_update_task
+
+    task_id = (args.get("task_id") or "").strip()
+    if not task_id:
+        return {"ok": False, "error": "task_id_required"}
+    
+    # We need project_id for get_task_or_none, or we can use Task.objects.get directly if we have team_id
+    try:
+        task = Task.objects.select_related("project").get(id=task_id, project__team_id=ctx.team_id)
+    except Task.DoesNotExist:
+        return {"ok": False, "error": "task_not_found"}
+
+    payload = {}
+    for field in ["title", "description", "status", "priority", "start_date", "end_date", "dependency_ids"]:
+        if field in args:
+            payload[field] = args[field]
+    
+    if "assignee_id" in args:
+        payload["assignee"] = _resolve_assignee(ctx.team_id, args["assignee_id"])
+
+    updated = srv_update_task(task, payload)
+    reindex_project(updated.project)
+    return {"ok": True, "task_id": str(updated.id), "title": updated.title, "status": updated.status}
+
+
+def _plan_create_milestone(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from planning.services import get_project_or_none, create_milestone as srv_create_milestone
+
+    project_id = (args.get("project_id") or "").strip()
+    title = (args.get("title") or "").strip()
+    if not project_id or not title:
+        return {"ok": False, "error": "project_id_and_title_required"}
+    
+    project = get_project_or_none(ctx.team_id, project_id)
+    if not project:
+        return {"ok": False, "error": "project_not_found"}
+
+    milestone = srv_create_milestone(
+        project=project,
+        user=ctx.user,
+        payload={
+            "title": title,
+            "description": (args.get("description") or "").strip(),
+            "status": args.get("status") or "pending",
+            "target_date": args.get("target_date") or None,
+        }
+    )
+    reindex_project(project)
+    return {"ok": True, "milestone_id": str(milestone.id), "project_id": str(project.id), "title": milestone.title}
+
+
+def _plan_update_milestone(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from planning.services import update_milestone as srv_update_milestone
+
+    milestone_id = (args.get("milestone_id") or "").strip()
+    if not milestone_id:
+        return {"ok": False, "error": "milestone_id_required"}
+    
+    try:
+        milestone = Milestone.objects.select_related("project").get(id=milestone_id, project__team_id=ctx.team_id)
+    except Milestone.DoesNotExist:
+        return {"ok": False, "error": "milestone_not_found"}
+
+    payload = {}
+    for field in ["title", "description", "status", "target_date"]:
+        if field in args:
+            payload[field] = args[field]
+    
+    updated = srv_update_milestone(milestone, payload)
+    reindex_project(updated.project)
+    return {"ok": True, "milestone_id": str(updated.id), "title": updated.title, "status": updated.status}
+
+
+def _plan_delete_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from planning.services import delete_task as srv_delete_task
+    task_id = args.get("task_id")
+    try:
+        task = Task.objects.select_related("project").get(id=task_id, project__team_id=ctx.team_id)
+        project = task.project
+        srv_delete_task(task)
+        reindex_project(project)
+        return {"ok": True, "task_id": task_id}
+    except Task.DoesNotExist:
+        return {"ok": False, "error": "task_not_found"}
+
+
+def _plan_delete_project(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from planning.services import get_project_or_none, delete_project as srv_delete_project
+    project_id = args.get("project_id")
+    project = get_project_or_none(ctx.team_id, project_id)
+    if project:
+        srv_delete_project(project)
+        return {"ok": True, "project_id": project_id}
+    return {"ok": False, "error": "project_not_found"}
+def _plan_generate_draft(ctx: ToolContext, args: dict) -> dict:
+    from planning.services import generate_plan_draft, get_project_or_none
+    from planning.serializers import ProjectDetailSerializer
+
+    prompt = args.get("prompt")
+    mode = args.get("mode", "create")
+    project_id = args.get("project_id")
+    
+    project_context = None
+    if project_id:
+        project = get_project_or_none(team_id=ctx.team_id, project_id=project_id)
+        if project:
+            project_context = ProjectDetailSerializer(project).data
+
+    try:
+        draft = generate_plan_draft(
+            team_id=ctx.team_id, 
+            prompt=prompt, 
+            mode=mode, 
+            project_context=project_context
+        )
+        return {"ok": True, "draft": draft}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}

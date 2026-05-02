@@ -13,8 +13,13 @@ import { ChatAgentToolTimeline, type AgentToolStep } from "@/components/chat/Cha
 
 type ChatSession = { id: string; title: string };
 type Citation = {
+  source?: "wiki" | "plan" | string;
+  title?: string;
   page_slug?: string;
   page_title?: string;
+  project_id?: string;
+  project_name?: string;
+  source_kind?: string;
   confidence?: number;
   anchor_hint?: string;
   chunk_id?: string;
@@ -31,8 +36,10 @@ type ChatMessage = {
 type SessionDetailResponse = { messages?: ChatMessage[] };
 type ChatCapabilities = {
   can_edit_wiki: boolean;
+  can_edit_plans: boolean;
   can_ingest: boolean;
   agent_mode_available: boolean;
+  plan_mode_available: boolean;
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
@@ -177,7 +184,7 @@ export function ChatInterface() {
     if (!currentTeamId) return;
     try {
       const v = sessionStorage.getItem(`teamos-chat-mode-${currentTeamId}`);
-      if (v === "agent" || v === "ask") setChatMode(v);
+      if (v === "agent" || v === "ask" || v === "plan") setChatMode(v);
     } catch {
       /* ignore */
     }
@@ -294,7 +301,7 @@ export function ChatInterface() {
         content: "",
         citations: [],
         id: assistantId,
-        toolSteps: mode === "agent" ? [] : undefined,
+        toolSteps: mode === "agent" || mode === "plan" ? [] : undefined,
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
@@ -773,7 +780,14 @@ export function ChatInterface() {
               value={chatMode}
               onChange={setChatMode}
               capabilities={
-                chatCaps ?? { can_edit_wiki: false, can_ingest: false, agent_mode_available: false }
+                chatCaps
+                ?? {
+                  can_edit_wiki: false,
+                  can_edit_plans: false,
+                  can_ingest: false,
+                  agent_mode_available: false,
+                  plan_mode_available: false,
+                }
               }
             />
             <div className="relative min-w-0 flex-1">
