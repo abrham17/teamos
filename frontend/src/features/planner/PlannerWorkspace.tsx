@@ -30,7 +30,8 @@ export function PlannerWorkspace() {
   const [isAIOverlayOpen, setIsAIOverlayOpen] = useState(false);
   const [aiMode, setAiMode] = useState<"create" | "manage">("create");
   const [activeView, setActiveView] = useState<PlannerView>("overview");
-  const [activity, setActivity] = useState<unknown[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [activity, setActivity] = useState<any[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -74,7 +75,8 @@ export function PlannerWorkspace() {
     return <div className="p-8 text-[var(--text-muted)]">Select a team first.</div>;
   }
 
-  const handlePlanGenerated = async (plan: { projectName: string; description: string; tasks: unknown[]; milestones: unknown[] }) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handlePlanGenerated = async (plan: { projectName: string; description: string; tasks: any[]; milestones: any[] }) => {
     if (!currentTeamId) return;
     try {
       if (aiMode === "manage" && activeProjectId) {
@@ -116,7 +118,8 @@ export function PlannerWorkspace() {
   const handleCreateTask = async (data: unknown) => {
     if (!currentTeamId || !activeProjectId) return;
     try {
-      await createPlanTask(currentTeamId, activeProjectId, data);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await createPlanTask(currentTeamId, activeProjectId, data as any);
       refreshProjectDetail();
       setIsAddTaskOpen(false);
     } catch (e) {
@@ -127,7 +130,8 @@ export function PlannerWorkspace() {
   const handleCreateMilestone = async (data: unknown) => {
     if (!currentTeamId || !activeProjectId) return;
     try {
-      await createPlanMilestone(currentTeamId, activeProjectId, data);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await createPlanMilestone(currentTeamId, activeProjectId, data as any);
       refreshProjectDetail();
       setIsAddMilestoneOpen(false);
     } catch (e) {
@@ -230,7 +234,6 @@ export function PlannerWorkspace() {
             <BoardPanel 
               tasks={activeProject?.tasks || []} 
               onUpdateTask={handleUpdateTask} 
-              teamMembers={teamMembers} 
             />
           ) : activeView === "calendar" ? (
             <CalendarPanel 
@@ -245,7 +248,6 @@ export function PlannerWorkspace() {
             <TimelinePanel 
               tasks={activeProject?.tasks || []} 
               milestones={activeProject?.milestones || []} 
-              teamMembers={teamMembers} 
             />
           ) : activeView === "team" ? (
             <TeamPanel 

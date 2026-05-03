@@ -89,7 +89,8 @@ export async function getPlannerCalendarFeed(teamId: string, fromDate?: string, 
 }
 
 export async function getPlannerActivity(teamId: string) {
-  return api.get<unknown[]>(`/planning/${teamId}/activity/`);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return api.get<any[]>(`/planning/${teamId}/activity/`);
 }
 
 export async function getTeamMembers(teamId: string) {
@@ -100,7 +101,8 @@ export async function planAssistDraft(
   teamId: string,
   payload: { prompt: string; mode?: "create" | "manage"; project_id?: string },
 ) {
-  return api.post<unknown>(`/planning/${teamId}/assist/`, payload);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return api.post<any>(`/planning/${teamId}/assist/`, payload);
 }
 
 export async function createProjectMember(teamId: string, projectId: string, userId: string, role: string) {

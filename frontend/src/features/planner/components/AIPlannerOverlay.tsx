@@ -20,7 +20,8 @@ import type { PlanProjectDetail } from "../types";
 interface AIPlannerOverlayProps {
   teamId: string;
   onClose: () => void;
-  onPlanGenerated: (plan: { projectName: string; description: string; tasks: unknown[]; milestones: unknown[] }) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onPlanGenerated: (plan: { projectName: string; description: string; tasks: any[]; milestones: any[] }) => void;
   mode?: "create" | "manage";
   projectContext?: PlanProjectDetail | null;
 }
@@ -38,8 +39,10 @@ export function AIPlannerOverlay({
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<unknown>(null);
-  const [generatedPlan, setGeneratedPlan] = useState<{ projectName: string; description: string; tasks: unknown[]; milestones: unknown[] } | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [generatedPlan, setGeneratedPlan] = useState<{ projectName: string; description: string; tasks: any[]; milestones: any[] } | null>(null);
   const [thoughts, setThoughts] = useState<string[]>([]);
 
   // Manual fields
@@ -121,7 +124,7 @@ export function AIPlannerOverlay({
       setPhase("review");
     } catch (error: unknown) {
       console.error(error);
-      alert(error.message || "Failed to process request. Please try again.");
+      alert(error instanceof Error ? error.message : "Failed to process request. Please try again.");
       setPhase("input");
     } finally {
       setLoading(false);

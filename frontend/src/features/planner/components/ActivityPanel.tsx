@@ -4,7 +4,8 @@ import { motion } from "motion/react";
 import { History, Target, CheckCircle2, Clock, User } from "lucide-react";
 
 interface ActivityPanelProps {
-  activity: unknown[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  activity: any[];
   loading: boolean;
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { api } from "@/lib/api";
@@ -9,7 +9,7 @@ import { api } from "@/lib/api";
 type AcceptState = "idle" | "submitting" | "accepted" | "already_accepted" | "error";
 type AcceptInviteResponse = { invite_status?: "accepted" | "already_accepted" };
 
-export default function AcceptInvitePage() {
+function AcceptInviteContent() {
   const params = useSearchParams();
   const token = params.get("token") || "";
   const { isSignedIn, isLoaded } = useUser();
@@ -107,5 +107,13 @@ export default function AcceptInvitePage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AcceptInvitePage() {
+  return (
+    <Suspense fallback={null}>
+      <AcceptInviteContent />
+    </Suspense>
   );
 }
