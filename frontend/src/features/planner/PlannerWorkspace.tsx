@@ -81,9 +81,9 @@ export function PlannerWorkspace() {
         await updatePlanProject(currentTeamId, activeProjectId, {
           name: plan.projectName,
           description: plan.description,
-          // @ts-expect-error
+          // @ts-expect-error: generated plan tasks may not match PlanTask type exactly
           tasks: plan.tasks,
-          // @ts-expect-error
+          // @ts-expect-error: generated plan milestones may not match PlanMilestone type exactly
           milestones: plan.milestones,
         });
         refreshProjectDetail();
@@ -212,14 +212,8 @@ export function PlannerWorkspace() {
           {activeView === "overview" ? (
             <ProjectOverviewPanel
               activeProject={activeProject}
-              preferredChunkId={preferredChunkId}
               loadingDetail={loadingProjectDetail}
               error={error}
-              events={events}
-              loadingCalendar={loadingCalendar}
-              calendarError={calendarError}
-              totalProjects={projects.length}
-              totalTasks={totalTasks}
               teamMembers={teamMembers}
               onAskAI={() => {
                 setAiMode("manage");

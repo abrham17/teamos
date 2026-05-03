@@ -18,7 +18,7 @@ const COLUMNS = [
   { id: "blocked", label: "Blocked", color: "bg-rose-500", icon: AlertCircle },
 ] as const;
 
-export function BoardPanel({ tasks, onUpdateTask, teamMembers }: BoardPanelProps) {
+export function BoardPanel({ tasks, onUpdateTask }: Omit<BoardPanelProps, 'teamMembers'>) {
   return (
     <div className="flex gap-6 h-full overflow-x-auto p-6 custom-scrollbar bg-[var(--bg-950)]/50">
       {COLUMNS.map((column) => {

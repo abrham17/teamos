@@ -10,7 +10,6 @@ import {
   Maximize2,
   Minimize2,
   X,
-  Calendar as CalendarIcon,
 } from "lucide-react";
 
 interface TimelinePanelProps {
@@ -19,7 +18,7 @@ interface TimelinePanelProps {
   teamMembers: TeamMember[];
 }
 
-export function TimelinePanel({ tasks, milestones, teamMembers }: TimelinePanelProps) {
+export function TimelinePanel({ tasks, milestones }: Omit<TimelinePanelProps, 'teamMembers'>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const expandedContainerRef = useRef<HTMLDivElement>(null);

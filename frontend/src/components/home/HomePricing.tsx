@@ -207,16 +207,17 @@ export function HomePricing() {
 
   useEffect(() => {
     if (!catalog) return;
+    const currentTimers = quoteTimers.current;
     for (const p of catalog.plans) {
       if (p.key === "free") continue;
       const pr = prefs[p.key];
       if (!pr) continue;
-      if (quoteTimers.current[p.key]) clearTimeout(quoteTimers.current[p.key]);
-      quoteTimers.current[p.key] = setTimeout(() => runQuote(p.key, pr.seats, pr.usage), 280);
+      if (currentTimers[p.key]) clearTimeout(currentTimers[p.key]);
+      currentTimers[p.key] = setTimeout(() => runQuote(p.key, pr.seats, pr.usage), 280);
     }
     return () => {
-      for (const k of Object.keys(quoteTimers.current)) {
-        if (quoteTimers.current[k]) clearTimeout(quoteTimers.current[k]);
+      for (const k of Object.keys(currentTimers)) {
+        if (currentTimers[k]) clearTimeout(currentTimers[k]);
       }
     };
   }, [catalog, prefs, runQuote]);

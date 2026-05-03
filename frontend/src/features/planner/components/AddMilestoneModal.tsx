@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Flag, Calendar } from "lucide-react";
+import { X, Flag } from "lucide-react";
 
 interface AddMilestoneModalProps {
   isOpen: boolean;

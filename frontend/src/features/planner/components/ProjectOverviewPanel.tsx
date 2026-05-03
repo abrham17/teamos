@@ -5,17 +5,11 @@ import { PlanProjectDetail, PlanTask, TeamMember, PlanMilestone } from "../types
 import {
   Search,
   Plus,
-  MoreVertical,
-  Calendar,
   Clock,
   CheckCircle2,
-  AlertCircle,
   FileText,
   Download,
-  Share2,
   Sparkles,
-  ChevronRight,
-  ArrowRight,
   PlusCircle,
   Flag,
   LayoutGrid,
@@ -23,41 +17,28 @@ import {
   Shield,
   Trash2,
 } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
-import { updatePlanTask, updatePlanMilestone, createPlanTask, createPlanMilestone } from "../api";
+import { motion } from "motion/react";
+import { updatePlanTask, updatePlanMilestone } from "../api";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { AddTaskModal } from "./AddTaskModal";
-import { AddMilestoneModal } from "./AddMilestoneModal";
+
 
 interface ProjectOverviewPanelProps {
   activeProject: PlanProjectDetail | null;
-  preferredChunkId?: string | null;
   loadingDetail: boolean;
   error: string | null;
-  events: unknown[];
-  loadingCalendar: boolean;
-  calendarError: string | null;
-  totalProjects: number;
-  totalTasks: number;
   teamMembers: TeamMember[];
   onAskAI: () => void;
   onRefreshDetail: () => void;
   onOpenAddTask: () => void;
   onOpenAddMilestone: () => void;
-  onDeleteProject: (email: string) => void;
+  onDeleteProject: (name: string) => void;
   onDeleteTask: (taskId: string) => void;
 }
 
 export function ProjectOverviewPanel({
   activeProject,
-  preferredChunkId,
   loadingDetail,
   error,
-  events,
-  loadingCalendar,
-  calendarError,
-  totalProjects,
-  totalTasks,
   teamMembers,
   onAskAI,
   onRefreshDetail,

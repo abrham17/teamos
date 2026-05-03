@@ -2,7 +2,7 @@
 
 import React from "react";
 import { PlanTask, TeamMember, ProjectMember } from "../types";
-import { User, LayoutGrid, CheckCircle2, Clock, AlertCircle, UserPlus, Shield, Trash2 } from "lucide-react";
+import { LayoutGrid, CheckCircle2, Clock, AlertCircle, UserPlus, Shield, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
 
 interface TeamPanelProps {

@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Calendar, User, ListTodo, AlertCircle } from "lucide-react";
+import { X, ListTodo } from "lucide-react";
 import { TeamMember } from "../types";
 
 interface AddTaskModalProps {
@@ -25,7 +25,6 @@ export function AddTaskModal({ isOpen, onClose, onSubmit, teamMembers, initialSt
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
-  const [status, setStatus] = useState("todo");
   const [assigneeId, setAssigneeId] = useState("");
   const [startDate, setStartDate] = useState(initialStartDate || "");
   const [endDate, setEndDate] = useState("");
@@ -45,7 +44,7 @@ export function AddTaskModal({ isOpen, onClose, onSubmit, teamMembers, initialSt
       title,
       description,
       priority,
-      status,
+      status: "todo",
       assignee_id: assigneeId || null,
       start_date: startDate || null,
       end_date: endDate || null,

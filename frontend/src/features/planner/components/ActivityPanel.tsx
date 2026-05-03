@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { History, Target, CheckCircle2, Clock, User, ArrowRight } from "lucide-react";
+import { History, Target, CheckCircle2, Clock, User } from "lucide-react";
 
 interface ActivityPanelProps {
   activity: unknown[];

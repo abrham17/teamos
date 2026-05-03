@@ -10,7 +10,7 @@ import NeuralConvergence from '@/components/landing/NeuralConvergence';
 import UseCaseGrid from '@/components/landing/UseCaseGrid';
 import HeroMockup from '@/components/landing/HeroMockup';
 import { HomePricing } from "@/components/home/HomePricing";
-import { cn } from '@/lib/utils';
+
 
 export default function Home() {
   const { isSignedIn } = useUser();

@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, MapPin, Loader2, Plus } from "lucide-react";
+import { motion } from "motion/react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Loader2, Plus } from "lucide-react";
 import type { PlanCalendarEvent } from "../types";
 
 interface CalendarPanelProps {
