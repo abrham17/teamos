@@ -1,7 +1,6 @@
 "use client";
 
 import React from 'react';
-import { motion } from 'motion/react';
 import { Search, Link as LinkIcon, Cpu, Rocket, Network } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

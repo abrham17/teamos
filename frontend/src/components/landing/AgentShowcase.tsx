@@ -56,7 +56,7 @@ export default function AgentShowcase() {
         </h2>
         
         <p className="text-slate-400 text-xl max-w-lg leading-relaxed">
-          The wiki isn't just for reading. Our agents use it as a grounding layer. They read your entire interlinked logic before architecting a single task, ensuring plans are authoritative, not just estimated.
+          The wiki isn&apos;t just for reading. Our agents use it as a grounding layer. They read your entire interlinked logic before architecting a single task, ensuring plans are authoritative, not just estimated.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-12">

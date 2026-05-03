@@ -75,7 +75,7 @@ export default function Home() {
               </h1>
               
               <p className="text-slate-400 text-lg md:text-xl max-w-sm leading-relaxed mt-8">
-                The first knowledge engine that doesn't just store documentation—it uses it to architect and plan your team's projects automatically.
+                The first knowledge engine that doesn&apos;t just store documentation—it uses it to architect and plan your team&apos;s projects automatically.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center gap-4 mt-12">

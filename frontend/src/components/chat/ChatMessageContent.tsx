@@ -190,9 +190,6 @@ type ChatMessageContentProps = {
 
 export function ChatMessageContent({ content, streaming }: ChatMessageContentProps) {
   const trimmed = (content ?? "").trim();
-  if (!trimmed) {
-    return <span className="text-[var(--text-dim)]">…</span>;
-  }
 
   const components = useMemo<Components>(
     () => ({
@@ -231,6 +228,10 @@ export function ChatMessageContent({ content, streaming }: ChatMessageContentPro
     }),
     [streaming],
   );
+
+  if (!trimmed) {
+    return <span className="text-[var(--text-dim)]">…</span>;
+  }
 
   return (
     <div className="chat-md max-w-none">

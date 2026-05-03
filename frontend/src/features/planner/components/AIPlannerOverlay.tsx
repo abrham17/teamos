@@ -20,7 +20,7 @@ import type { PlanProjectDetail } from "../types";
 interface AIPlannerOverlayProps {
   teamId: string;
   onClose: () => void;
-  onPlanGenerated: (plan: any) => void;
+  onPlanGenerated: (plan: { projectName: string; description: string; tasks: unknown[]; milestones: unknown[] }) => void;
   mode?: "create" | "manage";
   projectContext?: PlanProjectDetail | null;
 }
@@ -38,8 +38,8 @@ export function AIPlannerOverlay({
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<any>(null);
-  const [generatedPlan, setGeneratedPlan] = useState<any>(null);
+  const recognitionRef = useRef<unknown>(null);
+  const [generatedPlan, setGeneratedPlan] = useState<{ projectName: string; description: string; tasks: unknown[]; milestones: unknown[] } | null>(null);
   const [thoughts, setThoughts] = useState<string[]>([]);
 
   // Manual fields
@@ -66,13 +66,13 @@ export function AIPlannerOverlay({
     recognition.lang = "en-US";
 
     recognition.onstart = () => setIsListening(true);
-    recognition.onerror = (event: any) => {
+    recognition.onerror = (event: { error: unknown }) => {
       console.error(event.error);
       setIsListening(false);
     };
     recognition.onend = () => setIsListening(false);
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: { resultIndex: number; results: { length: number; [key: number]: { isFinal: boolean; [key: number]: { transcript: string } } } }) => {
       let finalTranscript = "";
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
@@ -119,7 +119,7 @@ export function AIPlannerOverlay({
       // api.post already unwrapped the 'data' field. res IS the plan draft.
       setGeneratedPlan(res);
       setPhase("review");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
       alert(error.message || "Failed to process request. Please try again.");
       setPhase("input");
@@ -389,7 +389,7 @@ export function AIPlannerOverlay({
                       )}
                     </h4>
                     <div className="space-y-2">
-                      {(generatedPlan.tasks || []).slice(0, 4).map((t: any, i: number) => (
+                      {(generatedPlan.tasks || []).slice(0, 4).map((t: { title: string; priority: string }, i: number) => (
                         <div
                           key={i}
                           className="bg-[var(--surface-1)] p-4 rounded-xl text-[13px] font-medium flex items-center justify-between border border-[var(--border-subtle)] shadow-sm"
@@ -415,7 +415,7 @@ export function AIPlannerOverlay({
                       Milestones ({generatedPlan.milestones?.length || 0})
                     </h4>
                     <div className="space-y-2">
-                      {(generatedPlan.milestones || []).slice(0, 4).map((m: any, i: number) => (
+                      {(generatedPlan.milestones || []).slice(0, 4).map((m: { title: string; date: string }, i: number) => (
                         <div
                           key={i}
                           className="bg-[var(--surface-1)] p-4 rounded-xl text-[13px] font-medium flex items-center justify-between border-l-4 border-[var(--accent)] shadow-sm"

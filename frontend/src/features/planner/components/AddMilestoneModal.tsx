@@ -7,7 +7,7 @@ import { X, Flag, Calendar } from "lucide-react";
 interface AddMilestoneModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: any) => void;
+  onSubmit: (data: { title: string; description: string; target_date: string | null; status: string }) => void;
 }
 
 export function AddMilestoneModal({ isOpen, onClose, onSubmit }: AddMilestoneModalProps) {

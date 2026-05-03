@@ -97,8 +97,8 @@ function placeNearNode(
   ];
 
   for (const v of variants) {
-    let left = Math.min(Math.max(v.left, MARGIN), Math.max(MARGIN, cw - w - MARGIN));
-    let top = Math.min(Math.max(v.top, MARGIN), Math.max(MARGIN, ch - h - MARGIN));
+    const left = Math.min(Math.max(v.left, MARGIN), Math.max(MARGIN, cw - w - MARGIN));
+    const top = Math.min(Math.max(v.top, MARGIN), Math.max(MARGIN, ch - h - MARGIN));
     const r = panelRect(left, top, w, h);
     if (!rectsOverlapNode(r, bb, 2)) return { left, top };
   }

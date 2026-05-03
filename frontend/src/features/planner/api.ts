@@ -24,8 +24,8 @@ export async function createPlanProject(
     name: string;
     description?: string;
     status?: PlanProjectListItem["status"];
-    tasks?: any[];
-    milestones?: any[];
+    tasks?: unknown[];
+    milestones?: unknown[];
   },
 ) {
   return api.post<PlanProjectDetail>(`/planning/${teamId}/projects/`, payload);
@@ -86,7 +86,7 @@ export async function getPlannerCalendarFeed(teamId: string, fromDate?: string, 
 }
 
 export async function getPlannerActivity(teamId: string) {
-  return api.get<any[]>(`/planning/${teamId}/activity/`);
+  return api.get<unknown[]>(`/planning/${teamId}/activity/`);
 }
 
 export async function getTeamMembers(teamId: string) {
@@ -97,7 +97,7 @@ export async function planAssistDraft(
   teamId: string,
   payload: { prompt: string; mode?: "create" | "manage"; project_id?: string },
 ) {
-  return api.post<any>(`/planning/${teamId}/assist/`, payload);
+  return api.post<unknown>(`/planning/${teamId}/assist/`, payload);
 }
 
 export async function createProjectMember(teamId: string, projectId: string, userId: string, role: string) {

@@ -8,7 +8,15 @@ import { TeamMember } from "../types";
 interface AddTaskModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: any) => void;
+  onSubmit: (data: {
+    title: string;
+    description: string;
+    priority: string;
+    status: string;
+    assignee_id: string | null;
+    start_date: string | null;
+    end_date: string | null;
+  }) => void;
   teamMembers: TeamMember[];
   initialStartDate?: string;
 }

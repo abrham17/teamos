@@ -64,7 +64,7 @@ export function BoardPanel({ tasks, onUpdateTask, teamMembers }: BoardPanelProps
                     if (colIndex >= 0 && colIndex < COLUMNS.length) {
                       const newStatus = COLUMNS[colIndex].id;
                       if (newStatus !== task.status) {
-                        onUpdateTask(task.id, { status: newStatus as any });
+                        onUpdateTask(task.id, { status: newStatus as PlanTask["status"] });
                       }
                     }
                   }}

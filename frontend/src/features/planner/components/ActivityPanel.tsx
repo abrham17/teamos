@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import { History, Target, CheckCircle2, Clock, User, ArrowRight } from "lucide-react";
 
 interface ActivityPanelProps {
-  activity: any[];
+  activity: unknown[];
   loading: boolean;
 }
 
@@ -23,7 +23,7 @@ export function ActivityPanel({ activity, loading }: ActivityPanelProps) {
         <History className="w-16 h-16 mb-4 text-[var(--text-dim)]" />
         <h4 className="text-lg font-bold text-[var(--text-primary)]">No Activity Found</h4>
         <p className="text-sm text-[var(--text-muted)] mt-2">
-          Your team's strategic movements will appear here.
+          Your team&apos;s strategic movements will appear here.
         </p>
       </div>
     );

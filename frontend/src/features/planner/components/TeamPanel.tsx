@@ -182,7 +182,7 @@ export function TeamPanel({ tasks, teamMembers, projectMembers, onAssignRole, on
   );
 }
 
-function StatCard({ label, value, icon, color = "text-[var(--text-muted)]" }: any) {
+function StatCard({ label, value, icon, color = "text-[var(--text-muted)]" }: { label: string; value: number; icon: React.ReactNode; color?: string }) {
   return (
     <div className="bg-[var(--bg-900)] p-3 rounded-2xl border border-[var(--border-subtle)] flex flex-col items-center justify-center">
       <div className={`mb-1 ${color}`}>{icon}</div>
@@ -193,7 +193,7 @@ function StatCard({ label, value, icon, color = "text-[var(--text-muted)]" }: an
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const config: any = {
+  const config: Record<string, string> = {
     'todo': 'bg-slate-500/10 text-slate-500',
     'in-progress': 'bg-[var(--accent)]/10 text-[var(--accent)]',
     'completed': 'bg-emerald-500/10 text-emerald-500',

@@ -34,7 +34,7 @@ interface ProjectOverviewPanelProps {
   preferredChunkId?: string | null;
   loadingDetail: boolean;
   error: string | null;
-  events: any[];
+  events: unknown[];
   loadingCalendar: boolean;
   calendarError: string | null;
   totalProjects: number;
@@ -472,7 +472,7 @@ export function ProjectOverviewPanel({
   );
 }
 
-function StatBox({ label, value, subValue, trend }: any) {
+function StatBox({ label, value, subValue, trend }: { label: string; value: string | number; subValue: string; trend?: "up" | "down" }) {
   return (
     <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] p-6 rounded-[32px] shadow-sm hover:border-[var(--accent-subtle)] transition-all">
       <p className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-widest mb-1">

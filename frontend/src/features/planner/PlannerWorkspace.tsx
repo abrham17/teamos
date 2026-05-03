@@ -30,7 +30,7 @@ export function PlannerWorkspace() {
   const [isAIOverlayOpen, setIsAIOverlayOpen] = useState(false);
   const [aiMode, setAiMode] = useState<"create" | "manage">("create");
   const [activeView, setActiveView] = useState<PlannerView>("overview");
-  const [activity, setActivity] = useState<any[]>([]);
+  const [activity, setActivity] = useState<unknown[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -74,16 +74,16 @@ export function PlannerWorkspace() {
     return <div className="p-8 text-[var(--text-muted)]">Select a team first.</div>;
   }
 
-  const handlePlanGenerated = async (plan: any) => {
+  const handlePlanGenerated = async (plan: { projectName: string; description: string; tasks: unknown[]; milestones: unknown[] }) => {
     if (!currentTeamId) return;
     try {
       if (aiMode === "manage" && activeProjectId) {
         await updatePlanProject(currentTeamId, activeProjectId, {
           name: plan.projectName,
           description: plan.description,
-          // @ts-ignore
+          // @ts-expect-error
           tasks: plan.tasks,
-          // @ts-ignore
+          // @ts-expect-error
           milestones: plan.milestones,
         });
         refreshProjectDetail();
@@ -115,7 +115,7 @@ export function PlannerWorkspace() {
     }
   };
 
-  const handleCreateTask = async (data: any) => {
+  const handleCreateTask = async (data: unknown) => {
     if (!currentTeamId || !activeProjectId) return;
     try {
       await createPlanTask(currentTeamId, activeProjectId, data);
@@ -126,7 +126,7 @@ export function PlannerWorkspace() {
     }
   };
 
-  const handleCreateMilestone = async (data: any) => {
+  const handleCreateMilestone = async (data: unknown) => {
     if (!currentTeamId || !activeProjectId) return;
     try {
       await createPlanMilestone(currentTeamId, activeProjectId, data);
@@ -296,7 +296,7 @@ export function PlannerWorkspace() {
   );
 }
 
-function ViewTab({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: any, label: string }) {
+function ViewTab({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
   return (
     <button
       onClick={onClick}
