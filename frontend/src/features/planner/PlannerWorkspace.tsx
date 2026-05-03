@@ -25,7 +25,7 @@ export function PlannerWorkspace() {
   const { currentTeamId } = useWikiStore();
   const searchParams = useSearchParams();
   const preferredProjectId = searchParams.get("project");
-  const preferredChunkId = searchParams.get("chunk");
+
   const [query, setQuery] = useState("");
   const [isAIOverlayOpen, setIsAIOverlayOpen] = useState(false);
   const [aiMode, setAiMode] = useState<"create" | "manage">("create");
@@ -45,12 +45,12 @@ export function PlannerWorkspace() {
     loadingProjects,
     loadingProjectDetail,
     error,
-    totalTasks,
+
     refreshProjects,
     refreshProjectDetail,
   } = usePlannerData(currentTeamId, query, preferredProjectId);
 
-  const { events, loadingCalendar, calendarError } = usePlannerCalendar(currentTeamId);
+  const { events, loadingCalendar } = usePlannerCalendar(currentTeamId);
 
   useEffect(() => {
     if (currentTeamId) {
@@ -81,9 +81,7 @@ export function PlannerWorkspace() {
         await updatePlanProject(currentTeamId, activeProjectId, {
           name: plan.projectName,
           description: plan.description,
-          // @ts-expect-error: generated plan tasks may not match PlanTask type exactly
           tasks: plan.tasks,
-          // @ts-expect-error: generated plan milestones may not match PlanMilestone type exactly
           milestones: plan.milestones,
         });
         refreshProjectDetail();

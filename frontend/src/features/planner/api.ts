@@ -34,7 +34,10 @@ export async function createPlanProject(
 export async function updatePlanProject(
   teamId: string,
   projectId: string,
-  payload: Partial<PlanProjectListItem>,
+  payload: Partial<PlanProjectListItem> & {
+    tasks?: unknown[];
+    milestones?: unknown[];
+  },
 ) {
   return api.patch<PlanProjectDetail>(`/planning/${teamId}/projects/${projectId}/`, payload);
 }
