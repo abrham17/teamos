@@ -66,8 +66,15 @@ SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 
 # CORS
-CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
+from corsheaders.defaults import default_headers
+
+raw_cors_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "https://team-os.tech")
+CORS_ALLOWED_ORIGINS = [o.strip() for o in raw_cors_origins.split(",") if o.strip()]
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "authorization",
+    "x-clerk-auth-token", # Adding this just in case for Clerk integration
+]
 
 # Simple JWT
 SIMPLE_JWT["AUTH_COOKIE_SECURE"] = True
