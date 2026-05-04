@@ -12,7 +12,10 @@ DEBUG = False
 
 # Read from env
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")
+# ALLOWED_HOSTS should include the main domain and Render's domain pattern.
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "api.team-os.tech").split(",")
+if ".onrender.com" not in [h for h in ALLOWED_HOSTS if h]:
+    ALLOWED_HOSTS.append(".onrender.com")
 
 # DB Setup (Supabase PostgreSQL usually provides a connection URL)
 DATABASES = {

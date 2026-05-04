@@ -28,6 +28,7 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = [
     "api.team-os.tech",
+    ".onrender.com",
     "localhost",
     "127.0.0.1",
 ]
