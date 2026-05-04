@@ -14,15 +14,13 @@ DEBUG = False
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "build-placeholder-only-change-in-render")
 # ALLOWED_HOSTS should include the main domain and Render's domain pattern.
 raw_allowed_hosts = os.environ.get("DJANGO_ALLOWED_HOSTS", "api.team-os.tech,team-os.tech")
-ALLOWED_HOSTS = [h.strip() for h in raw_allowed_hosts.split(",") if h.strip()]
-
-# Always allow Render's internal domains and local loopback
-if ".onrender.com" not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append(".onrender.com")
-if "localhost" not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append("localhost")
-if "127.0.0.1" not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append("127.0.0.1")
+ALLOWED_HOSTS = [
+    "localhost",
+    "api.team-os.tech",
+    "team-os.tech",
+    "team-os-dev.onrender.com",
+    "api-dev.team-os.tech",
+]
 
 # DB Setup (Supabase PostgreSQL usually provides a connection URL)
 database_url = os.environ.get("DATABASE_URL")
@@ -78,8 +76,12 @@ STORAGES = {
 # CORS
 from corsheaders.defaults import default_headers
 
-raw_cors_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "https://team-os.tech")
-CORS_ALLOWED_ORIGINS = [o.strip() for o in raw_cors_origins.split(",") if o.strip()]
+CORS_ALLOWED_ORIGINS = [
+    "https://team-os.tech",
+    "https://api.team-os.tech",
+    "https://team-os-dev.onrender.com",
+    "https://api-dev.team-os.tech",
+]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "authorization",
