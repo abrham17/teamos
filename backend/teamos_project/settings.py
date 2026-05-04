@@ -167,4 +167,6 @@ CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = [
     "https://team-os.tech",
+    'https://api.team-os.tech',
+    
 ]
