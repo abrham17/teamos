@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 
 DEBUG = False
 
-# Read from env
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+# Read from env (fallback to dummy for build phase)
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "build-placeholder-only-change-in-render")
 # ALLOWED_HOSTS should include the main domain and Render's domain pattern.
 raw_allowed_hosts = os.environ.get("DJANGO_ALLOWED_HOSTS", "api.team-os.tech,team-os.tech")
 ALLOWED_HOSTS = [h.strip() for h in raw_allowed_hosts.split(",") if h.strip()]
