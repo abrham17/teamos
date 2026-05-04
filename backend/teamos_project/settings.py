@@ -161,6 +161,7 @@ PLAN_TIERS = {
 
 CORS_ALLOWED_ORIGINS = [
     "https://team-os.tech",
+    'https://api.team-os.tech',
 ]
 
 CORS_ALLOW_CREDENTIALS = True
