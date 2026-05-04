@@ -21,12 +21,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-%m=6(vxy^kclb#z7^m8l=37(7-egu(5zbcu%@m-5gd*7y0bk8q'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-%m=6(vxy^kclb#z7^m8l=37(7-egu(5zbcu%@m-5gd*7y0bk8q')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    "api.team-os.tech",
+    "localhost",
+    "127.0.0.1",
+]
 
 
 # Application definition
@@ -52,6 +56,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -151,3 +156,13 @@ PLAN_TIERS = {
     "free": {"chunk_size": 300, "chunk_overlap": 30},
     "pro": {"chunk_size": 500, "chunk_overlap": 50},
 }
+
+CORS_ALLOWED_ORIGINS = [
+    "https://team-os.tech",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://team-os.tech",
+]
