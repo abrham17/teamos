@@ -17,8 +17,8 @@ raw_allowed_hosts = os.environ.get("DJANGO_ALLOWED_HOSTS", "api.team-os.tech,tea
 ALLOWED_HOSTS = [host.strip() for host in raw_allowed_hosts.split(",") if host.strip()]
 ALLOWED_HOSTS += [
     "localhost",
-    "https://team-os.tech",
-    "https://api.team-os.tech",
+    "team-os.tech",
+    "api.team-os.tech",
     "127.0.0.1",
     "teamos-2.onrender.com",
     "team-os-dev.onrender.com",
