@@ -18,9 +18,14 @@ if ".onrender.com" not in [h for h in ALLOWED_HOSTS if h]:
     ALLOWED_HOSTS.append(".onrender.com")
 
 # DB Setup (Supabase PostgreSQL usually provides a connection URL)
+database_url = os.environ.get("DATABASE_URL")
+if database_url and ":[" in database_url and "]@" in database_url:
+    # Fix for common Supabase copy-paste error where brackets are left around the password
+    database_url = database_url.replace(":[", ":").replace("]@", "@")
+
 DATABASES = {
     "default": dj_database_url.config(
-        default=os.environ.get("DATABASE_URL"),
+        default=database_url,
         conn_max_age=600,
         conn_health_checks=True,
     )
