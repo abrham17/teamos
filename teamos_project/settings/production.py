@@ -11,15 +11,22 @@ logger = logging.getLogger(__name__)
 
 # Read from env (fallback to dummy for build phase)
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "build-placeholder-only-change-in-render")
+
 # ALLOWED_HOSTS should include the main domain and Render's domain pattern.
 raw_allowed_hosts = os.environ.get("DJANGO_ALLOWED_HOSTS", "api.team-os.tech,team-os.tech")
-ALLOWED_HOSTS = [
+ALLOWED_HOSTS = [host.strip() for host in raw_allowed_hosts.split(",") if host.strip()]
+ALLOWED_HOSTS += [
     "localhost",
-    "api.team-os.tech",
-    "team-os.tech",
+    "https://team-os.tech",
+    "https://api.team-os.tech",
+    "127.0.0.1",
+    "teamos-2.onrender.com",
     "team-os-dev.onrender.com",
-    "api-dev.team-os.tech",
+    ".onrender.com", # Wildcard for any render subdomain
 ]
+
+# Render (and most load balancers) terminates SSL and passes it via X-Forwarded-Proto
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # DB Setup (Supabase PostgreSQL usually provides a connection URL)
 database_url = os.environ.get("DATABASE_URL")
@@ -63,7 +70,11 @@ SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 
 # CSRF
-CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "https://team-os.tech,https://api.team-os.tech").split(",")
+CSRF_TRUSTED_ORIGINS = os.environ.get(
+    "CSRF_TRUSTED_ORIGINS", 
+    "https://team-os.tech,https://api.team-os.tech,https://teamos-2.onrender.com"
+).split(",")
+CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in CSRF_TRUSTED_ORIGINS if origin.strip()]
 
 # Static Files (Optimized with Whitenoise)
 STORAGES = {
@@ -78,6 +89,8 @@ from corsheaders.defaults import default_headers
 
 CORS_ALLOWED_ORIGINS = [
     "https://team-os.tech",
+    "https://teamos-2.onrender.com",
+    "https://team-os-dev.onrender.com",
 ]
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "authorization",
@@ -89,9 +102,7 @@ CORS_EXPOSE_HEADERS = ["content-type", "authorization"]
 
 CORS_ALLOW_CREDENTIALS = True
 
-CSRF_TRUSTED_ORIGINS = [
-    "https://team-os.tech",    
-]
+# CSRF already configured above
 
 # Simple JWT
 SIMPLE_JWT["AUTH_COOKIE_SECURE"] = True
