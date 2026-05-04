@@ -22,7 +22,6 @@ ALLOWED_HOSTS += [
     "127.0.0.1",
     "teamos-2.onrender.com",
     "team-os-dev.onrender.com",
-    ".onrender.com", # Wildcard for any render subdomain
 ]
 
 # Render (and most load balancers) terminates SSL and passes it via X-Forwarded-Proto
@@ -63,7 +62,7 @@ CELERY_BROKER_URL = os.environ.get("REDIS_URL")
 CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL")
 
 # Security
-SECURE_SSL_REDIRECT = True  
+SECURE_SSL_REDIRECT = False 
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_BROWSER_XSS_FILTER = True
