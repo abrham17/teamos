@@ -1,5 +1,5 @@
 # Base Image
-FROM python:3.12-slim
+FROM python:3.11-slim
 
 # Build-time Metadata
 LABEL maintainer="TeamOS Core Team"
