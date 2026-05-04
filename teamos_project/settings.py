@@ -24,11 +24,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-%m=6(vxy^kclb#z7^m8l=37(7-egu(5zbcu%@m-5gd*7y0bk8q')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = [
     "api.team-os.tech",
-    'team-os.tech'
+    'team-os.tech',
     ".onrender.com",
     "localhost",
     "127.0.0.1",
@@ -159,15 +159,4 @@ PLAN_TIERS = {
     "pro": {"chunk_size": 500, "chunk_overlap": 50},
 }
 
-CORS_ALLOWED_ORIGINS = [
-    "https://team-os.tech",
-    'https://api.team-os.tech',
-]
 
-CORS_ALLOW_CREDENTIALS = True
-
-CSRF_TRUSTED_ORIGINS = [
-    "https://team-os.tech",
-    'https://api.team-os.tech',
-    
-]

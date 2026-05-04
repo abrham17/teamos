@@ -8,7 +8,6 @@ from teamos_project.llm_env import production_llm_backend_from_env
 
 logger = logging.getLogger(__name__)
 
-DEBUG = False
 
 # Read from env (fallback to dummy for build phase)
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "build-placeholder-only-change-in-render")
@@ -57,7 +56,7 @@ CELERY_BROKER_URL = os.environ.get("REDIS_URL")
 CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL")
 
 # Security
-SECURE_SSL_REDIRECT = True
+SECURE_SSL_REDIRECT = False  
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_BROWSER_XSS_FILTER = True
@@ -76,16 +75,22 @@ STORAGES = {
 # CORS
 from corsheaders.defaults import default_headers
 
+
 CORS_ALLOWED_ORIGINS = [
     "https://team-os.tech",
-    "https://api.team-os.tech",
-    "https://team-os-dev.onrender.com",
-    "https://api-dev.team-os.tech",
 ]
-CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "authorization",
-    "x-clerk-auth-token", # Adding this just in case for Clerk integration
+    "content-type",
+    "x-clerk-auth-token",
+]
+
+CORS_EXPOSE_HEADERS = ["content-type", "authorization"]
+
+CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://team-os.tech",    
 ]
 
 # Simple JWT
