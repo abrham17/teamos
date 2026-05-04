@@ -66,3 +66,4 @@ dj-database-url==2.2.0
 whitenoise==6.7.0
 qdrant-client==1.14.0
 groq==0.18.0
+pytest==8.3.3
