@@ -8,6 +8,7 @@ LABEL maintainer="TeamOS Core Team"
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV APP_HOME=/app
+ENV DJANGO_SETTINGS_MODULE=teamos_project.settings.production
 
 # Create working directory
 WORKDIR $APP_HOME
@@ -29,6 +30,5 @@ COPY . $APP_HOME/
 # Expose Port
 EXPOSE 8000
 
-# Default Command (Start Gunicorn or Uvicorn for Channels)
-# Note: In production, we use daphne or uvicorn for WebSockets support.
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "teamos_project.asgi:application"]
+# Default Command (Start Daphne for ASGI support)
+CMD daphne -b 0.0.0.0 -p ${PORT:-8000} teamos_project.asgi:application
