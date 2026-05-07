@@ -215,15 +215,24 @@ class PaddleBillingProvider(BaseBillingProvider):
         from product_analytics.services import record_first_once
 
         data = event.get("data") or {}
-        team_id = data.get("team_id")
+        custom_data = data.get("custom_data") or {}
+        
+        # Team ID is usually in custom_data for Paddle transactions
+        team_id = custom_data.get("team_id") or data.get("team_id")
         if not team_id:
+            logger.warning("paddle_sync_missing_team_id", extra={"event_id": event.get("id")})
             return None
+            
         subscription, _ = TeamSubscription.objects.get_or_create(team_id=team_id, defaults={"provider": "paddle"})
         prev_status = subscription.status
+        
         subscription.external_customer_id = str(data.get("customer_id") or subscription.external_customer_id)
         subscription.external_subscription_id = str(data.get("subscription_id") or subscription.external_subscription_id)
-        subscription.plan_key = str(data.get("plan_key") or subscription.plan_key)
+        
+        # Plan details
+        subscription.plan_key = str(custom_data.get("plan_key") or data.get("plan_key") or subscription.plan_key)
         subscription.status = str(data.get("status") or subscription.status)
+        
         period_end = data.get("current_period_end")
         if period_end:
             try:
@@ -232,14 +241,29 @@ class PaddleBillingProvider(BaseBillingProvider):
                 )
             except ValueError:
                 pass
-        subscription.metadata = {"event_type": event.get("type")}
+                
+        # Sync Metadata (Seats, Usage Tier)
+        metadata = subscription.metadata or {}
+        metadata.update({
+            "seat_count": int(custom_data.get("seat_count", metadata.get("seat_count", 1))),
+            "usage_tier": str(custom_data.get("usage_tier", metadata.get("usage_tier", "standard"))),
+            "last_event_type": event.get("type"),
+            "variant_key": custom_data.get("variant_key")
+        })
+        subscription.metadata = metadata
+        
         subscription.save()
         _apply_team_plan_from_subscription(subscription)
+        
         if subscription.status == "active" and prev_status != "active":
             record_first_once(
                 event_name="subscription_started",
                 team=subscription.team,
-                properties={"provider": "paddle", "plan_key": subscription.plan_key},
+                properties={
+                    "provider": "paddle", 
+                    "plan_key": subscription.plan_key,
+                    "seat_count": metadata.get("seat_count")
+                },
             )
         return subscription
 
