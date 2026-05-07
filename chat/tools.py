@@ -129,7 +129,7 @@ def openai_tool_schemas() -> list[dict[str, Any]]:
                 },
             },
         },
-    ] + openai_plan_tool_schemas()
+    ] + openai_plan_tool_schemas() + openai_agent_tool_schemas()
 
 
 def openai_plan_tool_schemas() -> list[dict[str, Any]]:
@@ -316,6 +316,140 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
     ]
 
 
+def openai_agent_tool_schemas() -> list[dict[str, Any]]:
+    """Advanced agent tools for graph traversal, memory, calendar, and deep wiki access."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "wiki_read_full_page",
+                "description": "Read the complete content of a wiki page by slug or page_id. Use when you need full details, not just search snippets.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "slug": {"type": "string"},
+                        "page_id": {"type": "string"},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "graph_traverse_neighbors",
+                "description": "Traverse the knowledge graph from a page to find connected pages within N hops. Can filter by relation type.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "page_id": {"type": "string"},
+                        "max_hops": {"type": "integer", "default": 2},
+                        "relation_filter": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Filter by relation types: depends_on, contradicts, extends, implements, supersedes, parent_child, prerequisite, references, wikilink, semantic",
+                        },
+                        "include_content": {"type": "boolean", "default": False},
+                    },
+                    "required": ["page_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "graph_add_typed_relation",
+                "description": "Add a typed semantic relation between two wiki pages with a reason.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "from_page_id": {"type": "string"},
+                        "to_page_id": {"type": "string"},
+                        "relation_type": {
+                            "type": "string",
+                            "enum": ["depends_on", "contradicts", "extends", "implements", "supersedes", "parent_child", "prerequisite", "references"],
+                        },
+                        "reason": {"type": "string", "description": "Brief explanation of why this relation exists"},
+                    },
+                    "required": ["from_page_id", "to_page_id", "relation_type", "reason"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "graph_find_contradictions",
+                "description": "Find all contradiction edges in the team's knowledge graph, optionally for a specific page.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "page_id": {"type": "string", "description": "Optional: only contradictions involving this page"},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "knowledge_gap_analysis",
+                "description": "Identify knowledge gaps: wikilinks to non-existent pages, topics mentioned but not documented, shallow hub pages.",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "calendar_detect_conflicts",
+                "description": "Find overlapping tasks and milestone conflicts in the team's planning calendar.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {"type": "string", "description": "Optional: scope to a specific project"},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "calendar_check_overdue",
+                "description": "Check for overdue tasks and missed milestones.",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "agent_memory_read",
+                "description": "Read from your persistent memory. Use to recall priorities, blockers, decisions, or context stored in previous conversations.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "key": {"type": "string", "description": "Memory key to read"},
+                        "category": {"type": "string", "description": "Filter by category: priorities, blockers, gaps, decisions, contradictions, context"},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "agent_memory_write",
+                "description": "Store information in your persistent memory for future conversations. Use to remember priorities, decisions, or important context.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "key": {"type": "string"},
+                        "value": {"type": "object"},
+                        "category": {"type": "string", "enum": ["priorities", "blockers", "gaps", "decisions", "contradictions", "context"]},
+                        "summary": {"type": "string", "description": "Human-readable summary"},
+                    },
+                    "required": ["key", "value", "summary"],
+                },
+            },
+        },
+    ]
+
+
 def _parse_args(arguments: str) -> dict[str, Any]:
     if not arguments or not str(arguments).strip():
         return {}
@@ -338,8 +472,26 @@ def execute_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, Any]:
             return _wiki_create_page(ctx, args)
         if name == "wiki_update_page":
             return _wiki_update_page(ctx, args)
+        if name == "wiki_read_full_page":
+            return _wiki_read_full_page(ctx, args)
         if name == "graph_add_edge":
             return _graph_add_edge(ctx, args)
+        if name == "graph_add_typed_relation":
+            return _graph_add_typed_relation(ctx, args)
+        if name == "graph_traverse_neighbors":
+            return _graph_traverse_neighbors(ctx, args)
+        if name == "graph_find_contradictions":
+            return _graph_find_contradictions(ctx, args)
+        if name == "knowledge_gap_analysis":
+            return _knowledge_gap_analysis(ctx, args)
+        if name == "calendar_detect_conflicts":
+            return _calendar_detect_conflicts(ctx, args)
+        if name == "calendar_check_overdue":
+            return _calendar_check_overdue(ctx, args)
+        if name == "agent_memory_read":
+            return _agent_memory_read(ctx, args)
+        if name == "agent_memory_write":
+            return _agent_memory_write(ctx, args)
         if name == "ingest_markdown":
             return _ingest_markdown(ctx, args)
         if name == "plan_generate_draft":
@@ -731,13 +883,14 @@ def _plan_delete_project(ctx: ToolContext, args: dict[str, Any]) -> dict[str, An
         return {"ok": True, "project_id": project_id}
     return {"ok": False, "error": "project_not_found"}
 def _plan_generate_draft(ctx: ToolContext, args: dict) -> dict:
-    from planning.services import generate_plan_draft, get_project_or_none
+    from planning.agent_sync import generate_plan_with_wiki_context
+    from planning.services import get_project_or_none
     from planning.serializers import ProjectDetailSerializer
 
     prompt = args.get("prompt")
     mode = args.get("mode", "create")
     project_id = args.get("project_id")
-    
+
     project_context = None
     if project_id:
         project = get_project_or_none(team_id=ctx.team_id, project_id=project_id)
@@ -745,12 +898,174 @@ def _plan_generate_draft(ctx: ToolContext, args: dict) -> dict:
             project_context = ProjectDetailSerializer(project).data
 
     try:
-        draft = generate_plan_draft(
-            team_id=ctx.team_id, 
-            prompt=prompt, 
-            mode=mode, 
+        draft = generate_plan_with_wiki_context(
+            team_id=ctx.team_id,
+            prompt=prompt,
+            mode=mode,
             project_context=project_context
         )
         return {"ok": True, "draft": draft}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+# ── New Agent Tools Implementation ──────────────────────────────────
+
+
+def _wiki_read_full_page(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Read the complete content of a wiki page."""
+    slug = (args.get("slug") or "").strip()
+    page_id = (args.get("page_id") or "").strip()
+    try:
+        if page_id:
+            page = WikiPage.objects.get(id=page_id, team_id=ctx.team_id, is_deleted=False)
+        elif slug:
+            page = WikiPage.objects.get(team_id=ctx.team_id, slug=slug, is_deleted=False)
+        else:
+            return {"ok": False, "error": "slug_or_page_id_required"}
+    except WikiPage.DoesNotExist:
+        return {"ok": False, "error": "wiki_page_not_found"}
+
+    # Include source citations if available
+    citations = []
+    try:
+        from ingest.models import WikiSourceCitation
+        for cit in WikiSourceCitation.objects.filter(wiki_page=page).select_related("raw_source")[:10]:
+            citations.append({
+                "source_type": cit.raw_source.source_type,
+                "source_filename": cit.raw_source.original_filename,
+                "source_url": cit.raw_source.source_url,
+                "section": cit.wiki_section,
+                "source_page": cit.source_page_number,
+                "source_timestamp": cit.source_timestamp,
+            })
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "page_id": str(page.id),
+        "title": page.title,
+        "slug": page.slug,
+        "page_type": page.page_type,
+        "content": page.content,
+        "frontmatter": page.frontmatter,
+        "source_citations": citations,
+    }
+
+
+def _graph_traverse_neighbors(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Traverse graph to find connected pages."""
+    from graph_engine.traversal import traverse_neighbors
+
+    page_id = (args.get("page_id") or "").strip()
+    if not page_id:
+        return {"ok": False, "error": "page_id_required"}
+
+    results = traverse_neighbors(
+        page_id=page_id,
+        team_id=ctx.team_id,
+        max_hops=min(int(args.get("max_hops") or 2), 3),
+        relation_filter=args.get("relation_filter"),
+        include_content=bool(args.get("include_content")),
+    )
+    return {"ok": True, "neighbors": results, "count": len(results)}
+
+
+def _graph_add_typed_relation(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Add a typed semantic relation between two wiki pages."""
+    from_id = args.get("from_page_id")
+    to_id = args.get("to_page_id")
+    relation_type = (args.get("relation_type") or "").strip()
+    reason = (args.get("reason") or "").strip()
+
+    if relation_type not in GraphEdge.TYPED_RELATION_TYPES:
+        return {"ok": False, "error": f"invalid_relation_type: {relation_type}"}
+
+    try:
+        fp = WikiPage.objects.get(id=from_id, team_id=ctx.team_id, is_deleted=False)
+        tp = WikiPage.objects.get(id=to_id, team_id=ctx.team_id, is_deleted=False)
+    except WikiPage.DoesNotExist:
+        return {"ok": False, "error": "page_not_found"}
+
+    edge, created = GraphEdge.objects.update_or_create(
+        from_page=fp,
+        to_page=tp,
+        edge_type=relation_type,
+        defaults={"confidence": 1.0, "reason": reason, "created_by": "agent"},
+    )
+    invalidate_team_graph_analytics_cache(ctx.team_id)
+    return {"ok": True, "edge_id": str(edge.id), "created": created, "relation_type": relation_type}
+
+
+def _graph_find_contradictions(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Find contradictions in the knowledge graph."""
+    from graph_engine.traversal import find_contradictions
+
+    page_id = (args.get("page_id") or "").strip() or None
+    results = find_contradictions(ctx.team_id, page_id=page_id)
+    return {"ok": True, "contradictions": results, "count": len(results)}
+
+
+def _knowledge_gap_analysis(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Identify knowledge gaps in the wiki."""
+    from graph_engine.traversal import knowledge_gap_analysis
+
+    results = knowledge_gap_analysis(ctx.team_id)
+    return {"ok": True, **results}
+
+
+def _calendar_detect_conflicts(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Detect calendar conflicts."""
+    from planning.agent_sync import detect_date_conflicts
+
+    project_id = (args.get("project_id") or "").strip() or None
+    conflicts = detect_date_conflicts(ctx.team_id, project_id=project_id)
+    return {"ok": True, "conflicts": conflicts, "count": len(conflicts)}
+
+
+def _calendar_check_overdue(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Check for overdue items."""
+    from planning.agent_sync import check_overdue_items
+
+    results = check_overdue_items(ctx.team_id)
+    return {
+        "ok": True,
+        "overdue_tasks": results["overdue_tasks"],
+        "missed_milestones": results["missed_milestones"],
+        "total_overdue": len(results["overdue_tasks"]) + len(results["missed_milestones"]),
+    }
+
+
+def _agent_memory_read(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Read from persistent memory."""
+    from chat.agent_memory_service import get_memory, list_memories
+
+    key = (args.get("key") or "").strip()
+    category = (args.get("category") or "").strip()
+
+    if key:
+        value = get_memory(ctx.team_id, key)
+        if value is None:
+            return {"ok": True, "found": False, "message": f"No memory entry for key '{key}'"}
+        return {"ok": True, "found": True, "key": key, "value": value}
+
+    memories = list_memories(ctx.team_id, category=category or None)
+    return {"ok": True, "memories": memories, "count": len(memories)}
+
+
+def _agent_memory_write(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Write to persistent memory."""
+    from chat.agent_memory_service import set_memory
+
+    key = (args.get("key") or "").strip()
+    if not key:
+        return {"ok": False, "error": "key_required"}
+
+    value = args.get("value", {})
+    category = args.get("category", "context")
+    summary = (args.get("summary") or "").strip()
+
+    set_memory(ctx.team_id, key, value, category=category, summary=summary)
+    return {"ok": True, "key": key, "stored": True}
+

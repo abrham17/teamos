@@ -55,3 +55,36 @@ class ChatTokenUsage(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class AgentMemory(models.Model):
+    """
+    Persistent key-value memory for the agent, scoped per team.
+    Survives across chat sessions so the agent maintains awareness of
+    team priorities, known blockers, knowledge gaps, recent decisions, etc.
+    """
+    MEMORY_CATEGORIES = [
+        ("priorities", "Current Priorities"),
+        ("blockers", "Known Blockers"),
+        ("gaps", "Knowledge Gaps"),
+        ("decisions", "Recent Decisions"),
+        ("contradictions", "Active Contradictions"),
+        ("context", "General Context"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="agent_memories")
+    key = models.CharField(max_length=200, help_text="e.g. current_priorities, known_blockers")
+    category = models.CharField(max_length=30, choices=MEMORY_CATEGORIES, default="context")
+    value = models.JSONField(default=dict)
+    summary = models.TextField(blank=True, help_text="Human-readable summary of this memory entry.")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("team", "key")
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"AgentMemory({self.team.name}: {self.key})"
+

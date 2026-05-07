@@ -53,6 +53,8 @@ INSTALLED_APPS = [
     "product_analytics",
     "presence",
     "planning",
+    "llm_orchestrator",
+    "admin_api",
 ]
 
 MIDDLEWARE = [
@@ -66,6 +68,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+    "llm_orchestrator.middleware.TeamStatusMiddleware",
 ]
 
 ROOT_URLCONF = "teamos_project.urls"
@@ -298,6 +301,9 @@ PLAN_TIERS = {
         "reranker": "cross-encoder/ms-marco-MiniLM-L-12-v2",
     },
 }
+
+# --- Admin ---
+ADMIN_EMAILS = os.environ.get("ADMIN_EMAILS", "").split(",")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LANGUAGE_CODE = "en-us"

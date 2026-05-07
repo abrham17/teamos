@@ -357,3 +357,118 @@ class WikiChangeSetRejectView(APIView):
             return fail(str(e), status_code=400, code="changeset_invalid_state")
 
         return ok({"status": "rejected", "job_id": str(cs.job_id)})
+
+
+class RawSourceListView(APIView):
+    """GET /api/wiki/:team_id/raw-sources/ — list raw sources for the team."""
+
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
+    def get(self, request, team_id):
+        from ingest.models import RawSource
+
+        sources = RawSource.objects.filter(team_id=team_id).order_by("-created_at")[:50]
+        data = [
+            {
+                "id": str(s.id),
+                "source_type": s.source_type,
+                "original_filename": s.original_filename,
+                "source_url": s.source_url,
+                "created_at": s.created_at.isoformat(),
+                "has_file": bool(s.file),
+                "text_length": len(s.extracted_text),
+                "ingest_job_id": str(s.ingest_job_id) if s.ingest_job_id else None,
+            }
+            for s in sources
+        ]
+        return ok(data)
+
+
+class RawSourceDetailView(APIView):
+    """GET /api/wiki/:team_id/raw-sources/:source_id/ — get raw source content and structure."""
+
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
+    def get(self, request, team_id, source_id):
+        from ingest.models import RawSource, WikiSourceCitation
+
+        try:
+            source = RawSource.objects.get(id=source_id, team_id=team_id)
+        except RawSource.DoesNotExist:
+            return fail("Raw source not found.", status_code=404, code="source_not_found")
+
+        # Get pages citing this source
+        citations = WikiSourceCitation.objects.filter(raw_source=source).select_related("wiki_page")
+
+        data = {
+            "id": str(source.id),
+            "source_type": source.source_type,
+            "original_filename": source.original_filename,
+            "source_url": source.source_url,
+            "extracted_text": source.extracted_text,
+            "structure_map": source.structure_map,
+            "has_file": bool(source.file),
+            "file_url": source.file.url if source.file else None,
+            "created_at": source.created_at.isoformat(),
+            "citing_pages": [
+                {
+                    "page_id": str(c.wiki_page_id),
+                    "page_title": c.wiki_page.title,
+                    "page_slug": c.wiki_page.slug,
+                    "wiki_section": c.wiki_section,
+                    "source_char_start": c.source_char_start,
+                    "source_char_end": c.source_char_end,
+                    "source_page_number": c.source_page_number,
+                    "source_timestamp": c.source_timestamp,
+                }
+                for c in citations
+            ],
+        }
+        return ok(data)
+
+
+class ContradictionResolutionView(APIView):
+    """
+    GET  /api/wiki/:team_id/contradictions/:changeset_id/ — get contradictions for resolution
+    POST /api/wiki/:team_id/contradictions/:changeset_id/ — submit resolutions
+    """
+
+    permission_classes = [IsAuthenticated, CanEditWiki]
+
+    def get(self, request, team_id, changeset_id):
+        from ingest.contradiction_resolver import get_contradiction_detail
+
+        try:
+            cs = WikiChangeSet.objects.get(
+                id=changeset_id, job__team_id=team_id, status=WikiChangeSet.STATUS_PENDING
+            )
+        except WikiChangeSet.DoesNotExist:
+            return fail("Changeset not found.", status_code=404, code="changeset_not_found")
+
+        detail = get_contradiction_detail(cs)
+        return ok(detail)
+
+    def post(self, request, team_id, changeset_id):
+        from ingest.contradiction_resolver import resolve_contradiction
+
+        try:
+            cs = WikiChangeSet.objects.get(
+                id=changeset_id, job__team_id=team_id, status=WikiChangeSet.STATUS_PENDING
+            )
+        except WikiChangeSet.DoesNotExist:
+            return fail("Changeset not found.", status_code=404, code="changeset_not_found")
+
+        resolutions = request.data.get("resolutions", [])
+        if not resolutions:
+            return fail("Resolutions required.", status_code=400, code="resolutions_required")
+
+        resolve_contradiction(cs, resolutions)
+
+        # After resolution, approve the changeset
+        try:
+            approve_wiki_changeset(cs)
+        except ValueError as e:
+            return fail(str(e), status_code=400, code="changeset_approve_failed")
+
+        return ok({"status": "resolved", "changeset_id": str(cs.id)})
+

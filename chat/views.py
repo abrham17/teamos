@@ -17,7 +17,8 @@ from product_analytics.services import record_first_once
 from .models import ChatSession, ChatMessage, ChatTokenUsage
 from .serializers import ChatSessionSerializer
 from teamos_project.api_response import ok, fail
-from teamos_project.llm_config import chat_completion_model, get_llm_backend
+from llm_orchestrator.orchestrator import llm_call
+from teamos_project.llm_config import get_llm_backend
 
 logger = logging.getLogger(__name__)
 
@@ -328,17 +329,13 @@ class ChatQueryStreamView(APIView):
                     for msg in reversed(recent_messages):
                         history.append({"role": msg.role, "content": msg.content})
 
-                    llm = vector_store.openai
-                    if not llm:
-                        yield f"event: error\ndata: {json.dumps({'detail': 'Chat LLM is not configured (set GROQ_API_KEY for development or OPENAI_API_KEY for production).'})}\n\n"
-                        return
-
-                    model_name = chat_completion_model()
                     full_content = ""
-                    stream = llm.chat.completions.create(
-                        model=model_name,
+                    stream, model_name, routed_by = llm_call(
+                        team=session.team,
+                        operation="chat_ask",
                         messages=history,
-                        stream=True,
+                        user=request.user,
+                        stream=True
                     )
 
                     for chunk in stream:

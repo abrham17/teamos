@@ -1,3 +1,4 @@
+from __future__ import annotations
 import hashlib
 import json
 import logging
@@ -7,9 +8,9 @@ from urllib.parse import urlparse
 from django.utils.text import slugify
 
 from wiki.models import WikiPage, PageChunk
-from ingest.models import IngestJob, WikiChangeSet, KnowledgeActivity
+from ingest.models import IngestJob, WikiChangeSet, KnowledgeActivity, RawSource
 from ingest.vectors import vector_store
-from teamos_project.llm_config import chat_completion_model
+from llm_orchestrator.orchestrator import llm_json_call
 from ingest.extractors import extract_plain_text
 from ingest.extractors import youtube_text as youtube_extract
 
@@ -17,51 +18,23 @@ logger = logging.getLogger(__name__)
 
 
 def _chat_json_completion(
+    team,
     messages: list,
     *,
+    operation: str = "ingest_decompose",
+    user = None,
     default_on_error: dict | None = None,
 ) -> dict | None:
     """
-    Chat completion expecting JSON. Tries json_object mode first (OpenAI / some Groq models),
-    then a plain completion with an instruction to return only JSON — helps Groq when json_object fails.
+    Refactored to use central llm_orchestrator.
     """
-    if not vector_store.openai:
-        return default_on_error
-
-    model = chat_completion_model()
-    raw: str | None = None
-    try:
-        resp = vector_store.openai.chat.completions.create(
-            model=model,
-            messages=messages,
-            response_format={"type": "json_object"},
-        )
-        raw = (resp.choices[0].message.content or "").strip()
-        if raw:
-            return json.loads(raw)
-    except Exception as first:
-        logger.debug("ingest LLM json_object call failed: %s", first, exc_info=True)
-
-    try:
-        with_format = list(messages)
-        if with_format and with_format[-1].get("role") == "user":
-            with_format[-1] = {
-                **with_format[-1],
-                "content": (with_format[-1].get("content") or "")
-                + "\n\nRespond with a single JSON object only, no markdown fences.",
-            }
-        resp = vector_store.openai.chat.completions.create(
-            model=model,
-            messages=with_format,
-        )
-        raw = (resp.choices[0].message.content or "").strip()
-        if not raw:
-            return default_on_error
-        raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        return json.loads(raw)
-    except Exception as second:
-        logger.warning("ingest LLM JSON parse failed after fallback: %s", second)
-        return default_on_error
+    return llm_json_call(
+        team=team,
+        operation=operation,
+        messages=messages,
+        user=user,
+        default_on_error=default_on_error
+    )
 
 
 def _set_job_stage(job: IngestJob, stage: str, detail: str = "") -> None:
@@ -80,7 +53,7 @@ def _derive_chunk_config(team_plan: str) -> tuple[int, int]:
     return max(chunk_size, 100), max(min(chunk_overlap, chunk_size - 1), 0)
 
 
-def _detect_template_and_type(text: str) -> tuple[str, str]:
+def _detect_template_and_type(team, text: str) -> tuple[str, str]:
     """Uses AI to categorize the document type and suggested template."""
     prompt = (
         "Analyze this text and categorize its document type. "
@@ -88,7 +61,9 @@ def _detect_template_and_type(text: str) -> tuple[str, str]:
         'Return JSON: {"type": "...", "template_name": "..."}'
     )
     data = _chat_json_completion(
-        [{"role": "system", "content": prompt}, {"role": "user", "content": text[:2000]}],
+        team=team,
+        messages=[{"role": "system", "content": prompt}, {"role": "user", "content": text[:2000]}],
+        operation="template_detect",
         default_on_error={"type": "standard", "template_name": "Standard Page"},
     )
     if not data:
@@ -119,7 +94,10 @@ def _analyze_governance(job, new_text: str):
         '{"contradictions": ["..."], "additions": ["..."]}'
     )
     merged = _chat_json_completion(
-        [{"role": "user", "content": prompt}],
+        team=job.team,
+        messages=[{"role": "user", "content": prompt}],
+        operation="ingest_governance",
+        user=job.created_by,
         default_on_error=None,
     )
     if isinstance(merged, dict):
@@ -284,7 +262,7 @@ def approve_wiki_changeset(cs: WikiChangeSet, trace_id: str | None = None) -> Wi
         raise ValueError("Change set is not pending review.")
     job = cs.job
     text = cs.proposed_content
-    page_type, template_name = _detect_template_and_type(text)
+    page_type, template_name = _detect_template_and_type(job.team, text)
     page, _created, _chunk = _materialize_and_index(
         job, text, page_type, template_name, trace_id, prune_semantic=True
     )
@@ -317,6 +295,12 @@ def _clear_staging_file(job: IngestJob) -> None:
 
 def run_pipeline(job: IngestJob, source_text: str = "", trace_id: str | None = None):
     _set_job_stage(job, "extracting", "Extracting source content")
+
+    # Preserve staging file reference for raw source before clearing
+    staging_file_copy = None
+    if getattr(job, "staging_file", None) and job.staging_file:
+        staging_file_copy = job.staging_file.name
+
     try:
         parsed_text = extract_plain_text(job, source_text=source_text or "").strip()
     finally:
@@ -328,8 +312,30 @@ def run_pipeline(job: IngestJob, source_text: str = "", trace_id: str | None = N
     job.raw_data = parsed_text
     job.save(update_fields=["raw_data"])
 
-    _set_job_stage(job, "governance", "Classifying content and governance checks")
-    page_type, template_name = _detect_template_and_type(parsed_text)
+    # ── Save raw source permanently ──────────────────────────────
+    _set_job_stage(job, "governance", "Saving raw source and classifying content")
+    raw_source = _save_raw_source(job, parsed_text, staging_file_copy)
+
+    # ── Agent decomposition pipeline ─────────────────────────────
+    _set_job_stage(job, "governance", "Agent analyzing and decomposing document")
+    try:
+        from ingest.agent_decompose import run_agent_decomposition
+
+        pages = run_agent_decomposition(
+            job=job,
+            raw_text=parsed_text,
+            raw_source=raw_source,
+            trace_id=trace_id,
+        )
+        # run_agent_decomposition handles status updates internally
+        # (sets "review_required" if contradictions found, "done" otherwise)
+        return
+    except Exception:
+        logger.exception("Agent decomposition failed for job %s, falling back to legacy pipeline", job.id)
+        # Fall through to legacy pipeline on error
+
+    # ── Legacy fallback pipeline ─────────────────────────────────
+    page_type, template_name = _detect_template_and_type(job.team, parsed_text)
 
     if not job.auto_approve:
         _analyze_governance(job, parsed_text)
@@ -339,3 +345,80 @@ def run_pipeline(job: IngestJob, source_text: str = "", trace_id: str | None = N
 
     prune = bool(job.wiki_page_id and job.auto_approve)
     _materialize_and_index(job, parsed_text, page_type, template_name, trace_id, prune_semantic=prune)
+
+
+def _save_raw_source(job: IngestJob, parsed_text: str, staging_file_name: str | None) -> RawSource | None:
+    """Persist the original source permanently for traceability."""
+    try:
+        source = RawSource.objects.create(
+            team=job.team,
+            source_type=job.source_type,
+            source_url=job.source_url or "",
+            original_filename=job.source_filename or "",
+            extracted_text=parsed_text,
+            structure_map=_build_structure_map(job.source_type, parsed_text),
+            ingest_job=job,
+            created_by=job.created_by,
+        )
+        # If there was a staging file, copy its reference
+        if staging_file_name:
+            from django.core.files.storage import default_storage
+
+            if default_storage.exists(staging_file_name):
+                source.file.name = staging_file_name
+                source.save(update_fields=["file"])
+
+        return source
+    except Exception:
+        logger.exception("Failed to save raw source for job %s", job.id)
+        return None
+
+
+def _build_structure_map(source_type: str, text: str) -> dict:
+    """Build a basic structure map for the raw source."""
+    import re
+
+    structure: dict = {"type": source_type}
+
+    if source_type == "youtube":
+        # Parse timestamp markers from YouTube transcripts
+        segments = []
+        pattern = re.compile(r"(\d{1,2}:\d{2}(?::\d{2})?)\s*[-–]\s*(.+?)(?=\n\d{1,2}:\d{2}|\Z)", re.DOTALL)
+        for match in pattern.finditer(text):
+            segments.append({
+                "timestamp": match.group(1),
+                "char_start": match.start(),
+                "char_end": match.end(),
+                "heading": match.group(2).strip()[:100],
+            })
+        structure["segments"] = segments
+
+    elif source_type in ("markdown", "url"):
+        # Parse markdown headings as sections
+        sections = []
+        pattern = re.compile(r"^(#{1,3})\s+(.+?)$", re.MULTILINE)
+        for match in pattern.finditer(text):
+            sections.append({
+                "level": len(match.group(1)),
+                "heading": match.group(2).strip(),
+                "char_start": match.start(),
+                "char_end": match.end(),
+            })
+        structure["sections"] = sections
+
+    else:
+        # Generic: split by double newlines as paragraphs
+        paragraphs = []
+        pos = 0
+        for i, block in enumerate(text.split("\n\n")):
+            if block.strip():
+                paragraphs.append({
+                    "index": i,
+                    "char_start": pos,
+                    "char_end": pos + len(block),
+                })
+            pos += len(block) + 2
+        structure["paragraphs"] = paragraphs[:50]
+
+    return structure
+

@@ -34,6 +34,9 @@ def embedding_model_name() -> str:
 
 def effective_embedding_dimensions() -> int:
     """Vector size for Qdrant collections; keep aligned with embedding model output."""
+    if not getattr(settings, "OPENAI_API_KEY", None):
+        return 384  # Default for all-MiniLM-L6-v2
+
     raw = getattr(settings, "OPENAI_EMBEDDING_DIMENSIONS", None)
     if raw is not None:
         try:

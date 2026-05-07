@@ -49,47 +49,50 @@ class VectorStore:
             if self._embed_client is None:
                 self._embed_client = self.openai
 
-    def _mock_embedding(self, text: str, dim: int = 1536) -> list[float]:
-        """
-        Deterministic unit vector from text so local/Qdrant semantic search
-        differentiates pages without OpenAI (all-zero vectors collapse similarity).
-        """
-        digest = hashlib.sha256((text or "").encode("utf-8", errors="ignore")).hexdigest()
-        rng = random.Random(digest)
-        vec = [rng.gauss(0.0, 1.0) for _ in range(dim)]
-        mag = sum(x * x for x in vec) ** 0.5
-        if mag <= 0:
-            return [0.0] * dim
-        return [x / mag for x in vec]
+        # Initialize local HF model placeholder
+        self._hf_model = None
+
+    def _get_hf_model(self):
+        """Lazy load the sentence-transformers model so it doesn't block startup."""
+        if self._hf_model is None:
+            try:
+                from sentence_transformers import SentenceTransformer
+                logger.info("Loading local HuggingFace embedding model (all-MiniLM-L6-v2)...")
+                self._hf_model = SentenceTransformer("all-MiniLM-L6-v2")
+            except ImportError:
+                logger.error("sentence-transformers not installed. Fallback to mock.")
+                return None
+        return self._hf_model
+
+
 
     def _get_embedding(self, text: str, model: str | None = None):
-        dim = effective_embedding_dimensions()
-        if getattr(settings, "USE_DETERMINISTIC_EMBEDDINGS", False):
-            return self._mock_embedding(text, dim=dim)
-
-        if model is None:
-            model = embedding_model_name()
-
         embedder = self._embed_client
-        if not embedder:
-            logger.warning(
-                "No OpenAI embedding client (set OPENAI_API_KEY for vectors, or use deterministic fallback)."
-            )
-            return self._mock_embedding(text, dim=dim)
 
-        try:
-            response = embedder.embeddings.create(
-                input=[text.replace("\n", " ")],
-                model=model,
-            )
-            return response.data[0].embedding
-        except OpenAIError as exc:
-            logger.warning(
-                "OpenAI embedding failed (%s: %s); using deterministic local fallback.",
-                type(exc).__name__,
-                exc,
-            )
-            return self._mock_embedding(text, dim=dim)
+        if embedder:
+            if model is None:
+                model = embedding_model_name()
+            try:
+                response = embedder.embeddings.create(
+                    input=[text.replace("\n", " ")],
+                    model=model,
+                )
+                return response.data[0].embedding
+            except OpenAIError as exc:
+                logger.warning(
+                    "OpenAI embedding failed (%s: %s); falling back to local HuggingFace model.",
+                    type(exc).__name__,
+                    exc,
+                )
+        
+        # Fall back to HF model if no OpenAI key or OpenAI failed
+        hf_model = self._get_hf_model()
+        if hf_model is not None:
+            return hf_model.encode(text).tolist()
+        
+        raise RuntimeError("No embedding provider available. Set OPENAI_API_KEY or install sentence-transformers.")
+
+
 
     def ensure_collection(self, team_id: str, vector_size: int | None = None):
         if vector_size is None:
