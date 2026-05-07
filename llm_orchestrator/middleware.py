@@ -2,52 +2,47 @@ import uuid
 from django.utils import timezone
 from django.http import JsonResponse
 from billing.models import TeamSubscription
-from teamos_project.api_response import fail
 
 class LlmUsageMiddleware:
     """
-    Middleware to block requests for teams with expired trials or suspended subscriptions.
+    Middleware to enforce trial expiry and payment suspension blocks.
+    Aligned with PRICING_STRATEGY.md Section 9 & 12.
     """
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
-        # We only care about team-scoped API requests
-        # Usually these have 'team_id' in the URL or resolved by other middleware
-        
-        # Check if we have a resolved team_membership (from IsTeamMember or similar)
-        # Or check the URL pattern
-        
         team_id = self._resolve_team_id(request)
         if team_id:
             try:
                 subscription = TeamSubscription.objects.get(team_id=team_id)
                 status = subscription.status
+                plan = subscription.plan_key
                 
-                # 1. Trial Expiry Check
-                if status == "trialing" and subscription.trial_expires_at:
+                # 1. Trial Expiry Auto-Block (Section 12)
+                if plan == "free" and subscription.trial_expires_at:
                     if timezone.now() > subscription.trial_expires_at:
-                        subscription.status = "trial_expired"
-                        subscription.save(update_fields=["status"])
-                        status = "trial_expired"
+                        if status != "trial_expired":
+                            subscription.status = "trial_expired"
+                            subscription.save(update_fields=["status"])
+                        return JsonResponse({
+                            "success": False,
+                            "error": "Your 2-month free trial has ended. Your data is safe — upgrade to continue.",
+                            "code": "trial_expired"
+                        }, status=403)
 
-                # 2. Block Logic
-                if status == "trial_expired":
-                    return JsonResponse({
-                        "success": False,
-                        "error": "Trial expired. Please upgrade to continue.",
-                        "code": "trial_expired"
-                    }, status=403)
-                
+                # 2. Suspended / Blocked Accounts (Section 9)
                 if status == "suspended":
                     return JsonResponse({
                         "success": False,
-                        "error": "Account suspended. Please update payment to restore access.",
+                        "error": "Account suspended — update payment to restore access.",
                         "code": "account_suspended"
                     }, status=403)
-
+                
                 # 3. Grace Period Check
-                # If past_due or canceled but within 7 days, they are still allowed (handled by router to downgrade to nano)
+                # If past_due or canceled, we allow access but the router will downgrade them to nano.
+                # If grace expires, the cron task sets them to 'suspended'. 
+                # This middleware just double-checks the date here for safety.
                 if status in ["past_due", "canceled"] and subscription.grace_expires_at:
                     if timezone.now() > subscription.grace_expires_at:
                         subscription.status = "suspended"
@@ -55,7 +50,7 @@ class LlmUsageMiddleware:
                         return JsonResponse({
                             "success": False,
                             "error": "Grace period expired. Account suspended.",
-                            "code": "grace_period_expired"
+                            "code": "account_suspended"
                         }, status=403)
 
             except TeamSubscription.DoesNotExist:
@@ -64,19 +59,17 @@ class LlmUsageMiddleware:
         return self.get_response(request)
 
     def _resolve_team_id(self, request):
-        # Implementation depends on how URL kwargs are parsed
         parts = request.path.strip("/").split("/")
         
-        # 1. Skip admin routes
+        # Skip operations
         if len(parts) >= 2 and parts[1] == "admin":
             return None
 
-        # 2. Assume URLs like /api/wiki/<team_id>/...
-        if len(parts) >= 3 and parts[0] == "api":
-            potential_uuid = parts[2]
+        # Resolve UUID from path (standard pattern: /api/<module>/<team_id>/...)
+        for part in parts:
             try:
-                uuid.UUID(str(potential_uuid))
-                return potential_uuid
+                uuid.UUID(str(part))
+                return part
             except ValueError:
-                return None
+                continue
         return None

@@ -1,67 +1,81 @@
-from decimal import Decimal
+from django.db.models import Sum
 from django.utils import timezone
-from django.db import models
 from .models import TeamApiUsage
-from billing.pricing import compute_quote
+from billing.pricing import compute_quote, TEAM_PER_USER_USD, PRO_PER_USER_USD
 
-def get_team_budget_config(team_subscription) -> dict:
+def get_current_spend_ratio(team_subscription) -> float:
     """
-    Returns budget, spend, and ratio for a team.
+    Calculates the ratio of current monthly spend to the effective budget band.
     """
-    team = team_subscription.team
-    plan = team_subscription.plan_key
     month_str = timezone.now().strftime("%Y-%m")
     
-    # 1. Get current month spend
+    # 1. Current Spend
     current_spend = TeamApiUsage.objects.filter(
-        team=team,
+        team=team_subscription.team,
         billing_month=month_str
-    ).aggregate(models.Sum('cost_usd'))['cost_usd__sum'] or Decimal("0.0")
+    ).aggregate(total=Sum('cost_usd'))['total'] or 0.0
     
-    # 2. Determine Revenue and Budget Ratio
-    # In a real system, we'd look at historical revenue.
-    # Here we estimate based on plan and seat count.
-    try:
-        seat_count = team_subscription.metadata.get("seat_count", 5)
-        usage_tier = team_subscription.metadata.get("usage_tier", "standard")
-        quote = compute_quote(plan, seat_count, usage_tier)
-        revenue = Decimal(str(quote.total_amount))
-    except:
-        # Fallbacks for free or unknown
-        revenue = Decimal("0.0") if plan == "free" else Decimal("20.0")
+    # 2. Effective Budget
+    budget = calculate_team_monthly_budget(team_subscription)
+    
+    if budget <= 0:
+        return 1.0
+        
+    return float(current_spend) / budget
 
-    # Adaptive Ratio (20-40%)
-    # If high usage over 3 months, we might tighten ratio to preserve margin
-    # Placeholder for trend analysis
-    budget_ratio = Decimal("0.30") 
+def calculate_team_monthly_budget(team_subscription) -> float:
+    """
+    Adaptive Budget Bands based on Per-User Revenue.
+    """
+    plan = team_subscription.plan_key
     
-    budget = revenue * budget_ratio
+    # Free tier has a very small fixed cap
+    if plan == "free":
+        return 0.50
+        
+    # Calculate revenue based on seats
+    seat_count = team_subscription.metadata.get("seat_count", 1)
+    usage_tier = team_subscription.metadata.get("usage_tier", "standard")
     
-    # 3. Forecast month-end spend
-    # (current_spend / days_passed) * total_days
+    # Revenue is now strictly seats * multiplier
+    unit_price = TEAM_PER_USER_USD if plan == "team" else PRO_PER_USER_USD
+    revenue = seat_count * unit_price
+    
+    # Usage tier uplift adds to revenue and budget
+    if usage_tier == "high":
+        revenue *= 1.25
+
+    # 1. Base Budget Ratio (The percentage of revenue we spend on API)
+    # Team gets 30%, Pro gets 50% (allowing significantly more GPT-4o usage)
+    base_ratio = 0.50 if plan == "pro" else 0.30
+    
+    # 2. Onboarding/New Team Grace
+    # We allow higher burn rates in the first 30 days to "wow" new users
+    days_since_creation = (timezone.now() - team_subscription.created_at).days
+    if days_since_creation <= 30:
+        base_ratio += 0.15 # Team 45%, Pro 65%
+
+    return revenue * base_ratio
+
+def get_spend_forecast(team_subscription) -> dict:
+    """Predictive Budget Controller."""
+    month_str = timezone.now().strftime("%Y-%m")
     now = timezone.now()
-    days_in_month = 30 # Simplified
-    day_of_month = now.day or 1
-    forecast_spend = (current_spend / Decimal(day_of_month)) * Decimal(days_in_month)
+    days_in_month = 30
+    days_elapsed = max(1, now.day)
+    
+    current_spend = TeamApiUsage.objects.filter(
+        team=team_subscription.team,
+        billing_month=month_str
+    ).aggregate(total=Sum('cost_usd'))['total'] or 0.0
+    
+    projected = (float(current_spend) / days_elapsed) * days_in_month
+    budget = calculate_team_monthly_budget(team_subscription)
     
     return {
-        "revenue": revenue,
+        "current_spend": float(current_spend),
+        "projected_spend": projected,
         "budget": budget,
-        "current_spend": current_spend,
-        "forecast_spend": forecast_spend,
-        "spend_ratio": float(current_spend / budget) if budget > 0 else 1.0
+        "is_over_budget": projected > budget,
+        "burn_rate_daily": float(current_spend) / days_elapsed
     }
-
-def should_throttle(team_subscription) -> bool:
-    """
-    Predictive throttle. If forecast exceeds budget by 10%, start falling back to nano.
-    """
-    config = get_team_budget_config(team_subscription)
-    if config["budget"] <= 0:
-        return True # Throttle to nano if no budget
-        
-    # If forecast is > 110% of budget, we are trending too high
-    if config["forecast_spend"] > (config["budget"] * Decimal("1.1")):
-        return True
-        
-    return False

@@ -18,7 +18,6 @@ from .models import ChatSession, ChatMessage, ChatTokenUsage
 from .serializers import ChatSessionSerializer
 from teamos_project.api_response import ok, fail
 from llm_orchestrator.orchestrator import llm_call
-from teamos_project.llm_config import get_llm_backend, chat_completion_model
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +165,8 @@ class ChatCapabilitiesView(APIView):
 
     def get(self, request, team_id):
         m = request.team_membership
-        agent_ok = get_llm_backend() == "openai"
+        # Strategy standardizes on OpenAI-capable features for all paid tiers
+        agent_ok = True 
         return ok(
             {
                 "can_edit_wiki": has_minimum_role(m, "editor"),
@@ -282,12 +282,6 @@ class ChatQueryStreamView(APIView):
             if not has_minimum_role(request.team_membership, "editor"):
                 code = "agent_forbidden" if mode == "agent" else "plan_forbidden"
                 return fail("Editor or owner role required.", status_code=403, code=code)
-            if get_llm_backend() != "openai":
-                return fail(
-                    "Tool modes are unavailable for this deployment (requires OpenAI tool calling).",
-                    status_code=503,
-                    code="agent_backend_unavailable",
-                )
 
         quota = check_quota(session.team, "token_consume")
         if not quota.allowed:
@@ -330,7 +324,7 @@ class ChatQueryStreamView(APIView):
                         history.append({"role": msg.role, "content": msg.content})
 
                     full_content = ""
-                    stream, model_name, routed_by = llm_call(
+                    stream, model_used, routed_by = llm_call(
                         team=session.team,
                         operation="chat_ask",
                         messages=history,
@@ -360,7 +354,7 @@ class ChatQueryStreamView(APIView):
                         prompt_tokens=prompt_tokens,
                         completion_tokens=completion_tokens,
                         total_tokens=prompt_tokens + completion_tokens,
-                        metadata={"model": model_name, "mode": "ask"},
+                        metadata={"model": model_used, "mode": "ask", "routed_by": routed_by},
                     )
                 else:
                     from chat.agent_stream import iter_agent_sse_events, iter_plan_agent_sse_events
@@ -385,7 +379,7 @@ class ChatQueryStreamView(APIView):
                             citations=citations,
                             metadata={"mode": mode, "tool_trace": tool_trace},
                         )
-                        model_name = chat_completion_model()
+                        model_used = agent_state.get("model_used", "gpt-4o")
                         approx = estimate_tokens(context_str) + estimate_tokens(user_message) + estimate_tokens(
                             json.dumps(tool_trace)
                         ) + estimate_tokens(full_content)
@@ -396,7 +390,7 @@ class ChatQueryStreamView(APIView):
                             prompt_tokens=max(approx // 2, 1),
                             completion_tokens=max(approx // 2, 1),
                             total_tokens=approx,
-                            metadata={"model": model_name, "mode": mode},
+                            metadata={"model": model_used, "mode": mode},
                         )
 
                 if ChatMessage.objects.filter(session__team=session.team, role="assistant").count() == 1:

@@ -18,51 +18,10 @@ from django.utils.text import slugify
 from graph_engine.models import GraphEdge
 from ingest.models import IngestJob, KnowledgeActivity, RawSource, WikiSourceCitation
 from ingest.vectors import vector_store
-from teamos_project.llm_config import chat_completion_model
+from llm_orchestrator.orchestrator import llm_json_call
 from wiki.models import WikiPage
 
 logger = logging.getLogger(__name__)
-
-
-def _llm_json_call(messages: list[dict], *, default: Any = None) -> Any:
-    """Make an LLM call expecting JSON output, with fallback."""
-    if not vector_store.openai:
-        return default
-
-    model = chat_completion_model()
-    try:
-        resp = vector_store.openai.chat.completions.create(
-            model=model,
-            messages=messages,
-            response_format={"type": "json_object"},
-        )
-        raw = (resp.choices[0].message.content or "").strip()
-        if raw:
-            return json.loads(raw)
-    except Exception as first:
-        logger.debug("agent_decompose json_object call failed: %s", first)
-
-    # Fallback: plain completion with JSON instruction
-    try:
-        fallback_messages = list(messages)
-        if fallback_messages and fallback_messages[-1].get("role") == "user":
-            fallback_messages[-1] = {
-                **fallback_messages[-1],
-                "content": (fallback_messages[-1].get("content") or "")
-                + "\n\nRespond with a single JSON object only, no markdown fences.",
-            }
-        resp = vector_store.openai.chat.completions.create(
-            model=model,
-            messages=fallback_messages,
-        )
-        raw = (resp.choices[0].message.content or "").strip()
-        if not raw:
-            return default
-        raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        return json.loads(raw)
-    except Exception as second:
-        logger.warning("agent_decompose JSON fallback failed: %s", second)
-        return default
 
 
 def _slug_for_page(team, title: str) -> str:
@@ -113,7 +72,7 @@ Respond with JSON:
 """
 
 
-def decompose_document(raw_text: str) -> list[dict]:
+def decompose_document(team, raw_text: str) -> list[dict]:
     """
     Ask the agent to split a document into multiple wiki page proposals.
     Returns a list of page dicts with title, content, page_type, internal_links, citations.
@@ -123,12 +82,14 @@ def decompose_document(raw_text: str) -> list[dict]:
     if len(raw_text) > 12000:
         text_for_llm += f"\n\n[... truncated, {len(raw_text) - 12000} more characters ...]"
 
-    result = _llm_json_call(
-        [
+    result = llm_json_call(
+        team=team,
+        operation="ingest_decompose",
+        messages=[
             {"role": "system", "content": DECOMPOSE_SYSTEM_PROMPT},
             {"role": "user", "content": f"Decompose this document:\n\n{text_for_llm}"},
         ],
-        default=None,
+        default_on_error={"pages": []},
     )
 
     if not result or not isinstance(result.get("pages"), list) or not result["pages"]:
@@ -200,6 +161,7 @@ Respond with JSON:
 
 
 def classify_relations(
+    team,
     new_page_content: str,
     new_page_title: str,
     existing_pages: list[dict],
@@ -216,8 +178,10 @@ def classify_relations(
         for p in existing_pages
     )
 
-    result = _llm_json_call(
-        [
+    result = llm_json_call(
+        team=team,
+        operation="ingest_relate",
+        messages=[
             {"role": "system", "content": RELATE_SYSTEM_PROMPT},
             {
                 "role": "user",
@@ -228,7 +192,7 @@ def classify_relations(
                 ),
             },
         ],
-        default={"relations": [], "suggested_wikilinks_in_existing": []},
+        default_on_error={"relations": [], "suggested_wikilinks_in_existing": []},
     )
 
     return result or {"relations": [], "suggested_wikilinks_in_existing": []}
@@ -262,7 +226,7 @@ def run_agent_decomposition(
 
     # Step 1: Decompose
     logger.info("Agent decomposing document for job %s", job.id)
-    page_proposals = decompose_document(raw_text)
+    page_proposals = decompose_document(team, raw_text)
 
     created_pages: list[WikiPage] = []
     all_contradictions: list[dict] = []
@@ -305,7 +269,7 @@ def run_agent_decomposition(
                 continue
 
         # Step 3: Classify relations
-        relation_result = classify_relations(content, title, existing_pages_for_relation)
+        relation_result = classify_relations(team, content, title, existing_pages_for_relation)
         relations = relation_result.get("relations", [])
         suggested_links = relation_result.get("suggested_wikilinks_in_existing", [])
 
