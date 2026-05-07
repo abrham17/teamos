@@ -66,16 +66,20 @@ CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL")
 SECURE_SSL_REDIRECT = False 
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_SAMESITE = "None"
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 
-# CSRF
-CSRF_TRUSTED_ORIGINS = os.environ.get(
-    "CSRF_TRUSTED_ORIGINS", 
-    "https://team-os.tech,https://api.team-os.tech,https://teamos-2.onrender.com"
-).split(",")
-CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in CSRF_TRUSTED_ORIGINS if origin.strip()]
-CSRF_TRUSTED_ORIGINS += ["https://teamos-w37k.vercel.app", ""]
+CSRF_TRUSTED_ORIGINS = [
+    "https://team-os.tech",
+    "https://api.team-os.tech",
+    "https://teamos-2.onrender.com",
+    "https://teamos-w37k.vercel.app",
+    "https://team-os-dev.onrender.com",
+]
+# Allow env var to override if needed
+extra_origins = os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")
+CSRF_TRUSTED_ORIGINS += [o.strip() for o in extra_origins if o.strip()]
 
 # Static Files (Optimized with Whitenoise)
 STORAGES = {
@@ -103,11 +107,20 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 CORS_EXPOSE_HEADERS = ["content-type", "authorization"]
 
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_METHODS = [
+    "DELETE",
+    "GET",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT",
+]
 
 # CSRF already configured above
 
-# Simple JWT
+# Simple JWT Cookie Security
 SIMPLE_JWT["AUTH_COOKIE_SECURE"] = True
+SIMPLE_JWT["AUTH_COOKIE_SAMESITE"] = "None"  # Required for cross-site cookies in production
 
 # Qdrant setup
 QDRANT_URL = os.environ.get("QDRANT_URL")

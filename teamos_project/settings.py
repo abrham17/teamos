@@ -153,7 +153,7 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'teamos_project.authentication.CookieJWTAuthentication',
     ],
 }
 # Environment variables are loaded at the top of the file
