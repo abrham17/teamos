@@ -34,8 +34,27 @@ def require_invite_manager(team_id, user):
 
 def set_jwt_cookies(response, user):
     refresh = RefreshToken.for_user(user)
-    response.set_cookie("refresh_token", str(refresh), httponly=True, samesite="Lax", max_age=30 * 86400)
-    response.set_cookie("access_token", str(refresh.access_token), httponly=True, samesite="Lax", max_age=7 * 86400)
+    
+    # Use settings for cookie security if available, else defaults
+    cookie_secure = getattr(settings, "SIMPLE_JWT", {}).get("AUTH_COOKIE_SECURE", False)
+    cookie_samesite = getattr(settings, "SIMPLE_JWT", {}).get("AUTH_COOKIE_SAMESITE", "Lax")
+    
+    response.set_cookie(
+        "refresh_token", 
+        str(refresh), 
+        httponly=True, 
+        secure=cookie_secure,
+        samesite=cookie_samesite, 
+        max_age=30 * 86400
+    )
+    response.set_cookie(
+        "access_token", 
+        str(refresh.access_token), 
+        httponly=True, 
+        secure=cookie_secure,
+        samesite=cookie_samesite, 
+        max_age=7 * 86400
+    )
     return response
 
 
