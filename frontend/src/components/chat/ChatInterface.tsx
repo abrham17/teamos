@@ -125,8 +125,6 @@ export function ChatInterface() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- toastError identity must not re-run bootstrap
   }, [currentTeamId]);
 
-  }, [currentTeamId]);
-
   useEffect(() => {
     if (!currentTeamId) return;
     try {
