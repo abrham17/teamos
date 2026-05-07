@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { SignUpButton, useUser } from "@clerk/nextjs";
-import { ArrowRight, Check, Loader2 } from "lucide-react";
+import { ArrowRight, Check, Loader2, Sparkles, Zap, Shield, Globe } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 
 import { api } from "@/lib/api";
 import {
@@ -55,117 +56,137 @@ function PaidTierCard({
       ? formatUsd(quote.monthly_total_usd)
       : tier.price_label;
 
+  const isPro = tier.key === "pro" || tier.key === "enterprise";
+
   return (
-    <div
-      className={`relative flex flex-col rounded-2xl border p-6 ${
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      className={`relative flex flex-col rounded-3xl border p-8 transition-all duration-500 group ${
         tier.key === "team"
-          ? "border-[var(--accent)]/50 bg-[var(--surface-1)] shadow-[0_0_0_1px_var(--accent)]/20"
-          : "border-[var(--border-subtle)] bg-[var(--surface-1)]/80"
+          ? "border-[var(--accent)]/50 bg-[var(--bg-800)] shadow-[0_0_40px_rgba(0,212,232,0.1)] scale-105 z-10"
+          : "border-white/5 bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/10"
       }`}
     >
-      {tier.key === "team" ? (
-        <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[var(--accent)] px-3 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--bg-950)]">
-          Most teams
-        </span>
-      ) : null}
-      <div className="text-sm font-medium text-[var(--text-muted)]">{tier.name}</div>
-      <div className="mt-2 flex min-h-[2.5rem] flex-wrap items-baseline gap-2">
-        {quoteLoading ? (
-          <Loader2 className="h-6 w-6 animate-spin text-[var(--accent)]" aria-hidden />
-        ) : (
-          <span className="text-3xl font-bold tracking-tight text-[var(--text-primary)]">{priceLabel}</span>
-        )}
-        <span className="text-sm text-[var(--text-dim)]">/ team / month</span>
+      {tier.key === "team" && (
+        <div className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-[var(--accent)] to-blue-500 px-4 py-1 text-[10px] font-black uppercase tracking-widest text-[var(--bg-950)] shadow-lg">
+          Most Popular
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mb-4">
+        <div className="text-sm font-bold uppercase tracking-[0.2em] text-[var(--text-muted)] group-hover:text-[var(--text-secondary)] transition-colors">
+          {tier.name}
+        </div>
+        {tier.key === "enterprise" ? <Globe className="w-5 h-5 text-purple-400" /> : tier.key === "pro" ? <Shield className="w-5 h-5 text-amber-400" /> : <Zap className="w-5 h-5 text-[var(--accent)]" />}
       </div>
-      <p className="mt-1 text-xs text-[var(--text-dim)]">
-        {tier.min_price_usd > 0 && tier.max_price_usd
-          ? `Band ${formatUsd(tier.min_price_usd)} – ${formatUsd(tier.max_price_usd)} · your selection updates the quote`
-          : tier.max_price_usd === null
-            ? `Scales above Pro · floor from ${formatUsd(tier.min_price_usd)}`
-            : null}
-      </p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">
-          Seats
-          <input
-            type="range"
-            min={tier.seat_min}
-            max={tier.seat_max}
-            value={seats}
-            onChange={(e) => onSeatsChange(Number(e.target.value))}
-            className="w-full accent-[var(--accent)]"
-          />
-          <span className="font-mono text-[var(--text-secondary)]">{seats}</span>
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">
-          Usage tier
-          <select
-            value={usageTier}
-            onChange={(e) => onUsageChange(e.target.value)}
-            className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-900)] px-2 py-1.5 text-sm text-[var(--text-primary)]"
-          >
-            {usageTierOptions.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.label}
-              </option>
+
+      <div className="mt-2 flex flex-col gap-1">
+        <div className="flex items-baseline gap-2">
+          <AnimatePresence mode="wait">
+            <motion.span 
+              key={priceLabel}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="text-5xl font-black tracking-tighter text-[var(--text-primary)]"
+            >
+              {quoteLoading ? "..." : priceLabel}
+            </motion.span>
+          </AnimatePresence>
+          <span className="text-sm font-medium text-[var(--text-dim)] uppercase tracking-widest">/ month</span>
+        </div>
+        <p className="text-[10px] font-bold text-[var(--text-dim)] uppercase tracking-widest">
+           Per Team · Scalable
+        </p>
+      </div>
+
+      <div className="mt-8 space-y-6 flex-1">
+         <div className="space-y-4">
+            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">
+               <span>Seats</span>
+               <span className="text-[var(--accent)]">{seats}</span>
+            </div>
+            <input
+              type="range"
+              min={tier.seat_min}
+              max={tier.seat_max}
+              value={seats}
+              onChange={(e) => onSeatsChange(Number(e.target.value))}
+              className="w-full accent-[var(--accent)] h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer"
+            />
+         </div>
+
+         <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">AI Performance</label>
+            <select
+              value={usageTier}
+              onChange={(e) => onUsageChange(e.target.value)}
+              className="w-full rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-xs font-bold text-[var(--text-primary)] outline-none focus:border-[var(--accent)] transition-colors"
+            >
+              {usageTierOptions.map((u) => (
+                <option key={u.id} value={u.id} className="bg-[var(--bg-900)]">
+                  {u.label}
+                </option>
+              ))}
+            </select>
+         </div>
+
+         <ul className="space-y-3 pt-4">
+            {tier.features.map((f) => (
+              <li key={f} className="flex gap-3 text-sm text-[var(--text-secondary)]">
+                <div className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/10">
+                  <Check className="h-2.5 w-2.5 text-[var(--accent)]" />
+                </div>
+                <span className="leading-tight">{f}</span>
+              </li>
             ))}
-          </select>
-        </label>
+         </ul>
       </div>
-      <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)]">
-        {tier.key === "team" && "For growing teams that live in the wiki and need steady ingest and AI throughput."}
-        {tier.key === "pro" && "For orgs that need scale, compliance-friendly workflows, and hands-on help."}
-        {tier.key === "enterprise" && "For larger orgs with procurement, security review, and higher limits."}
-      </p>
-      <ul className="mt-4 flex flex-1 flex-col gap-2.5 text-sm text-[var(--text-secondary)]">
-        {tier.features.map((f) => (
-          <li key={f} className="flex gap-2">
-            <Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent)]" aria-hidden />
-            <span>{f}</span>
-          </li>
-        ))}
-      </ul>
-      {tier.trial_days > 0 ? (
-        <p className="mt-3 text-[11px] text-[var(--text-dim)]">Includes up to {tier.trial_days}-day trial on Paddle when enabled.</p>
-      ) : null}
-      <div className="mt-8">
+
+      <div className="mt-10">
         {!isSignedIn ? (
           <SignUpButton mode="modal" forceRedirectUrl={redirectUrl}>
             <button
               type="button"
-              className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${
+              className={`group/btn relative w-full overflow-hidden rounded-2xl py-4 text-sm font-black uppercase tracking-widest transition-all ${
                 tier.key === "team"
-                  ? "bg-[var(--accent)] text-[var(--bg-950)] hover:opacity-90"
-                  : "border border-[var(--border-subtle)] bg-[var(--bg-900)] text-[var(--text-primary)] hover:bg-[var(--surface-2)]"
+                  ? "bg-[var(--accent)] text-[var(--bg-950)] hover:shadow-[0_0_30px_rgba(0,212,232,0.4)]"
+                  : "bg-white/5 text-white hover:bg-white/10"
               }`}
             >
-              Get started <ArrowRight className="ml-1 inline h-4 w-4 align-text-bottom" />
+              <span className="relative z-10 flex items-center justify-center gap-2">
+                Start Trial <ArrowRight className="h-4 w-4 transition-transform group-hover/btn:translate-x-1" />
+              </span>
             </button>
           </SignUpButton>
         ) : !currentTeamId ? (
           <Link
             href="/wiki"
-            className="flex w-full items-center justify-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-900)] px-4 py-2.5 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--surface-2)]"
+            className="flex w-full items-center justify-center rounded-2xl bg-white/5 py-4 text-sm font-black uppercase tracking-widest text-white hover:bg-white/10 transition-all"
           >
-            Open app to select a team
+            Open Workspace
           </Link>
         ) : (
           <button
             type="button"
             disabled={checkoutBusy || quoteLoading || !quote}
             onClick={onCheckout}
-            className={`flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${
+            className={`group/btn relative w-full overflow-hidden rounded-2xl py-4 text-sm font-black uppercase tracking-widest transition-all disabled:opacity-50 ${
               tier.key === "team"
-                ? "bg-[var(--accent)] text-[var(--bg-950)] hover:opacity-90"
-                : "border border-[var(--border-subtle)] bg-[var(--bg-900)] text-[var(--text-primary)] hover:bg-[var(--surface-2)]"
+                ? "bg-[var(--accent)] text-[var(--bg-950)] hover:shadow-[0_0_30px_rgba(0,212,232,0.4)]"
+                : "bg-white/5 text-white hover:bg-white/10"
             }`}
           >
-            {checkoutBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Checkout in Paddle
+            <span className="relative z-10 flex items-center justify-center gap-2">
+              {checkoutBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {checkoutBusy ? "Processing..." : "Checkout via Paddle"}
+            </span>
           </button>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -264,87 +285,119 @@ export function HomePricing() {
   const freePlan = catalog?.plans.find((p) => p.key === "free");
 
   return (
-    <section className="mt-14 border-t border-[var(--border-subtle)] pt-14" aria-labelledby="home-pricing-heading">
-      <div className="text-center">
-        <h2 id="home-pricing-heading" className="text-xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-2xl">
-          Simple pricing for shared team memory
-        </h2>
-        <p className="mx-auto mt-2 max-w-2xl text-sm text-[var(--text-muted)]">
-          {catalog?.disclaimer ||
-            "Every plan includes the same core product: collaborative wiki, knowledge graph, ingest pipeline, and citation-grounded chat."}
-        </p>
-        {user?.primaryEmailAddress?.emailAddress ? (
-          <p className="mt-1 text-xs text-[var(--text-dim)]">Signed in as {user.primaryEmailAddress.emailAddress}</p>
-        ) : null}
-      </div>
-
-      {catalogError || !catalog ? (
-        <p className="mt-8 text-center text-sm text-[var(--text-muted)]">
-          {catalogError ? "Could not load live prices — refresh or try again later." : "Loading plans…"}
-        </p>
-      ) : (
-        <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-4">
-          {freePlan ? (
-            <div className="relative flex flex-col rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)]/80 p-6">
-              <div className="text-sm font-medium text-[var(--text-muted)]">{freePlan.name}</div>
-              <div className="mt-2 flex items-baseline gap-1">
-                <span className="text-3xl font-bold tracking-tight text-[var(--text-primary)]">{freePlan.price_label}</span>
-                <span className="text-sm text-[var(--text-dim)]">/ team / month</span>
-              </div>
-              <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)]">
-                Try the full wiki-first loop with a small team. Upgrade when you outgrow limits.
-              </p>
-              <ul className="mt-6 flex flex-1 flex-col gap-2.5 text-sm text-[var(--text-secondary)]">
-                {freePlan.features.map((f) => (
-                  <li key={f} className="flex gap-2">
-                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent)]" aria-hidden />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-8">
-                <SignUpButton mode="modal">
-                  <button
-                    type="button"
-                    className="w-full rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-[var(--bg-950)] transition-opacity hover:opacity-90"
-                  >
-                    Start free
-                  </button>
-                </SignUpButton>
-              </div>
-            </div>
-          ) : null}
-
-          {paidPlans.map((tier) => {
-            const pr = prefs[tier.key] || { seats: tier.seat_default, usage: "standard" };
-            return (
-              <PaidTierCard
-                key={tier.key}
-                tier={tier}
-                usageTierOptions={catalog.usage_tiers}
-                quote={quotes[tier.key] ?? null}
-                quoteLoading={!!quoteLoading[tier.key]}
-                seats={pr.seats}
-                usageTier={pr.usage}
-                onSeatsChange={(n) => setPrefs((p) => ({ ...p, [tier.key]: { ...pr, seats: n } }))}
-                onUsageChange={(u) => setPrefs((p) => ({ ...p, [tier.key]: { ...pr, usage: u } }))}
-                isSignedIn={!!isSignedIn}
-                currentTeamId={currentTeamId}
-                onCheckout={() => handleCheckout(tier.key)}
-                checkoutBusy={checkoutBusy === tier.key}
-              />
-            );
-          })}
+    <section className="relative py-20 px-6" aria-labelledby="home-pricing-heading">
+      {/* Background decoration */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none" />
+      
+      <div className="relative z-10 max-w-7xl mx-auto">
+        <div className="text-center mb-16 space-y-4">
+          <motion.span 
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            className="text-[var(--accent)] font-mono text-[10px] tracking-[0.5em] uppercase font-bold"
+          >
+            BILLING_ENGINE_v2.0
+          </motion.span>
+          <h2 id="home-pricing-heading" className="text-6xl md:text-7xl font-black uppercase tracking-tighter italic text-gradient leading-[0.85]">
+            Scale your <br/> memory.
+          </h2>
+          <p className="max-w-2xl mx-auto text-slate-400 text-lg">
+            {catalog?.disclaimer ||
+              "Transparent, usage-aware pricing designed for teams that move fast and think deep."}
+          </p>
         </div>
-      )}
 
-      <p className="mt-8 text-center text-xs text-[var(--text-dim)]">
-        Totals are computed on the server from seats and usage tier; Paddle shows the final charge. After sign-in, open{" "}
-        <Link href="/settings" className="text-[var(--accent)] underline-offset-2 hover:underline">
-          Settings
-        </Link>{" "}
-        to manage billing for your team.
-      </p>
+        {catalogError || !catalog ? (
+          <div className="flex flex-col items-center justify-center py-20 bg-white/5 rounded-3xl border border-white/5">
+             <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)] mb-4" />
+             <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">
+               Synchronizing live prices...
+             </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-4 items-start">
+            {freePlan && (
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                className="flex flex-col rounded-3xl border border-white/5 bg-white/[0.01] p-8 hover:bg-white/[0.02] transition-all"
+              >
+                <div className="text-sm font-bold uppercase tracking-[0.2em] text-[var(--text-muted)] mb-6">
+                  {freePlan.name}
+                </div>
+                <div className="flex items-baseline gap-2 mb-2">
+                  <span className="text-4xl font-black tracking-tighter text-[var(--text-primary)]">{freePlan.price_label}</span>
+                  <span className="text-xs font-medium text-[var(--text-dim)] uppercase tracking-widest">/ forever</span>
+                </div>
+                <p className="text-sm text-[var(--text-secondary)] mb-8 leading-relaxed">
+                  The perfect starting point for small teams architecting their first knowledge graph.
+                </p>
+                <ul className="space-y-3 flex-1">
+                  {freePlan.features.map((f) => (
+                    <li key={f} className="flex gap-3 text-sm text-[var(--text-muted)]">
+                      <Check className="mt-1 h-3.5 w-3.5 text-slate-600" />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-10">
+                  <SignUpButton mode="modal">
+                    <button
+                      type="button"
+                      className="w-full rounded-2xl border border-white/10 py-4 text-sm font-black uppercase tracking-widest text-white hover:bg-white/5 transition-all"
+                    >
+                      Get Started
+                    </button>
+                  </SignUpButton>
+                </div>
+              </motion.div>
+            )}
+
+            {paidPlans.map((tier) => {
+              const pr = prefs[tier.key] || { seats: tier.seat_default, usage: "standard" };
+              return (
+                <PaidTierCard
+                  key={tier.key}
+                  tier={tier}
+                  usageTierOptions={catalog.usage_tiers}
+                  quote={quotes[tier.key] ?? null}
+                  quoteLoading={!!quoteLoading[tier.key]}
+                  seats={pr.seats}
+                  usageTier={pr.usage}
+                  onSeatsChange={(n) => setPrefs((p) => ({ ...p, [tier.key]: { ...pr, seats: n } }))}
+                  onUsageChange={(u) => setPrefs((p) => ({ ...p, [tier.key]: { ...pr, usage: u } }))}
+                  isSignedIn={!!isSignedIn}
+                  currentTeamId={currentTeamId}
+                  onCheckout={() => handleCheckout(tier.key)}
+                  checkoutBusy={checkoutBusy === tier.key}
+                />
+              );
+            })}
+          </div>
+        )}
+
+        <div className="mt-20 flex flex-col md:flex-row items-center justify-between gap-8 p-8 rounded-3xl bg-white/[0.02] border border-white/5">
+           <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
+                 <Shield className="w-6 h-6 text-blue-400" />
+              </div>
+              <div>
+                 <h4 className="font-bold text-white uppercase tracking-tight">Enterprise Security</h4>
+                 <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">SOC2 // GDPR // ISO 27001 Ready</p>
+              </div>
+           </div>
+           <div className="flex gap-4">
+              <Link href="/settings" className="text-xs font-black uppercase tracking-[0.3em] text-[var(--accent)] hover:underline">
+                Manage Billing
+              </Link>
+              <span className="text-slate-700">|</span>
+              <span className="text-xs font-black uppercase tracking-[0.3em] text-slate-500">
+                Powered by Paddle
+              </span>
+           </div>
+        </div>
+      </div>
     </section>
   );
 }

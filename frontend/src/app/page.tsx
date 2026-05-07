@@ -10,6 +10,7 @@ import NeuralConvergence from '@/components/landing/NeuralConvergence';
 import UseCaseGrid from '@/components/landing/UseCaseGrid';
 import HeroMockup from '@/components/landing/HeroMockup';
 import { HomePricing } from "@/components/home/HomePricing";
+import LandingFooter from '@/components/landing/LandingFooter';
 
 
 export default function Home() {
@@ -185,6 +186,8 @@ export default function Home() {
             <HomePricing />
           </div>
         </section>
+
+        <LandingFooter />
       </main>
     </div>
   );
