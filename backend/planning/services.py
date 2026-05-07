@@ -8,6 +8,7 @@ from .models import Milestone, Project, Task, ProjectMember, PlanChunk
 from wiki.models import WikiPage
 from wiki.views import unique_slug
 from wiki.services.reindex import reindex_wiki_page
+from llm_orchestrator.orchestrator import llm_json_call
 
 
 def list_projects(team_id: str, query: str = "") -> QuerySet[Project]:
@@ -124,9 +125,6 @@ def update_milestone(milestone: Milestone, payload: dict) -> Milestone:
     return milestone
 
 
-from .models import Milestone, Project, Task, ProjectMember
-
-
 def delete_milestone(milestone: Milestone) -> None:
     milestone.delete()
 
@@ -198,12 +196,8 @@ def generate_plan_draft(
     mode: str = "create",
     project_context: dict | None = None,
 ) -> dict:
-    from teamos_project.llm_config import chat_completion_model
     from ingest.vectors import vector_store
-
-    llm = vector_store.openai
-    if not llm:
-        raise ValueError("LLM client not configured.")
+    team = Team.objects.get(id=team_id)
 
     # PERFORM RAG: Search for relevant wiki pages and other projects
     search_results = vector_store.search_similar_pages(team_id, prompt, limit=5)
@@ -211,8 +205,6 @@ def generate_plan_draft(
         f"Source: {p.payload.get('page_title') or p.payload.get('project_name') or 'Knowledge'}\nContent: {p.payload.get('content')}"
         for p in search_results
     ])
-
-    model = chat_completion_model()
 
     system_prompt = (
         "You are the TeamOS Plan Architect. You have full control over the project planning infrastructure. "
@@ -236,11 +228,9 @@ def generate_plan_draft(
         {"role": "user", "content": user_content},
     ]
 
-    response = llm.chat.completions.create(
-        model=model,
+    return llm_json_call(
+        team=team,
+        operation="plan_generate",
         messages=messages,
-        response_format={"type": "json_object"},
+        default_on_error={"error": "Plan generation failed."}
     )
-
-    import json
-    return json.loads(response.choices[0].message.content)

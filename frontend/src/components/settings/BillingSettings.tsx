@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import { useWikiStore } from "@/stores/useWikiStore";
 import { api } from "@/lib/api";
-import { fetchBillingPlans, fetchBillingQuote, startTeamCheckout, type BillingPlansCatalog, type BillingQuote } from "@/lib/billingCheckout";
+import { fetchBillingPlans, fetchBillingQuote, startTeamCheckout, type BillingPlansCatalog, type BillingPlanRow, type BillingQuote } from "@/lib/billingCheckout";
 import { useToast } from "@/components/ui/Toast";
-import { Check, CreditCard, Loader2, Sparkles, Zap } from "lucide-react";
-import { motion } from "motion/react";
+import { AlertCircle, Check, CreditCard, Loader2, Sparkles, Zap, Timer, Users, ShieldAlert, ArrowRight } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 
 interface TeamSubscription {
   plan_key: string;
@@ -16,6 +16,7 @@ interface TeamSubscription {
   current_period_end?: string;
   trial_expires_at?: string;
   grace_expires_at?: string;
+  metadata?: any;
 }
 
 export function BillingSettings() {
@@ -31,7 +32,7 @@ export function BillingSettings() {
     plan_key: string;
     seat_count: number;
     usage_tier: string;
-  }>({ plan_key: "team", seat_count: 8, usage_tier: "standard" });
+  }>({ plan_key: "team", seat_count: 5, usage_tier: "standard" });
 
   const [quote, setQuote] = useState<BillingQuote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -50,8 +51,12 @@ export function BillingSettings() {
         setCatalog(catData);
         
         // Default prefs based on current plan or team
-        if (subData.plan_key !== "free") {
-          setPrefs(prev => ({ ...prev, plan_key: subData.plan_key }));
+        if (subData.plan_key && subData.plan_key !== "free") {
+          setPrefs({ 
+            plan_key: subData.plan_key,
+            seat_count: subData.metadata?.seat_count || 5,
+            usage_tier: subData.metadata?.usage_tier || "standard"
+          });
         }
       } catch (e) {
         console.error("Failed to load billing data", e);
@@ -122,20 +127,72 @@ export function BillingSettings() {
   }
 
   const currentPlan = catalog?.plans.find(p => p.key === (subscription?.plan_key || "free"));
+  const isTrialExpired = subscription?.status === "trial_expired";
+  const isSuspended = subscription?.status === "suspended";
+  const isInGrace = subscription?.status === "past_due" || subscription?.status === "canceled";
 
   return (
     <div className="space-y-10">
+      {/* Critical Status Banners */}
+      <AnimatePresence>
+        {isTrialExpired && (
+          <motion.div 
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            className="rounded-xl bg-red-500/10 border border-red-500/20 p-4 flex gap-4 items-start"
+          >
+            <div className="p-2 bg-red-500/20 rounded-lg">
+              <Timer className="w-5 h-5 text-red-500" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-red-500 uppercase tracking-widest">Trial Expired</h4>
+              <p className="text-sm text-red-200/80 mt-1">Your 2-month free trial has ended. Your data is safe—upgrade to any paid plan to restore full access to AI models and workspace tools.</p>
+            </div>
+          </motion.div>
+        )}
+
+        {(isSuspended || (isInGrace && subscription?.grace_expires_at && new Date(subscription.grace_expires_at) < new Date())) && (
+          <motion.div 
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-4 flex gap-4 items-start"
+          >
+            <div className="p-2 bg-amber-500/20 rounded-lg">
+              <ShieldAlert className="w-5 h-5 text-amber-500" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-amber-500 uppercase tracking-widest">Account Suspended</h4>
+              <p className="text-sm text-amber-200/80 mt-1">Payment failed and grace period has expired. Please update your payment method to restore access to your team workspace.</p>
+            </div>
+          </motion.div>
+        )}
+
+        {isInGrace && subscription?.grace_expires_at && new Date(subscription.grace_expires_at) > new Date() && (
+          <motion.div 
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            className="rounded-xl bg-blue-500/10 border border-blue-500/20 p-4 flex gap-4 items-start"
+          >
+            <div className="p-2 bg-blue-500/20 rounded-lg">
+              <AlertCircle className="w-5 h-5 text-blue-500" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-blue-500 uppercase tracking-widest">Grace Period Active</h4>
+              <p className="text-sm text-blue-200/80 mt-1">Payment failed. You have until {new Date(subscription.grace_expires_at).toLocaleDateString()} to update billing before your account is suspended. Usage is currently limited to Free tier levels.</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Current Subscription Status */}
       <section>
         <div className="mb-4">
           <h3 className="text-lg font-medium text-[var(--text-primary)] flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-[var(--accent)]" /> Subscription Plan
+            <CreditCard className="w-5 h-5 text-[var(--accent)]" /> Workspace Subscription
           </h3>
-          <p className="text-sm text-[var(--text-muted)] mt-1">You are currently on the {currentPlan?.name} plan.</p>
         </div>
 
         <div className="relative overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-8">
-          {/* Decorative background element */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-[var(--accent)]/5 rounded-full blur-3xl -mr-32 -mt-32" />
           
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
@@ -144,8 +201,13 @@ export function BillingSettings() {
                 <span className="px-3 py-1 bg-[var(--accent)] text-[var(--bg-950)] text-xs font-bold rounded-full uppercase tracking-widest">
                   {subscription?.plan_key || "FREE"}
                 </span>
-                <span className={`text-xs font-medium uppercase tracking-wider ${subscription?.status === 'active' ? 'text-[var(--success)]' : 'text-[var(--warning)]'}`}>
-                  ● {subscription?.status || 'Active'}
+                <span className={`text-xs font-black uppercase tracking-widest flex items-center gap-1.5 ${
+                  subscription?.status === 'active' ? 'text-[var(--success)]' : 'text-amber-500'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                    subscription?.status === 'active' ? 'bg-[var(--success)]' : 'bg-amber-500'
+                  }`} />
+                  {subscription?.status?.replace('_', ' ') || 'Active'}
                 </span>
               </div>
               
@@ -153,181 +215,193 @@ export function BillingSettings() {
                 <h4 className="text-2xl font-bold text-[var(--text-primary)]">{currentPlan?.name} Plan</h4>
                 <p className="text-sm text-[var(--text-muted)] mt-1">
                   {subscription?.current_period_end 
-                    ? `Your next billing date is ${new Date(subscription.current_period_end).toLocaleDateString()}.`
+                    ? `Billed ${subscription.metadata?.seat_count || 1} seats at ${subscription.plan_key === 'team' ? '$15' : '$20'}/user.`
                     : subscription?.trial_expires_at 
-                      ? `Your trial expires on ${new Date(subscription.trial_expires_at).toLocaleDateString()}.`
-                      : "Free forever for small teams."}
+                      ? `Your 60-day trial window closes on ${new Date(subscription.trial_expires_at).toLocaleDateString()}.`
+                      : "Standard community plan for small teams."}
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                {currentPlan?.features.slice(0, 4).map(f => (
-                  <div key={f} className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                    <Check className="w-4 h-4 text-[var(--success)]" />
-                    {f}
-                  </div>
-                ))}
+              <div className="flex flex-wrap gap-4 pt-2">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[var(--text-dim)]">
+                   <Users className="w-3.5 h-3.5" /> {subscription?.metadata?.seat_count || (subscription?.plan_key === 'free' ? '1-3' : 'UNRESTRICTED')} Seats
+                </div>
+                {subscription?.plan_key === 'pro' && (
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-purple-400">
+                        <Sparkles className="w-3.5 h-3.5" /> GPT-4O PRIORITY ACTIVE
+                    </div>
+                )}
               </div>
             </div>
 
             <div className="flex flex-col gap-3 min-w-[240px]">
               {subscription?.plan_key === "free" ? (
-                <div className="p-4 rounded-xl bg-[var(--accent-subtle)] border border-[var(--accent)]/20">
-                  <div className="text-xs font-bold uppercase tracking-widest text-[var(--accent)] mb-1">Upgrade Available</div>
-                  <div className="text-sm text-[var(--text-primary)] mb-4">Unlock higher limits and premium AI models for your team.</div>
+                <div className="p-5 rounded-xl bg-white/[0.03] border border-white/5 backdrop-blur-sm">
+                  <div className="text-xs font-black uppercase tracking-[0.2em] text-[var(--accent)] mb-2">Initialize Per-User Plan</div>
+                  <div className="text-sm text-[var(--text-secondary)] mb-4 leading-relaxed">Upgrade to Team ($15) or Pro ($20) for unlimited seats and priority AI.</div>
                   <button 
-                    onClick={() => setPrefs(prev => ({ ...prev, plan_key: "team" }))}
-                    className="w-full py-2.5 rounded-lg bg-[var(--accent)] text-[var(--bg-950)] font-bold text-sm hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                    onClick={() => {
+                        setPrefs(prev => ({ ...prev, plan_key: "team" }));
+                        document.getElementById('plan-selector')?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="w-full py-3 rounded-xl bg-[var(--accent)] text-[var(--bg-950)] font-black text-xs uppercase tracking-widest hover:shadow-[0_0_20px_var(--accent-subtle)] transition-all flex items-center justify-center gap-2"
                   >
-                    <Zap className="w-4 h-4 fill-current" /> Upgrade Now
+                    <Zap className="w-4 h-4 fill-current" /> Select a Plan
                   </button>
                 </div>
               ) : (
                 <button 
-                  className="w-full py-2.5 rounded-lg border border-[var(--border-strong)] text-[var(--text-primary)] font-bold text-sm hover:bg-[var(--surface-2)] transition-colors"
+                  className="w-full py-3 rounded-xl border border-[var(--border-strong)] text-[var(--text-primary)] font-black text-xs uppercase tracking-widest hover:bg-[var(--surface-2)] transition-colors"
                 >
-                  Manage Billing
+                  Manage via Paddle
                 </button>
               )}
-              <p className="text-[10px] text-center text-[var(--text-dim)] uppercase tracking-tighter">Payments secured by Paddle</p>
             </div>
           </div>
         </div>
       </section>
 
       {/* Plan Selection / Upgrade UI */}
-      <section className="pt-4">
+      <section id="plan-selector" className="pt-4">
         <div className="mb-6">
           <h3 className="text-lg font-medium text-[var(--text-primary)] flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-400" /> Change Subscription
+            <Sparkles className="w-5 h-5 text-purple-400" /> Scale your Architecture
           </h3>
-          <p className="text-sm text-[var(--text-muted)] mt-1">Select a new plan or adjust your current one.</p>
+          <p className="text-sm text-[var(--text-muted)] mt-1">Configure seats and AI bandwidth for your team.</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Plan Options Column */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {catalog?.plans.filter(p => p.key !== 'free').map(p => (
                 <button
                   key={p.key}
                   onClick={() => setPrefs(prev => ({ ...prev, plan_key: p.key }))}
-                  className={`relative flex flex-col p-5 rounded-xl border transition-all text-left ${
+                  className={`relative flex flex-col p-6 rounded-2xl border transition-all text-left group ${
                     prefs.plan_key === p.key 
-                      ? "border-[var(--accent)] bg-[var(--accent-subtle)] shadow-[0_0_20px_var(--accent-subtle)]" 
+                      ? "border-[var(--accent)] bg-[var(--accent)]/5 shadow-[0_0_30px_rgba(0,212,232,0.1)]" 
                       : "border-[var(--border-subtle)] bg-[var(--surface-1)] hover:border-[var(--border-strong)]"
                   }`}
                 >
                   {prefs.plan_key === p.key && (
-                    <motion.div layoutId="plan-active" className="absolute -top-2 -right-2 bg-[var(--accent)] text-[var(--bg-950)] rounded-full p-1 shadow-lg">
-                      <Check className="w-3 h-3" />
+                    <motion.div layoutId="plan-active" className="absolute -top-3 -right-3 bg-[var(--accent)] text-[var(--bg-950)] rounded-full p-1.5 shadow-xl">
+                      <Check className="w-4 h-4 stroke-[3]" />
                     </motion.div>
                   )}
-                  <span className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">{p.name}</span>
-                  <span className="text-lg font-bold text-[var(--text-primary)]">{p.price_label}</span>
-                  <p className="text-[10px] text-[var(--text-dim)] mt-2 line-clamp-2">{p.features[0]}</p>
+                  <span className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors mb-2">{p.name}</span>
+                  <div className="flex items-end gap-1">
+                    <div className="text-3xl font-black text-[var(--text-primary)] tracking-tighter">{p.price_label}</div>
+                    <div className="text-[10px] font-bold text-[var(--text-dim)] uppercase mb-2">/month</div>
+                  </div>
+                  <div className="mt-4 space-y-2">
+                     {p.features.slice(0, 3).map(f => (
+                         <div key={f} className="text-[10px] font-bold text-[var(--text-dim)] uppercase tracking-tighter flex items-center gap-1">
+                            <Check className="w-2.5 h-2.5 text-[var(--accent)]" /> {f}
+                         </div>
+                     ))}
+                  </div>
                 </button>
               ))}
             </div>
 
-            {/* Customization Sliders */}
-            {prefs.plan_key !== 'free' && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-xl p-6 space-y-8"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <label className="text-sm font-medium text-[var(--text-secondary)]">Team Seats</label>
-                      <span className="px-2 py-0.5 bg-[var(--bg-950)] rounded text-xs font-mono text-[var(--accent)]">{prefs.seat_count} seats</span>
+            <motion.div 
+                layout
+                className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl p-8 space-y-10"
+            >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-end">
+                            <div>
+                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-muted)]">Seat Configuration</label>
+                                <div className="text-2xl font-black text-[var(--text-primary)] mt-1">{prefs.seat_count} Active Users</div>
+                            </div>
+                            <span className="px-2 py-1 bg-[var(--bg-950)] rounded text-[10px] font-mono text-[var(--accent)] font-bold">X{prefs.seat_count}</span>
+                        </div>
+                        <input 
+                            type="range" 
+                            min={1}
+                            max={200}
+                            value={prefs.seat_count}
+                            onChange={(e) => setPrefs(prev => ({ ...prev, seat_count: parseInt(e.target.value) }))}
+                            className="w-full accent-[var(--accent)] h-2 bg-[var(--bg-950)] rounded-full appearance-none cursor-pointer"
+                        />
+                        <div className="flex justify-between text-[10px] text-[var(--text-dim)] uppercase tracking-widest font-black">
+                            <span>1 SEAT MIN</span>
+                            <span>UNRESTRICTED SCALING</span>
+                        </div>
                     </div>
-                    <input 
-                      type="range" 
-                      min={catalog?.plans.find(p => p.key === prefs.plan_key)?.seat_min || 1}
-                      max={catalog?.plans.find(p => p.key === prefs.plan_key)?.seat_max || 100}
-                      value={prefs.seat_count}
-                      onChange={(e) => setPrefs(prev => ({ ...prev, seat_count: parseInt(e.target.value) }))}
-                      className="w-full accent-[var(--accent)] h-1.5 bg-[var(--bg-950)] rounded-lg appearance-none cursor-pointer"
-                    />
-                    <div className="flex justify-between text-[10px] text-[var(--text-dim)] uppercase tracking-widest font-bold">
-                      <span>{catalog?.plans.find(p => p.key === prefs.plan_key)?.seat_min || 1} MIN</span>
-                      <span>{catalog?.plans.find(p => p.key === prefs.plan_key)?.seat_max || 100} MAX</span>
-                    </div>
-                  </div>
 
-                  <div className="space-y-4">
-                    <label className="text-sm font-medium text-[var(--text-secondary)]">AI Usage Tier</label>
-                    <div className="flex p-1 bg-[var(--bg-950)] rounded-lg border border-[var(--border-subtle)]">
-                      {catalog?.usage_tiers.map(t => (
-                        <button
-                          key={t.id}
-                          onClick={() => setPrefs(prev => ({ ...prev, usage_tier: t.id }))}
-                          className={`flex-1 py-1.5 text-xs font-bold uppercase tracking-tighter rounded-md transition-all ${
-                            prefs.usage_tier === t.id 
-                              ? "bg-[var(--accent)] text-[var(--bg-950)]" 
-                              : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                          }`}
-                        >
-                          {t.label}
-                        </button>
-                      ))}
+                    <div className="space-y-6">
+                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-muted)]">LLM Performance Tier</label>
+                        <div className="flex p-1.5 bg-[var(--bg-950)] rounded-xl border border-[var(--border-subtle)]">
+                            {catalog?.usage_tiers.map(t => (
+                                <button
+                                    key={t.id}
+                                    onClick={() => setPrefs(prev => ({ ...prev, usage_tier: t.id }))}
+                                    className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${
+                                        prefs.usage_tier === t.id 
+                                            ? "bg-[var(--accent)] text-[var(--bg-950)] shadow-lg" 
+                                            : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                                    }`}
+                                >
+                                    {t.label}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-[10px] text-[var(--text-dim)] font-bold leading-relaxed uppercase tracking-tighter italic">
+                            &gt; {catalog?.usage_tiers.find(t => t.id === prefs.usage_tier)?.description}
+                        </p>
                     </div>
-                    <p className="text-[10px] text-[var(--text-muted)] italic">
-                      {catalog?.usage_tiers.find(t => t.id === prefs.usage_tier)?.description}
-                    </p>
-                  </div>
                 </div>
-              </motion.div>
-            )}
+            </motion.div>
           </div>
 
-          {/* Quote / Summary Column */}
-          <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-xl p-6 flex flex-col justify-between shadow-xl">
-            <div className="space-y-6">
-              <h4 className="text-sm font-bold uppercase tracking-widest text-[var(--text-muted)]">Quote Summary</h4>
+          <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl p-8 flex flex-col justify-between shadow-2xl relative overflow-hidden">
+             <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--accent)]/5 rounded-full blur-2xl -mr-16 -mt-16" />
+             
+            <div className="relative z-10 space-y-8">
+              <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--text-muted)] border-b border-white/5 pb-4">Subscription Summary</h4>
               
-              <div className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-[var(--text-secondary)] capitalize">{prefs.plan_key} Plan</span>
-                  <span className="text-[var(--text-primary)] font-medium">
-                    {prefs.plan_key === 'free' ? '$0' : quote ? `$${quote.monthly_total_usd.toFixed(0)}` : '...'}
-                  </span>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">Plan Tier</span>
+                  <span className="text-sm font-black text-[var(--text-primary)] uppercase">{prefs.plan_key}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-[var(--text-secondary)]">{prefs.seat_count} Seats</span>
-                  <span className="text-[var(--text-dim)]">—</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">Seat Math</span>
+                  <span className="text-sm font-black text-[var(--text-primary)]">{prefs.seat_count} Users × ${prefs.plan_key === 'team' ? '15' : '20'}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-[var(--text-secondary)]">{prefs.usage_tier} usage</span>
-                  <span className="text-[var(--text-dim)]">—</span>
-                </div>
+                {prefs.usage_tier === 'high' && (
+                    <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-purple-400">Power Uplift</span>
+                        <span className="text-xs font-black text-purple-400 uppercase">+25% BUDGET</span>
+                    </div>
+                )}
                 
-                <div className="pt-3 border-t border-[var(--border-subtle)]">
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-sm font-bold text-[var(--text-primary)]">Total Monthly</span>
+                <div className="pt-6 border-t border-white/5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-black text-[var(--text-primary)] uppercase tracking-widest">Workspace Total</span>
                     <div className="text-right">
                       {quoteLoading ? (
-                        <Loader2 className="w-5 h-5 animate-spin text-[var(--accent)]" />
+                        <Loader2 className="w-6 h-6 animate-spin text-[var(--accent)] ml-auto" />
                       ) : (
-                        <>
-                          <div className="text-2xl font-black text-[var(--accent)]">
-                            {prefs.plan_key === 'free' ? '$0' : quote ? `$${quote.monthly_total_usd.toFixed(2)}` : '$--'}
+                        <div className="flex flex-col items-end">
+                          <div className="text-4xl font-black text-[var(--accent)] tracking-tighter">
+                            {quote ? `$${quote.monthly_total_usd.toFixed(2)}` : '$--'}
                           </div>
-                          <div className="text-[10px] text-[var(--text-dim)] uppercase font-bold tracking-tighter">per team / mo</div>
-                        </>
+                          <div className="text-[8px] text-[var(--text-dim)] uppercase font-black tracking-widest mt-1">USD // PER_MONTH</div>
+                        </div>
                       )}
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-2 pt-4">
-                <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-widest font-bold">Includes:</p>
-                <ul className="space-y-2">
-                  {catalog?.plans.find(p => p.key === prefs.plan_key)?.features.slice(0, 3).map(f => (
-                    <li key={f} className="flex gap-2 text-xs text-[var(--text-secondary)]">
+              <div className="space-y-3 pt-6">
+                <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-[0.2em] font-black">Architecture Details:</p>
+                <ul className="space-y-3">
+                  {catalog?.plans.find(p => p.key === prefs.plan_key)?.features.map(f => (
+                    <li key={f} className="flex gap-3 text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-tighter">
                       <Check className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
                       <span>{f}</span>
                     </li>
@@ -336,15 +410,18 @@ export function BillingSettings() {
               </div>
             </div>
 
-            <div className="pt-8">
+            <div className="pt-10 relative z-10">
               <button
                 onClick={handleCheckout}
-                disabled={!quote || quoteLoading || checkoutBusy !== null || prefs.plan_key === subscription?.plan_key}
-                className="w-full py-4 rounded-xl bg-white text-black font-black text-sm uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:grayscale disabled:scale-100 flex items-center justify-center gap-2 shadow-[0_10px_20px_rgba(255,255,255,0.1)]"
+                disabled={!quote || quoteLoading || checkoutBusy !== null || (prefs.plan_key === subscription?.plan_key && prefs.seat_count === subscription?.metadata?.seat_count && prefs.usage_tier === subscription?.metadata?.usage_tier)}
+                className="w-full py-5 rounded-2xl bg-white text-black font-black text-xs uppercase tracking-[0.2em] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-30 disabled:grayscale disabled:scale-100 flex items-center justify-center gap-3 shadow-[0_15px_30px_rgba(255,255,255,0.1)] group"
               >
-                {checkoutBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
-                {prefs.plan_key === subscription?.plan_key ? "Current Plan" : "Proceed to Checkout"}
+                {checkoutBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4 transition-transform group-hover:-rotate-12" />}
+                {prefs.plan_key === subscription?.plan_key ? "Update Seat Configuration" : "Initialize Checkout"}
               </button>
+              <p className="text-[8px] text-center text-[var(--text-dim)] uppercase tracking-[0.2em] mt-4 font-bold flex items-center justify-center gap-2">
+                <ShieldAlert className="w-2 h-2" /> No hidden fees • Cancel anytime • Paddle Secure
+              </p>
             </div>
           </div>
         </div>

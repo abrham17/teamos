@@ -16,8 +16,6 @@ from chat.tools import (
     openai_plan_tool_schemas,
     openai_tool_schemas,
 )
-from ingest.vectors import vector_store
-from teamos_project.llm_config import get_llm_backend
 from llm_orchestrator.orchestrator import llm_call
 
 logger = logging.getLogger(__name__)
@@ -139,21 +137,14 @@ def _iter_tool_agent_sse_events(
     execute: Callable[[str, str, ToolContext], dict[str, Any]],
 ) -> Iterator[str]:
     state["ok"] = False
-    llm = vector_store.openai
-    if not llm:
-        yield f"event: error\ndata: {json.dumps({'detail': 'Chat LLM is not configured (set GROQ_API_KEY or OPENAI_API_KEY).'})}\n\n"
-        return
-
-    if get_llm_backend() == "groq":
-        yield f"event: error\ndata: {json.dumps({'detail': 'Tool agent modes are only available with LLM_BACKEND=openai (tool calling). Use Ask mode or switch backend.'})}\n\n"
-        return
-
+    
     messages = _build_messages(session, context_str, system_prefix)
     tool_trace: list[dict[str, Any]] = []
     tools_executed = 0
 
     for _round in range(MAX_TOOL_ROUNDS):
         try:
+            # Operation is chat_agent for both wiki and plan agents
             resp, model_used, routed_by = llm_call(
                 team=session.team,
                 operation="chat_agent",
@@ -212,6 +203,7 @@ def _iter_tool_agent_sse_events(
             yield f"event: chunk\ndata: {json.dumps({'token': piece})}\n\n"
         state["tool_trace"] = tool_trace
         state["full_text"] = final_text
+        state["model_used"] = model_used
         state["ok"] = True
         return
 
