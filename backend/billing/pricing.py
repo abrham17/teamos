@@ -90,12 +90,7 @@ def public_plan_catalog() -> dict[str, Any]:
                 "seat_min": 1,
                 "seat_max": 3,
                 "trial_days": 60,
-                "features": [
-                    "Up to 3 members",
-                    "60-day full access",
-                    "GPT-4.1-nano Engine",
-                    "Core Wiki & Graph features",
-                ],
+                "features": ["1 User Only", "Basic Wiki", "Local Knowledge Processing", "Standard Intelligence Engine"],
             },
             {
                 "key": "team",
@@ -105,8 +100,7 @@ def public_plan_catalog() -> dict[str, Any]:
                 "seat_max": 1000,
                 "features": [
                     "Unrestricted members",
-                    "GPT-4o priority routing",
-                    "2M Tokens per user pool",
+                    "High-performance routing",
                     "Continuous cost curve",
                     "Email support",
                 ],
@@ -119,9 +113,8 @@ def public_plan_catalog() -> dict[str, Any]:
                 "seat_max": 5000,
                 "features": [
                     "Unrestricted members",
-                    "5M Tokens per user pool",
-                    "High-performance routing",
-                    "No 'Nano' degradation",
+                    "Advanced Agentic Engine",
+                    "Priority Architecture",
                     "Priority support",
                 ],
             },

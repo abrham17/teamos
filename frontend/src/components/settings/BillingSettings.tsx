@@ -150,7 +150,7 @@ export function BillingSettings() {
             </div>
             <div>
               <h4 className="text-sm font-bold text-red-500 uppercase tracking-widest">Trial Expired</h4>
-              <p className="text-sm text-red-200/80 mt-1">Your 2-month free trial has ended. Your data is safe—upgrade to any paid plan to restore full access to AI models and workspace tools.</p>
+              <p className="text-sm text-red-200/80 mt-1">Your 2-month free trial has ended. Your data is safe—upgrade to any paid plan to restore full access to high-performance reasoning models and workspace tools.</p>
             </div>
           </motion.div>
         )}
@@ -231,9 +231,9 @@ export function BillingSettings() {
                    <Users className="w-3.5 h-3.5" /> {subscription?.metadata?.seat_count || (subscription?.plan_key === 'free' ? '1-3' : 'UNRESTRICTED')} Seats
                 </div>
                 {subscription?.plan_key === 'pro' && (
-                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-purple-400">
-                        <Sparkles className="w-3.5 h-3.5" /> GPT-4O PRIORITY ACTIVE
-                    </div>
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-purple-400">
+                      <Sparkles className="w-3.5 h-3.5" /> PRIORITY REASONING ACTIVE
+                  </div>
                 )}
               </div>
             </div>
