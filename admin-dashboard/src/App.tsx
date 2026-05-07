@@ -7,7 +7,6 @@ import {
   LayoutDashboard, 
   CreditCard, 
   Activity,
-  ChevronRight,
   ArrowUpRight,
   ArrowDownRight,
   Search,
@@ -46,6 +45,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
+import { api } from '@/lib/api';
 
 interface Stats {
   billing_month: string;
@@ -85,16 +85,14 @@ const DashboardContent: React.FC = () => {
   const fetchData = async () => {
     setRefreshing(true);
     try {
-      const token = await getToken();
-      const headers = { 'Authorization': `Bearer ${token}` };
-
-      const [statsRes, teamsRes] = await Promise.all([
-        fetch('/api/admin/stats/', { headers }).then(res => res.json()),
-        fetch('/api/admin/teams-usage/', { headers }).then(res => res.json())
+      const token = (await getToken()) || undefined;
+      const [statsData, teamsData] = await Promise.all([
+        api.getOverview(token),
+        api.getTeams(token)
       ]);
 
-      if (statsRes.success) setStats(statsRes.data);
-      if (teamsRes.success) setTeams(teamsRes.data);
+      setStats(statsData);
+      setTeams(teamsData);
     } catch (error) {
       console.error("Failed to fetch admin data:", error);
     } finally {
@@ -103,23 +101,16 @@ const DashboardContent: React.FC = () => {
     }
   };
 
-  const updateTeamStatus = async (teamId: string, status: string) => {
+  const handleUpdateStatus = async (teamId: string, status: string) => {
     try {
-      const token = await getToken();
-      const res = await fetch(`/api/admin/teams/${teamId}/`, {
-        method: 'PATCH',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ status })
-      }).then(r => r.json());
+      const token = (await getToken()) || undefined;
+      const res = await api.patchTeam(teamId, { status }, token);
 
       if (res.success) {
-        fetchData(); // Refresh list
+        fetchData();
       }
     } catch (error) {
-      console.error("Failed to update team status:", error);
+      console.error("Failed to update status:", error);
     }
   };
 
@@ -388,7 +379,7 @@ const DashboardContent: React.FC = () => {
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
+                          <DropdownMenuTrigger>
                             <Button variant="ghost" size="icon">
                               <MoreVertical size={16} />
                             </Button>
@@ -401,14 +392,14 @@ const DashboardContent: React.FC = () => {
                             {team.status === 'active' ? (
                               <DropdownMenuItem 
                                 className="text-red-500 gap-2" 
-                                onClick={() => updateTeamStatus(team.id, 'suspended')}
+                                onClick={() => handleUpdateStatus(team.id, 'suspended')}
                               >
                                 <Lock size={14} /> Suspend Team
                               </DropdownMenuItem>
                             ) : (
                               <DropdownMenuItem 
                                 className="text-green-500 gap-2" 
-                                onClick={() => updateTeamStatus(team.id, 'active')}
+                                onClick={() => handleUpdateStatus(team.id, 'active')}
                               >
                                 <Unlock size={14} /> Reactivate Team
                               </DropdownMenuItem>
