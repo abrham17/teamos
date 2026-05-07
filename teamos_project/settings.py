@@ -30,6 +30,7 @@ DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 ALLOWED_HOSTS = [
     "api.team-os.tech",
     'team-os.tech',
+    "https://teamos-w37k.vercel.app",
     ".onrender.com",
     "localhost",
     "127.0.0.1",

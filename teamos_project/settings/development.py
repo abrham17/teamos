@@ -3,8 +3,22 @@ import os
 from .base import *
 
 DEBUG = True
-ALLOWED_HOSTS = ["*"]
-CSRF_TRUSTED_ORIGINS = ["http://localhost:3000"]
+ALLOWED_HOSTS = [
+    "api.team-os.tech",
+    'team-os.tech',
+    "https://teamos-w37k.vercel.app",
+    ".onrender.com",
+    "localhost",
+    "127.0.0.1",
+]
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000", 
+    "https://teamos-w37k.vercel.app",
+    "https://api.team-os.tech",
+    "https://team-os.tech",
+    "https://teamos-2.onrender.com",
+    
+]
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
