@@ -4,7 +4,7 @@ from django.http import JsonResponse
 from billing.models import TeamSubscription
 from teamos_project.api_response import fail
 
-class TeamStatusMiddleware:
+class LlmUsageMiddleware:
     """
     Middleware to block requests for teams with expired trials or suspended subscriptions.
     """

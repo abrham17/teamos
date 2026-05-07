@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 from accounts.models import TeamMember
 from teamos_project.api_response import fail, ok
 
-from .models import BillingWebhookEvent
+from .models import BillingWebhookEvent, TeamSubscription
 from .pricing import compute_quote, public_plan_catalog
 from .providers import BillingError, get_billing_provider
 from .tasks import reconcile_pending_billing_webhooks
@@ -157,3 +157,32 @@ class BillingReconcileView(APIView):
         trace_id = request.headers.get("X-Trace-Id") or request.headers.get("X-Request-Id")
         task = reconcile_pending_billing_webhooks.delay(trace_id=trace_id)
         return ok({"queued": True, "task_id": task.id}, status_code=202)
+
+class TeamSubscriptionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, team_id):
+        membership = TeamMember.objects.filter(team_id=team_id, user=request.user).first()
+        if not membership:
+            return fail("Not a member of this team.", status_code=403)
+
+        sub = TeamSubscription.objects.filter(team_id=team_id).first()
+        if not sub:
+            # Return a "free" virtual subscription if none exists in DB
+            return ok({
+                "plan_key": "free",
+                "status": "active",
+                "provider": "none",
+                "trial_expires_at": None,
+                "current_period_end": None,
+            })
+
+        return ok({
+            "plan_key": sub.plan_key,
+            "status": sub.status,
+            "provider": sub.provider,
+            "external_subscription_id": sub.external_subscription_id,
+            "current_period_end": sub.current_period_end,
+            "trial_expires_at": sub.trial_expires_at,
+            "grace_expires_at": sub.grace_expires_at,
+        })

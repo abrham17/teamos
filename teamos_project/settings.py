@@ -63,6 +63,11 @@ INSTALLED_APPS = [
     'chat',
     'presence',
     'export_app',
+    'billing',
+    'llm_orchestrator',
+    'product_analytics',
+    'admin_api',
+    'planning',
 ]
 
 MIDDLEWARE = [
@@ -74,6 +79,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'llm_orchestrator.middleware.LlmUsageMiddleware',
 ]
 
 ROOT_URLCONF = 'teamos_project.urls'
@@ -162,5 +168,26 @@ PLAN_TIERS = {
     "free": {"chunk_size": 300, "chunk_overlap": 30},
     "pro": {"chunk_size": 500, "chunk_overlap": 50},
 }
+
+# --- Billing & Paddle Config ---
+BILLING_PROVIDER = os.environ.get("BILLING_PROVIDER", "paddle")
+BILLING_WEBHOOK_SECRET = os.environ.get("BILLING_WEBHOOK_SECRET", "")
+
+# Paddle specific
+PADDLE_API_KEY = os.environ.get("PADDLE_API_KEY", "")
+PADDLE_API_BASE = os.environ.get("PADDLE_API_BASE", "https://sandbox-api.paddle.com")
+PADDLE_WEBHOOK_SECRET = os.environ.get("PADDLE_WEBHOOK_SECRET", "")
+PADDLE_PRICE_ID_TEAM = os.environ.get("PADDLE_PRICE_ID_TEAM", "")
+PADDLE_PRICE_ID_PRO = os.environ.get("PADDLE_PRICE_ID_PRO", "")
+PADDLE_PRICE_ID_ENTERPRISE = os.environ.get("PADDLE_PRICE_ID_ENTERPRISE", "")
+PADDLE_CHECKOUT_PREVIEW = os.environ.get("PADDLE_CHECKOUT_PREVIEW", "True") == "True"
+
+# --- LLM Orchestrator Config ---
+OPENAI_ONLY = True
+LLM_COST_BUDGET_RATIO = 0.30  # Target 30% margin on avg
+FREE_TRIAL_DAYS = 60
+FREE_TRIAL_TOKEN_BUDGET = 5000
+FREE_TRIAL_SEAT_LIMIT = 3
+PAYMENT_GRACE_PERIOD_DAYS = 7
 
 
