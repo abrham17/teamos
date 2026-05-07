@@ -1,3 +1,4 @@
+import uuid
 from django.utils import timezone
 from django.http import JsonResponse
 from billing.models import TeamSubscription
@@ -64,10 +65,18 @@ class TeamStatusMiddleware:
 
     def _resolve_team_id(self, request):
         # Implementation depends on how URL kwargs are parsed
-        # This is a bit tricky in middleware before view resolution
-        # But we can look at path
         parts = request.path.strip("/").split("/")
-        # Assume URLs like /api/wiki/<team_id>/...
+        
+        # 1. Skip admin routes
+        if len(parts) >= 2 and parts[1] == "admin":
+            return None
+
+        # 2. Assume URLs like /api/wiki/<team_id>/...
         if len(parts) >= 3 and parts[0] == "api":
-            return parts[2]
+            potential_uuid = parts[2]
+            try:
+                uuid.UUID(str(potential_uuid))
+                return potential_uuid
+            except ValueError:
+                return None
         return None
