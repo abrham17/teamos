@@ -24,11 +24,11 @@ Instead of hard token quotas, TeamOS uses a **probabilistic routing engine**. As
 ### Budget Allocation (Revenue-to-API)
 Revenue is automatically split between **Platform Margin** and **API Budget**:
 
-| Plan | Price (Per User) | Budget Ratio | Est. Capacity (Per User) | Features |
-| :--- | :--- | :--- | :--- | :--- |
-| **Free** | $0 | N/A | 5,000 tokens | Trial, 1-3 seats, Nano engine |
-| **Team** | $20 | 10% ($2) | **2M Tokens** | Proximity routing |
-| **Pro** | $30 | 16% ($5) | **5M Tokens** | Priority, Planning |
+| Plan | Price (Per User) | Budget Ratio | Features |
+| :--- | :--- | :--- | :--- |
+| **Free** | $0 | N/A | Trial, 1-3 seats, Nano engine |
+| **Team** | $20 | 10% ($2) | Proximity routing |
+| **Pro** | $30 | 16% ($5) | Priority, Planning |
 
 ---
 

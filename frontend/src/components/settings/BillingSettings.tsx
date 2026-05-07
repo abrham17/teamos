@@ -312,7 +312,7 @@ export function BillingSettings() {
                 layout
                 className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl p-8 space-y-10"
             >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                <div className="grid grid-cols-1 gap-12">
                     <div className="space-y-6">
                         <div className="flex justify-between items-end">
                             <div>
@@ -335,27 +335,6 @@ export function BillingSettings() {
                         </div>
                     </div>
 
-                    <div className="space-y-6">
-                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-muted)]">LLM Performance Tier</label>
-                        <div className="flex p-1.5 bg-[var(--bg-950)] rounded-xl border border-[var(--border-subtle)]">
-                            {catalog?.usage_tiers.map(t => (
-                                <button
-                                    key={t.id}
-                                    onClick={() => setPrefs(prev => ({ ...prev, usage_tier: t.id }))}
-                                    className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${
-                                        prefs.usage_tier === t.id 
-                                            ? "bg-[var(--accent)] text-[var(--bg-950)] shadow-lg" 
-                                            : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                                    }`}
-                                >
-                                    {t.label}
-                                </button>
-                            ))}
-                        </div>
-                        <p className="text-[10px] text-[var(--text-dim)] font-bold leading-relaxed uppercase tracking-tighter italic">
-                            &gt; {catalog?.usage_tiers.find(t => t.id === prefs.usage_tier)?.description}
-                        </p>
-                    </div>
                 </div>
             </motion.div>
           </div>
@@ -375,12 +354,6 @@ export function BillingSettings() {
                   <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">Seat Math</span>
                   <span className="text-sm font-black text-[var(--text-primary)]">{prefs.seat_count} Users × ${prefs.plan_key === 'team' ? '20' : '30'}</span>
                 </div>
-                {prefs.usage_tier === 'high' && (
-                    <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-purple-400">Power Uplift</span>
-                        <span className="text-xs font-black text-purple-400 uppercase">+25% BUDGET</span>
-                    </div>
-                )}
                 
                 <div className="pt-6 border-t border-white/5">
                   <div className="flex justify-between items-center">

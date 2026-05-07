@@ -4,14 +4,6 @@ from typing import Any
 TEAM_PER_USER_USD = 20.00
 PRO_PER_USER_USD = 30.00
 
-# Usage Uplifts (Percentage addition to baseline per-user price if they want more capacity)
-# Note: In a strict per-user model, we can use these to adjust the LLM Orchestrator budget bands
-USAGE_UPLIFT = {
-    "low": 0.0,
-    "standard": 0.0, # Baseline
-    "high": 0.25,    # 25% extra cost for 2x token budget
-}
-
 @dataclass(frozen=True)
 class PriceQuote:
     plan_key: str
@@ -34,8 +26,8 @@ def compute_quote(*, plan_key: str, seat_count: int, usage_tier: str = "standard
         # We fallback to team if they try to quote free or enterprise (which is removed)
         pk = "team"
     
-    usage = usage_tier.lower() if usage_tier in USAGE_UPLIFT else "standard"
-    uplift = USAGE_UPLIFT[usage]
+    usage = "standard" # Locked to standard internally
+    uplift = 0.0
     
     # Seats are now unrestricted (clamped only to 1 for safety)
     seats = max(1, seat_count)
@@ -43,21 +35,14 @@ def compute_quote(*, plan_key: str, seat_count: int, usage_tier: str = "standard
     base_per_user = TEAM_PER_USER_USD if pk == "team" else PRO_PER_USER_USD
     
     # Calculate total
-    # Total = (Seats * PricePerUser) * (1 + UsageUplift)
+    # Total = (Seats * PricePerUser)
     subtotal = seats * base_per_user
-    total = subtotal * (1.0 + uplift)
+    total = subtotal
     
     breakdown = [
         {"label": f"{pk.title()} Plan Base", "usd": base_per_user, "unit": "per_user"},
         {"label": f"Team Scale ({seats} seats)", "usd": round(subtotal, 2)},
     ]
-    
-    if uplift > 0:
-        breakdown.append({
-            "label": f"Performance Uplift ({usage})", 
-            "usd": round(subtotal * uplift, 2),
-            "detail": f"+{int(uplift*100)}% budget"
-        })
 
     cents = int(round(total * 100))
     
@@ -77,11 +62,7 @@ def public_plan_catalog() -> dict[str, Any]:
     return {
         "currency": "USD",
         "cadence": "per_user_per_month",
-        "usage_tiers": [
-            {"id": "low", "label": "Eco", "description": "Strict budget, routes to efficiency models sooner."},
-            {"id": "standard", "label": "Standard", "description": "Balanced GPT-4o access for daily work."},
-            {"id": "high", "label": "Power", "description": "Increased GPT-4o priority and higher token limits."},
-        ],
+        "usage_tiers": [],
         "plans": [
             {
                 "key": "free",

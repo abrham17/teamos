@@ -21,7 +21,7 @@ interface AIPlannerOverlayProps {
   teamId: string;
   onClose: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onPlanGenerated: (plan: { projectName: string; description: string; tasks: any[]; milestones: any[] }) => void;
+  onPlanGenerated: (plan: { projectName: string; description: string; tasks: any[]; milestones: any[] }) => Promise<void> | void;
   mode?: "create" | "manage";
   projectContext?: PlanProjectDetail | null;
 }
@@ -131,14 +131,19 @@ export function AIPlannerOverlay({
     }
   };
 
-  const handleManualSubmit = () => {
+  const handleManualSubmit = async () => {
     if (!manualName.trim()) return;
-    onPlanGenerated({
-      projectName: manualName,
-      description: manualDesc,
-      tasks: [],
-      milestones: [],
-    });
+    setLoading(true);
+    try {
+      await onPlanGenerated({
+        projectName: manualName,
+        description: manualDesc,
+        tasks: [],
+        milestones: [],
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -311,11 +316,11 @@ export function AIPlannerOverlay({
                   </button>
                   <button
                     onClick={handleManualSubmit}
-                    disabled={!manualName.trim()}
+                    disabled={!manualName.trim() || loading}
                     className="flex-[2] h-14 bg-[var(--accent)] text-white font-bold rounded-2xl flex items-center justify-center gap-3 hover:opacity-90 disabled:opacity-50 transition-all shadow-xl shadow-[var(--accent-glow)]"
                   >
-                    Create Blank Project
-                    <ArrowRight className="w-5 h-5" />
+                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Create Blank Project"}
+                    {!loading && <ArrowRight className="w-5 h-5" />}
                   </button>
                 </div>
               </motion.div>
