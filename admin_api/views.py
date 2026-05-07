@@ -11,6 +11,10 @@ class AdminDashboardStatsView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"AdminDashboardStatsView access by user: {request.user} (is_staff: {getattr(request.user, 'is_staff', False)})")
+        
         month_str = timezone.now().strftime("%Y-%m")
         
         # 1. Platform-wide LLM Spend
@@ -70,6 +74,10 @@ class AdminTeamUsageListView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"AdminTeamUsageListView access by user: {request.user} (is_staff: {getattr(request.user, 'is_staff', False)})")
+        
         month_str = timezone.now().strftime("%Y-%m")
         
         # Aggregate usage
