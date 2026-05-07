@@ -6,8 +6,6 @@ export interface BillingPlanRow {
   key: string;
   name: string;
   price_label: string;
-  min_price_usd: number;
-  max_price_usd: number | null;
   seat_default: number;
   seat_min: number;
   seat_max: number;

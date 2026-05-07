@@ -185,4 +185,5 @@ class TeamSubscriptionView(APIView):
             "current_period_end": sub.current_period_end,
             "trial_expires_at": sub.trial_expires_at,
             "grace_expires_at": sub.grace_expires_at,
+            "metadata": sub.metadata,
         })
