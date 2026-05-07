@@ -1,7 +1,7 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 interface ClerkSession {
-  getToken?: () => Promise<string | null>;
+  getToken?: (options?: { template?: string }) => Promise<string | null>;
 }
 
 interface ClerkGlobal {
@@ -14,7 +14,7 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   try {
     const clerk = (window as Window & { Clerk?: ClerkGlobal }).Clerk;
     if (!clerk?.session?.getToken) return {};
-    const token = await clerk.session.getToken();
+    const token = await clerk.session.getToken({ template: "backend" });
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch {
     return {};

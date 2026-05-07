@@ -85,7 +85,7 @@ const DashboardContent: React.FC = () => {
   const fetchData = async () => {
     setRefreshing(true);
     try {
-      const token = (await getToken()) || undefined;
+      const token = (await getToken({ template: 'backend' })) || undefined;
       const [statsData, teamsData] = await Promise.all([
         api.getOverview(token),
         api.getTeams(token)
@@ -103,7 +103,7 @@ const DashboardContent: React.FC = () => {
 
   const handleUpdateStatus = async (teamId: string, status: string) => {
     try {
-      const token = (await getToken()) || undefined;
+      const token = (await getToken({ template: 'backend' })) || undefined;
       const res = await api.patchTeam(teamId, { status }, token);
 
       if (res.success) {

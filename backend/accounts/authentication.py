@@ -100,7 +100,15 @@ class ClerkJWTAuthentication(BaseAuthentication):
         try:
             jwk_client = jwt.PyJWKClient(jwks_url)
             signing_key = jwk_client.get_signing_key_from_jwt(token)
-            options = {"verify_aud": bool(audience)}
+            
+            # If audience is provided in env, verify it. 
+            # If NOT provided, we skip audience verification to allow standard session tokens.
+            options = {
+                "verify_aud": bool(audience),
+                "verify_iss": True,
+                "verify_exp": True,
+            }
+            
             kwargs = {
                 "algorithms": ["RS256"],
                 "issuer": issuer,
@@ -108,6 +116,7 @@ class ClerkJWTAuthentication(BaseAuthentication):
             }
             if audience:
                 kwargs["audience"] = audience
+                
             return jwt.decode(token, signing_key.key, **kwargs)
         except jwt.PyJWTError as exc:
             raise exceptions.AuthenticationFailed(f"Token validation error: {exc}") from exc
