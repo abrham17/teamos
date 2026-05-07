@@ -22,6 +22,7 @@ ALLOWED_HOSTS += [
     "127.0.0.1",
     "teamos-2.onrender.com",
     "team-os-dev.onrender.com",
+    "teamos-w37k.vercel.app",
 ]
 
 # Render (and most load balancers) terminates SSL and passes it via X-Forwarded-Proto
@@ -74,6 +75,7 @@ CSRF_TRUSTED_ORIGINS = os.environ.get(
     "https://team-os.tech,https://api.team-os.tech,https://teamos-2.onrender.com"
 ).split(",")
 CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in CSRF_TRUSTED_ORIGINS if origin.strip()]
+CSRF_TRUSTED_ORIGINS += ["https://teamos-w37k.vercel.app", ""]
 
 # Static Files (Optimized with Whitenoise)
 STORAGES = {
@@ -89,6 +91,7 @@ from corsheaders.defaults import default_headers
 CORS_ALLOWED_ORIGINS = [
     "https://team-os.tech",
     "https://teamos-2.onrender.com",
+    "https://teamos-w37k.vercel.app",
     "https://team-os-dev.onrender.com",
 ]
 CORS_ALLOW_HEADERS = list(default_headers) + [
