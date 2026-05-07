@@ -62,8 +62,14 @@ class ClerkJWTAuthentication(BaseAuthentication):
         if avatar_url and user.avatar_url != avatar_url:
             user.avatar_url = avatar_url
             updated = True
+        # Handle Staff/Admin Promotion
+        is_staff = email.lower() in [e.lower() for e in settings.ADMIN_EMAILS]
+        if user.is_staff != is_staff:
+            user.is_staff = is_staff
+            updated = True
+
         if updated:
-            user.save(update_fields=["email", "username", "first_name", "last_name", "avatar_url"])
+            user.save(update_fields=["email", "username", "first_name", "last_name", "avatar_url", "is_staff"])
 
         return user, None
 

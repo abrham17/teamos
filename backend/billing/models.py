@@ -8,8 +8,10 @@ from accounts.models import Team
 class TeamSubscription(models.Model):
     STATUS_CHOICES = [
         ("trialing", "Trialing"),
+        ("trial_expired", "Trial Expired"),
         ("active", "Active"),
         ("past_due", "Past Due"),
+        ("suspended", "Suspended"),
         ("canceled", "Canceled"),
         ("incomplete", "Incomplete"),
     ]
@@ -22,6 +24,8 @@ class TeamSubscription(models.Model):
     plan_key = models.CharField(max_length=60, default="free")
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="trialing")
     current_period_end = models.DateTimeField(null=True, blank=True)
+    trial_expires_at = models.DateTimeField(null=True, blank=True)
+    grace_expires_at = models.DateTimeField(null=True, blank=True)
     metadata = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)

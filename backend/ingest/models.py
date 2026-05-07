@@ -125,3 +125,88 @@ class AsyncDeadLetter(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class RawSource(models.Model):
+    """
+    Permanent storage of original ingested material.
+    Never deleted — provides full traceability from wiki content back to the original source.
+    """
+    SOURCE_TYPE_CHOICES = [
+        ("pdf", "PDF"),
+        ("docx", "DOCX"),
+        ("url", "URL"),
+        ("youtube", "YouTube"),
+        ("markdown", "Markdown"),
+        ("image", "Image"),
+        ("repo", "Repository"),
+        ("code_zip", "Code Zip"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="raw_sources")
+    source_type = models.CharField(max_length=20, choices=SOURCE_TYPE_CHOICES)
+
+    # The original file (S3/media storage) — NEVER deleted
+    file = models.FileField(upload_to="raw_sources/%Y/%m/", null=True, blank=True)
+    original_filename = models.CharField(max_length=500, blank=True)
+
+    # For URL/YouTube sources
+    source_url = models.URLField(blank=True, max_length=2000)
+
+    # Full extracted text with position markers
+    extracted_text = models.TextField(blank=True)
+
+    # Structural metadata: page numbers, timestamps, section headers
+    # For PDF:     {"pages": [{"number": 1, "char_start": 0, "char_end": 2340}, ...]}
+    # For YouTube: {"segments": [{"timestamp": "00:02:15", "char_start": 0, "char_end": 500}, ...]}
+    # For DOCX:    {"sections": [{"heading": "Intro", "char_start": 0, "char_end": 1000}, ...]}
+    structure_map = models.JSONField(default=dict, blank=True)
+
+    ingest_job = models.OneToOneField(
+        IngestJob, on_delete=models.SET_NULL, null=True, blank=True, related_name="raw_source"
+    )
+
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"RawSource({self.source_type}, {self.original_filename or self.source_url})"
+
+
+class WikiSourceCitation(models.Model):
+    """
+    Maps a specific section of a wiki page back to a specific position in a raw source.
+    Enables "click to view original" functionality.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    wiki_page = models.ForeignKey(
+        WikiPage, on_delete=models.CASCADE, related_name="source_citations"
+    )
+    raw_source = models.ForeignKey(
+        RawSource, on_delete=models.CASCADE, related_name="citations"
+    )
+
+    # Position in the wiki page
+    wiki_section = models.CharField(max_length=300, blank=True, help_text="Section heading in wiki page")
+    wiki_char_start = models.IntegerField(default=0)
+    wiki_char_end = models.IntegerField(default=0)
+
+    # Position in the raw source
+    source_char_start = models.IntegerField(default=0)
+    source_char_end = models.IntegerField(default=0)
+    source_page_number = models.IntegerField(null=True, blank=True, help_text="For PDFs")
+    source_timestamp = models.CharField(max_length=20, blank=True, help_text="For YouTube, e.g. 02:15")
+    source_section = models.CharField(max_length=300, blank=True, help_text="Section heading in raw source")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["wiki_char_start"]
+
+    def __str__(self):
+        return f"Citation: {self.wiki_page.title} ← {self.raw_source.source_type}"
+

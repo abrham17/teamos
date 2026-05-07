@@ -63,4 +63,23 @@ def reindex_wiki_page(
                 extra={"page_id": str(page.id), "team_id": str(page.team_id)},
             )
 
+        # Queue agent reaction: auto-discover relations, inject wikilinks
+        from ingest.tasks import agent_react_to_page_change, agent_sync_wiki_to_plans
+
+        try:
+            agent_react_to_page_change.delay(str(page.id), "update", trace_id=trace_id)
+        except Exception:
+            logger.exception(
+                "Failed to queue agent_react_to_page_change",
+                extra={"page_id": str(page.id)},
+            )
+
+        try:
+            agent_sync_wiki_to_plans.delay(str(page.id), trace_id=trace_id)
+        except Exception:
+            logger.exception(
+                "Failed to queue agent_sync_wiki_to_plans",
+                extra={"page_id": str(page.id)},
+            )
+
     return chunk_count

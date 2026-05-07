@@ -11,6 +11,9 @@ from .views import (
     WikiPendingChangeSetListView,
     WikiChangeSetApproveView,
     WikiChangeSetRejectView,
+    RawSourceListView,
+    RawSourceDetailView,
+    ContradictionResolutionView,
 )
 
 urlpatterns = [
@@ -28,4 +31,10 @@ urlpatterns = [
     path("<uuid:team_id>/changesets/<uuid:changeset_id>/reject/", WikiChangeSetRejectView.as_view()),
     # Templates
     path("<uuid:team_id>/templates/", PageTemplateListView.as_view()),
+    # Raw Sources
+    path("<uuid:team_id>/raw-sources/", RawSourceListView.as_view()),
+    path("<uuid:team_id>/raw-sources/<uuid:source_id>/", RawSourceDetailView.as_view()),
+    # Contradiction Resolution
+    path("<uuid:team_id>/contradictions/<uuid:changeset_id>/", ContradictionResolutionView.as_view()),
 ]
+

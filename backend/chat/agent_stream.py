@@ -17,7 +17,8 @@ from chat.tools import (
     openai_tool_schemas,
 )
 from ingest.vectors import vector_store
-from teamos_project.llm_config import chat_completion_model, get_llm_backend
+from teamos_project.llm_config import get_llm_backend
+from llm_orchestrator.orchestrator import llm_call
 
 logger = logging.getLogger(__name__)
 
@@ -26,23 +27,60 @@ MAX_TOOLS_PER_REQUEST = 24
 CHUNK_CHARS = 40
 
 AGENT_SYSTEM_PREFIX = (
-    "You are the TeamOS Wiki Agent. You can call tools to search, create, and update wiki pages, "
-    "add graph edges between pages, and queue markdown through the full ingest pipeline. "
-    "Use wiki_search_pages when you need to find slugs or page IDs. Prefer small, correct edits. "
-    "After finishing tool work, respond with a short Markdown summary for the user (what changed, page titles). "
+    "You are the TeamOS Knowledge Agent — the central nervous system of the team's knowledge base. "
+    "You have deep access to the wiki, knowledge graph, planning system, and persistent memory.\n\n"
+    "## Your Capabilities:\n"
+    "- **Wiki**: Search, read full pages, create, and update wiki pages with [[wikilinks]].\n"
+    "- **Graph**: Traverse the knowledge graph, add typed relations "
+    "(depends_on, contradicts, extends, implements, supersedes, parent_child, prerequisite, references), "
+    "and find contradictions.\n"
+    "- **Planning**: Create/update projects, tasks, milestones. Detect calendar conflicts and overdue items.\n"
+    "- **Knowledge Gaps**: Identify missing pages, unlinked concepts, and shallow hub pages.\n"
+    "- **Memory**: Read and write persistent memory to remember priorities, decisions, and context across sessions.\n"
+    "- **Ingest**: Queue markdown through the full ingestion pipeline (governance, chunks, vectors, graph).\n\n"
+    "## Your Behavior:\n"
+    "1. Before making changes, use wiki_search_pages and wiki_read_full_page to understand existing content.\n"
+    "2. When creating/updating pages, always add [[wikilinks]] to related pages.\n"
+    "3. When you discover relationships, use graph_add_typed_relation to record them with a reason.\n"
+    "4. Before planning, traverse the graph to find related knowledge and check for contradictions.\n"
+    "5. Store important discoveries in agent_memory_write for future conversations.\n"
+    "6. After finishing tool work, respond with a short Markdown summary for the user.\n"
     "Do not invent slugs: obtain them from wiki_search_pages or from the retrieval context.\n\n"
 )
 
 PLAN_AGENT_SYSTEM_PREFIX = (
-    "You are the TeamOS Plan Agent. You manage projects, tasks, and milestones for the team. "
-    "Use tools to create or update plan entities precisely. Keep edits minimal and correct. "
-    "When relevant, include timeline and ownership updates. "
-    "After tool execution, respond with a short Markdown summary of what changed.\n\n"
+    "You are the TeamOS Plan Agent — you manage projects, tasks, and milestones for the team. "
+    "You have deep access to team knowledge and the planning system.\n\n"
+    "## Your Capabilities:\n"
+    "- **Planning**: Create/update/delete projects, tasks, milestones with full lifecycle management.\n"
+    "- **Wiki-Grounded**: Use plan_generate_draft to create plans informed by wiki knowledge and graph context.\n"
+    "- **Calendar**: Detect date conflicts and overdue items with calendar_detect_conflicts and calendar_check_overdue.\n"
+    "- **Graph**: Traverse the knowledge graph to find related wiki pages for your plans.\n"
+    "- **Memory**: Store planning decisions and priorities in persistent memory.\n\n"
+    "## Your Behavior:\n"
+    "1. Before creating plans, search the wiki and traverse the graph for relevant knowledge.\n"
+    "2. Reference wiki pages in task descriptions using [[Page Title]] syntax.\n"
+    "3. Check for calendar conflicts after creating/updating tasks with dates.\n"
+    "4. Flag overdue items proactively.\n"
+    "5. Keep edits minimal and correct. Include timeline and ownership updates.\n"
+    "6. After tool execution, respond with a short Markdown summary of what changed.\n\n"
 )
 
 
 def _build_messages(session: ChatSession, context_str: str, system_prefix: str) -> list[dict[str, Any]]:
-    system = system_prefix + (
+    # Inject persistent memory context
+    memory_block = ""
+    try:
+        from chat.agent_memory_service import get_agent_context_block
+        team_id = str(session.team_id)
+        memory_block = get_agent_context_block(team_id)
+    except Exception:
+        pass
+
+    system = system_prefix
+    if memory_block:
+        system += memory_block + "\n\n"
+    system += (
         "Retrieved team knowledge excerpts (may be partial):\n" + context_str
         if context_str.strip()
         else "No retrieval snippets were returned for this query."
@@ -111,15 +149,16 @@ def _iter_tool_agent_sse_events(
         return
 
     messages = _build_messages(session, context_str, system_prefix)
-    model_name = chat_completion_model()
     tool_trace: list[dict[str, Any]] = []
     tools_executed = 0
 
     for _round in range(MAX_TOOL_ROUNDS):
         try:
-            resp = llm.chat.completions.create(
-                model=model_name,
+            resp, model_used, routed_by = llm_call(
+                team=session.team,
+                operation="chat_agent",
                 messages=messages,
+                user=session.created_by,
                 tools=tools,
                 tool_choice="auto",
             )

@@ -10,6 +10,17 @@ import { OpenMarkdown } from "@/components/wiki-open/OpenMarkdown";
 import FrontmatterPanel from "@/components/wiki/FrontmatterPanel";
 import { useToast } from "@/components/ui/Toast";
 import { WikiPublishReviewModal, type WikiChangeSetPayload } from "@/components/wiki-v2/WikiPublishReviewModal";
+import RawSourceViewer from "@/components/wiki/RawSourceViewer";
+
+interface Citation {
+  id: string;
+  raw_source_id: string;
+  source_type: string;
+  original_filename: string;
+  wiki_section: string;
+  source_page_number: number | null;
+  source_timestamp: string;
+}
 
 interface WikiPageDetail {
   id: string;
@@ -17,6 +28,7 @@ interface WikiPageDetail {
   slug: string;
   content: string;
   frontmatter?: Record<string, string>;
+  citations?: Citation[];
 }
 
 export function MarkdownWorkspace() {
@@ -36,6 +48,8 @@ export function MarkdownWorkspace() {
   const [autoApproveWiki, setAutoApproveWiki] = useState(true);
   const [publishBusy, setPublishBusy] = useState(false);
   const [reviewChangeset, setReviewChangeset] = useState<WikiChangeSetPayload | null>(null);
+  const [showCitations, setShowCitations] = useState(false);
+  const [viewingRawSourceId, setViewingRawSourceId] = useState<string | null>(null);
 
   const slug = searchParams.get("page");
   const action = searchParams.get("action");
@@ -276,6 +290,18 @@ export function MarkdownWorkspace() {
         </button>
         
         <div className="ml-auto flex flex-wrap items-center gap-3">
+          {!isNew && page && page.citations && page.citations.length > 0 && (
+            <button
+              onClick={() => setShowCitations(!showCitations)}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                showCitations 
+                  ? "bg-[var(--accent-subtle)] text-[var(--accent)] border-[var(--accent)]" 
+                  : "bg-[var(--surface-1)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--accent)]"
+              }`}
+            >
+              Citations ({page.citations.length})
+            </button>
+          )}
           {!isNew && page ? (
             <>
               <label className="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-muted)]">
@@ -361,7 +387,65 @@ export function MarkdownWorkspace() {
             teamId={currentTeamId}
           />
         </div>
+
+        {/* Citations Sidebar */}
+        {showCitations && page?.citations && page.citations.length > 0 && (
+          <div className="w-80 border-l border-[var(--border-subtle)] bg-[var(--surface-1)] flex flex-col shrink-0">
+            <div className="p-4 border-b border-[var(--border-subtle)] flex justify-between items-center">
+              <h3 className="font-semibold text-[var(--text-primary)]">Source Citations</h3>
+              <button 
+                onClick={() => setShowCitations(false)}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {page.citations.map((c) => (
+                <div key={c.id} className="p-3 bg-[var(--surface-2)] rounded-lg border border-[var(--border-subtle)] text-sm">
+                  <div className="font-medium text-[var(--accent)] mb-1 flex items-center gap-2">
+                    {c.source_type === "pdf" ? "📄" : c.source_type === "youtube" ? "🎬" : "📝"}
+                    <span className="truncate" title={c.original_filename}>{c.original_filename}</span>
+                  </div>
+                  {c.wiki_section && (
+                    <div className="text-[var(--text-secondary)] text-xs mb-1">
+                      Section: <span className="text-[var(--text-primary)]">{c.wiki_section}</span>
+                    </div>
+                  )}
+                  {c.source_page_number && (
+                    <div className="text-[var(--text-muted)] text-xs">
+                      Page: {c.source_page_number}
+                    </div>
+                  )}
+                  {c.source_timestamp && (
+                    <div className="text-[var(--text-muted)] text-xs">
+                      Time: {c.source_timestamp}
+                    </div>
+                  )}
+                  <button 
+                    onClick={() => setViewingRawSourceId(c.raw_source_id)}
+                    className="mt-2 inline-block text-xs text-[var(--accent)] hover:underline"
+                  >
+                    View Raw Source ↗
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
+
+      {viewingRawSourceId && currentTeamId && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-8">
+          <div className="w-full max-w-4xl max-h-[90vh] bg-[var(--bg-900)] rounded-xl overflow-hidden shadow-2xl border border-[var(--border-subtle)] relative">
+            <RawSourceViewer 
+              teamId={currentTeamId} 
+              sourceId={viewingRawSourceId} 
+              onClose={() => setViewingRawSourceId(null)} 
+            />
+          </div>
+        </div>
+      )}
 
       {wikiSidebarOpen && (
         <OpenMarkdown 
