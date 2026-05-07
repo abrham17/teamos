@@ -137,6 +137,10 @@ class ClerkProvisionView(APIView):
 
 class TeamListCreateView(APIView):
     def get(self, request):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"TeamListCreateView.get access by user: {request.user}")
+        
         memberships = TeamMember.objects.filter(user=request.user, team__is_deleted=False).select_related("team")
         teams = [m.team for m in memberships]
         return ok(TeamSerializer(teams, many=True).data)

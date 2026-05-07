@@ -27,15 +27,23 @@ class ClerkJWTAuthentication(BaseAuthentication):
         if not token:
             return None
 
-        payload = self._verify_token(token)
+        try:
+            payload = self._verify_token(token)
+        except exceptions.AuthenticationFailed as exc:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Clerk authentication failed: {exc}")
+            raise
+
         clerk_user_id = payload.get("sub")
         if not clerk_user_id:
-            raise exceptions.AuthenticationFailed("Invalid Clerk token payload.")
+            raise exceptions.AuthenticationFailed("Invalid Clerk token payload: missing 'sub'.")
 
-        email = (payload.get("email") or "").lower()
-        first_name = payload.get("given_name", "")
-        last_name = payload.get("family_name", "")
-        avatar_url = payload.get("picture", "")
+        # Clerk standard claims might vary; try to find email
+        email = (payload.get("email") or payload.get("email_address") or "").lower()
+        first_name = payload.get("given_name", payload.get("first_name", ""))
+        last_name = payload.get("family_name", payload.get("last_name", ""))
+        avatar_url = payload.get("picture", payload.get("image_url", ""))
 
         user, _created = User.objects.get_or_create(
             clerk_user_id=clerk_user_id,
@@ -62,8 +70,11 @@ class ClerkJWTAuthentication(BaseAuthentication):
         if avatar_url and user.avatar_url != avatar_url:
             user.avatar_url = avatar_url
             updated = True
+        
         # Handle Staff/Admin Promotion
-        is_staff = email.lower() in [e.lower() for e in settings.ADMIN_EMAILS]
+        admin_emails = [e.lower() for e in getattr(settings, "ADMIN_EMAILS", []) if e.strip()]
+        is_staff = email.lower() in admin_emails if email and admin_emails else False
+        
         if user.is_staff != is_staff:
             user.is_staff = is_staff
             updated = True
@@ -82,7 +93,9 @@ class ClerkJWTAuthentication(BaseAuthentication):
             issuer, jwks_url = self._derive_issuer_and_jwks_from_token(token)
 
         if not jwks_url or not issuer:
-            raise exceptions.AuthenticationFailed("Clerk is not configured on the backend.")
+            raise exceptions.AuthenticationFailed(
+                "Clerk is not configured. Set CLERK_JWKS_URL and CLERK_ISSUER."
+            )
 
         try:
             jwk_client = jwt.PyJWKClient(jwks_url)
@@ -97,7 +110,7 @@ class ClerkJWTAuthentication(BaseAuthentication):
                 kwargs["audience"] = audience
             return jwt.decode(token, signing_key.key, **kwargs)
         except jwt.PyJWTError as exc:
-            raise exceptions.AuthenticationFailed(f"Invalid Clerk token: {exc}") from exc
+            raise exceptions.AuthenticationFailed(f"Token validation error: {exc}") from exc
 
     def _derive_issuer_and_jwks_from_token(self, token: str) -> Tuple[str, str]:
         """
