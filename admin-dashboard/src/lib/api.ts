@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE ?? "/api/admin";
+const API_BASE = "https://api.team-os.tech/api/admin"
 
 async function request<T>(path: string, options?: RequestInit & { token?: string }): Promise<T> {
   const { token, ...rest } = options ?? {};
