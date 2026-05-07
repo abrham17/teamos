@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 from typing import Any
 
-# Pricing Constants - May 2026 Per-User Model
-TEAM_PER_USER_USD = 15.00
-PRO_PER_USER_USD = 20.00
+TEAM_PER_USER_USD = 20.00
+PRO_PER_USER_USD = 30.00
 
 # Usage Uplifts (Percentage addition to baseline per-user price if they want more capacity)
 # Note: In a strict per-user model, we can use these to adjust the LLM Orchestrator budget bands
@@ -27,8 +26,8 @@ class PriceQuote:
 def compute_quote(*, plan_key: str, seat_count: int, usage_tier: str = "standard") -> PriceQuote:
     """
     Strict Per-User Pricing:
-    Team: $15/user
-    Pro: $20/user
+    Team: $20/user
+    Pro: $30/user
     """
     pk = (plan_key or "").strip().lower()
     if pk not in ("team", "pro"):
@@ -107,7 +106,7 @@ def public_plan_catalog() -> dict[str, Any]:
                 "features": [
                     "Unrestricted members",
                     "GPT-4o priority routing",
-                    "GPT-4o-mini baseline",
+                    "2M Tokens per user pool",
                     "Continuous cost curve",
                     "Email support",
                 ],
@@ -120,7 +119,7 @@ def public_plan_catalog() -> dict[str, Any]:
                 "seat_max": 5000,
                 "features": [
                     "Unrestricted members",
-                    "Extended GPT-4o budget",
+                    "5M Tokens per user pool",
                     "High-performance routing",
                     "No 'Nano' degradation",
                     "Priority support",

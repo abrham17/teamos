@@ -46,14 +46,14 @@ def calculate_team_monthly_budget(team_subscription) -> float:
         revenue *= 1.25
 
     # 1. Base Budget Ratio (The percentage of revenue we spend on API)
-    # Team gets 30%, Pro gets 50% (allowing significantly more GPT-4o usage)
-    base_ratio = 0.50 if plan == "pro" else 0.30
+    # Team gets ~10% ($2 budget for 2M tokens), Pro gets ~16% ($5 budget for 5M tokens)
+    base_ratio = 0.16 if plan == "pro" else 0.10
     
     # 2. Onboarding/New Team Grace
-    # We allow higher burn rates in the first 30 days to "wow" new users
+    # We allow slightly higher burn rates in the first 30 days
     days_since_creation = (timezone.now() - team_subscription.created_at).days
     if days_since_creation <= 30:
-        base_ratio += 0.15 # Team 45%, Pro 65%
+        base_ratio += 0.05 # Team 15%, Pro 21%
 
     return revenue * base_ratio
 
