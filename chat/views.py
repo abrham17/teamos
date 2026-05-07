@@ -18,7 +18,7 @@ from .models import ChatSession, ChatMessage, ChatTokenUsage
 from .serializers import ChatSessionSerializer
 from teamos_project.api_response import ok, fail
 from llm_orchestrator.orchestrator import llm_call
-from teamos_project.llm_config import get_llm_backend
+from teamos_project.llm_config import get_llm_backend, chat_completion_model
 
 logger = logging.getLogger(__name__)
 
