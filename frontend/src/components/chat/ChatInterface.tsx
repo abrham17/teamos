@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { Send, Bot, User, Mic } from "lucide-react";
+import { Send, Bot, User } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
-import { VoiceChatOverlay, type VoiceOverlayPhase } from "@/components/chat/VoiceChatOverlay";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { ChatCitationList } from "@/components/chat/ChatCitationList";
 import { ChatModeSelect, type ChatMode } from "@/components/chat/ChatModeSelect";
@@ -44,10 +43,6 @@ type ChatCapabilities = {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
-function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
-  if (typeof window === "undefined") return null;
-  return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null;
-}
 
 function agentStepsForMessage(m: ChatMessage): AgentToolStep[] {
   if (m.toolSteps?.length) return m.toolSteps;
@@ -77,24 +72,11 @@ export function ChatInterface() {
   const [sessionReady, setSessionReady] = useState(false);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
-  const [voiceOpen, setVoiceOpen] = useState(false);
-  const [voicePhase, setVoicePhase] = useState<VoiceOverlayPhase>("idle");
-  const [voiceCaption, setVoiceCaption] = useState("");
-  const [voiceInterim, setVoiceInterim] = useState("");
-  const [voiceListening, setVoiceListening] = useState(false);
 
   const [chatMode, setChatMode] = useState<ChatMode>("ask");
   const [chatCaps, setChatCaps] = useState<ChatCapabilities | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const voiceOpenRef = useRef(false);
-  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
-  const ttsObjectUrlRef = useRef<string | null>(null);
-
-  const speechSupported = typeof window !== "undefined" && Boolean(getSpeechRecognitionCtor());
-
-  voiceOpenRef.current = voiceOpen;
 
   /* Bootstrap: load or create a session; typing stays enabled when only session id is missing */
   useEffect(() => {
@@ -229,59 +211,9 @@ export function ChatInterface() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isStreaming]);
 
-  const stopTts = useCallback(() => {
-    if (ttsAudioRef.current) {
-      ttsAudioRef.current.pause();
-      ttsAudioRef.current.src = "";
-      ttsAudioRef.current = null;
-    }
-    if (ttsObjectUrlRef.current) {
-      URL.revokeObjectURL(ttsObjectUrlRef.current);
-      ttsObjectUrlRef.current = null;
-    }
-  }, []);
-
-  const speakWithTts = useCallback(
-    async (text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed || !currentTeamId) return;
-      stopTts();
-      try {
-        const auth = await getApiAuthHeaders();
-        const res = await fetch(`${API_BASE}/chat/${currentTeamId}/tts/`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...auth,
-          },
-          credentials: "include",
-          body: JSON.stringify({ text: trimmed, voice: "alloy" }),
-        });
-        if (!res.ok) {
-          toastError("Voice playback unavailable.");
-          return;
-        }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        ttsObjectUrlRef.current = url;
-        const audio = new Audio(url);
-        ttsAudioRef.current = audio;
-        audio.addEventListener("ended", stopTts);
-        audio.addEventListener("error", () => {
-          stopTts();
-          toastError("Could not play voice reply.");
-        });
-        await audio.play();
-      } catch {
-        stopTts();
-        toastError("Voice playback failed.");
-      }
-    },
-    [currentTeamId, stopTts, toastError],
-  );
 
   const sendUserMessage = useCallback(
-    async (userMsg: string, options?: { speakReply?: boolean; mode?: ChatMode }) => {
+    async (userMsg: string, options?: { mode?: ChatMode }) => {
       const trimmed = userMsg.trim();
       if (!trimmed || !currentTeamId || !activeSessionId || isStreaming) return;
 
@@ -355,18 +287,10 @@ export function ChatInterface() {
                 const data = JSON.parse(dataStr) as Record<string, unknown>;
                 if (currentEvent === "status") {
                   setStatus(String(data.status ?? ""));
-                  if (voiceOpenRef.current) {
-                    setVoiceCaption(String(data.status ?? ""));
-                    setVoicePhase("thinking");
-                  }
                 } else if (currentEvent === "chunk") {
                   setStatus("");
                   const token = String((data as { token?: string }).token ?? "");
                   working = { ...working, content: working.content + token };
-                  if (voiceOpenRef.current) {
-                    setVoicePhase("speaking");
-                    setVoiceCaption(working.content.slice(-400) || "…");
-                  }
                   setMessages((prev) => {
                     const next = [...prev];
                     next[next.length - 1] = { ...working };
@@ -432,17 +356,6 @@ export function ChatInterface() {
                   }
                   setIsStreaming(false);
                   setStatus("");
-                  if (voiceOpenRef.current) {
-                    setVoicePhase("idle");
-                    setVoiceCaption(
-                      working.content
-                        ? "Here’s what I found. You can read the full reply in the chat."
-                        : "Done.",
-                    );
-                  }
-                  if (options?.speakReply && working.content) {
-                    void speakWithTts(working.content);
-                  }
                 } else if (currentEvent === "error") {
                   throw new Error(String((data as { detail?: string }).detail ?? "Stream error"));
                 }
@@ -459,16 +372,12 @@ export function ChatInterface() {
         setStatus("Error fetching response.");
         toastError("Failed to connect to AI server.");
         setMessages((prev) => prev.filter((m) => m.id !== assistantId));
-        if (voiceOpenRef.current) {
-          setVoicePhase("idle");
-          setVoiceCaption("Something went wrong. Try again or use text chat.");
-        }
       } finally {
         setIsStreaming(false);
         setStatus("");
       }
     },
-    [activeSessionId, chatMode, currentTeamId, isStreaming, speakWithTts, toastError],
+    [activeSessionId, chatMode, currentTeamId, isStreaming, toastError],
   );
 
   const handleNewChat = async () => {
@@ -492,94 +401,9 @@ export function ChatInterface() {
       return;
     }
     setInput("");
-    await sendUserMessage(text, { speakReply: false });
+    await sendUserMessage(text);
   };
 
-  const stopRecognition = useCallback(() => {
-    try {
-      recognitionRef.current?.stop();
-    } catch {
-      /* ignore */
-    }
-    recognitionRef.current = null;
-    setVoiceListening(false);
-  }, []);
-
-  const startRecognition = useCallback(() => {
-    const Ctor = getSpeechRecognitionCtor();
-    if (!Ctor) {
-      toastError("Voice input is not supported in this browser.");
-      return;
-    }
-    stopRecognition();
-    const rec = new Ctor();
-    rec.lang = "en-US";
-    rec.interimResults = true;
-    rec.continuous = false;
-    setVoiceInterim("");
-    setVoiceCaption("Listening…");
-    setVoicePhase("listening");
-
-    rec.onresult = (event: SpeechRecognitionEvent) => {
-      let interim = "";
-      let finalText = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const r = event.results[i];
-        const piece = r[0]?.transcript ?? "";
-        if (r.isFinal) finalText += piece;
-        else interim += piece;
-      }
-      setVoiceInterim(interim);
-      if (finalText.trim()) {
-        const q = finalText.trim();
-        setVoiceInterim("");
-        stopRecognition();
-        setVoicePhase("thinking");
-        setVoiceCaption("Searching your wiki…");
-        void sendUserMessage(q, { speakReply: true, mode: chatMode });
-      }
-    };
-
-    rec.onerror = () => {
-      setVoiceListening(false);
-      setVoicePhase("idle");
-      setVoiceCaption("Could not hear that. Try again.");
-    };
-
-    rec.onend = () => {
-      setVoiceListening(false);
-      setVoicePhase((p) => (p === "listening" ? "idle" : p));
-    };
-
-    recognitionRef.current = rec;
-    try {
-      rec.start();
-      setVoiceListening(true);
-    } catch {
-      toastError("Could not start the microphone.");
-      setVoiceListening(false);
-    }
-  }, [chatMode, sendUserMessage, stopRecognition, toastError]);
-
-  const toggleVoiceOrb = useCallback(() => {
-    if (voiceListening) stopRecognition();
-    else startRecognition();
-  }, [voiceListening, stopRecognition, startRecognition]);
-
-  const openVoiceOverlayAndListen = useCallback(() => {
-    setVoiceOpen(true);
-    setVoiceInterim("");
-    queueMicrotask(() => {
-      startRecognition();
-    });
-  }, [startRecognition]);
-
-  useEffect(() => {
-    return () => {
-      stopRecognition();
-      stopTts();
-    };
-  }, [stopRecognition, stopTts]);
 
   if (!currentTeamId) {
     return (
@@ -596,24 +420,6 @@ export function ChatInterface() {
 
   return (
     <div className="flex h-full w-full bg-[var(--bg-900)]">
-      <VoiceChatOverlay
-        open={voiceOpen}
-        onClose={() => {
-          setVoiceOpen(false);
-          stopRecognition();
-          stopTts();
-          setVoiceCaption("");
-          setVoiceInterim("");
-          setVoicePhase("idle");
-        }}
-        phase={voicePhase}
-        caption={voiceCaption}
-        interimTranscript={voiceInterim}
-        listening={voiceListening}
-        speechSupported={speechSupported}
-        micDisabled={isStreaming}
-        onOrbClick={toggleVoiceOrb}
-      />
 
       {/* Sidebar */}
       <div className="flex w-[260px] shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--surface-1)]">
@@ -649,28 +455,6 @@ export function ChatInterface() {
 
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex shrink-0 items-center justify-end gap-2 border-b border-[var(--border-subtle)] px-6 py-3">
-          {bootstrapError ? (
-            <div className="mr-auto flex max-w-md flex-col gap-1 text-left text-xs text-[var(--text-muted)]">
-              <span className="text-[var(--text-secondary)]">{bootstrapError}</span>
-              <button
-                type="button"
-                onClick={() => retryBootstrap()}
-                className="self-start rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-1)] px-3 py-1.5 text-[var(--text-primary)] hover:bg-[var(--bg-800)]"
-              >
-                Retry
-              </button>
-            </div>
-          ) : null}
-          <button
-            type="button"
-            onClick={openVoiceOverlayAndListen}
-            className="inline-flex items-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--border-subtle)] hover:bg-[var(--bg-800)]"
-          >
-            <Mic className="h-4 w-4" />
-            Voice chat
-          </button>
-        </div>
 
         <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-6">
           {messages.length === 0 && (
@@ -682,9 +466,7 @@ export function ChatInterface() {
               <p className="max-w-sm text-[var(--text-muted)]">
                 Ask questions about your team&apos;s wiki. Answers can include{" "}
                 <strong className="text-[var(--text-secondary)]">tables and charts</strong> (Markdown + Mermaid) when
-                the data supports it. Use{" "}
-                <strong className="text-[var(--text-secondary)]">Voice chat</strong> for a larger voice panel with
-                animated feedback.
+                the data supports it.
               </p>
             </div>
           )}
@@ -766,16 +548,6 @@ export function ChatInterface() {
 
         <div className="shrink-0 border-t border-[var(--border-subtle)] bg-[var(--bg-900)] p-6">
           <div className="relative mx-auto flex max-w-4xl items-stretch gap-2">
-            <button
-              type="button"
-              onClick={openVoiceOverlayAndListen}
-              disabled={sendDisabled}
-              title="Voice chat"
-              aria-label="Open voice chat"
-              className="flex shrink-0 items-center justify-center rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] px-4 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-800)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Mic className="h-5 w-5" />
-            </button>
             <ChatModeSelect
               value={chatMode}
               onChange={setChatMode}

@@ -9,8 +9,8 @@ TeamOS has moved to a strict **Per-User** pricing model. There are no base fees 
 | Tier | Price | Seat Limit | Key Features | LLM Engine |
 | :--- | :--- | :--- | :--- | :--- |
 | **Free Trial** | $0 | 1–3 | 60-day window | GPT-4.1-Nano |
-| **Team** | $15 /user | Unrestricted | Standard RAG, Core Graph | GPT-4o-Mini floor |
-| **Pro** | $20 /user | Unrestricted | Priority AI, Priority Support | GPT-4o floor (High Priority) |
+| **Team** | $20 /user | Unrestricted | Standard RAG, Core Graph | GPT-4o-Mini floor |
+| **Pro** | $30 /user | Unrestricted | Priority AI, Priority Support | GPT-4o floor (High Priority) |
 
 ---
 
@@ -27,16 +27,17 @@ Instead of hard token quotas, TeamOS uses a **probabilistic routing engine**. As
 ### Budget Allocation (Revenue-to-API)
 Revenue is automatically split between **Platform Margin** and **API Budget**:
 
-| Plan | Revenue/User | API Budget % | Tokens/User (Est.) |
-| :--- | :--- | :--- | :--- |
-| **Team** | $15.00 | 30% ($4.50) | ~5M tokens (mixed) |
-| **Pro** | $20.00 | 50% ($10.00) | ~20M tokens (priority) |
+| Plan | Price (Per User) | Budget Ratio | Est. Capacity (Per User) | Features |
+| :--- | :--- | :--- | :--- | :--- |
+| **Free** | $0 | N/A | 5,000 tokens | Trial, 1-3 seats, Nano engine |
+| **Team** | $20 | 10% ($2) | **2M Tokens** | Proximity routing, 70B models |
+| **Pro** | $30 | 16% ($5) | **5M Tokens** | GPT-4o Priority, Planning |
 
 ---
 
 ## 3. Pro Tier Privileges
 
-The Pro Tier ($20/user) isn't just about more tokens; it is about **Priority Architecture**:
+The Pro Tier ($30/user) isn't just about more tokens; it is about **Priority Architecture**:
 
 1.  **Zero-Nano Floor**: Pro users are never routed to "Nano" models, even when over budget. Their minimum experience is always GPT-4o-mini.
 2.  **Extended 4o Window**: Pro users stay on GPT-4o for 95% of their budget cycle, whereas Team users begin cost-shifting at 60%.
@@ -49,11 +50,11 @@ The Pro Tier ($20/user) isn't just about more tokens; it is about **Priority Arc
 The system is designed for a **60–80% Gross Margin**.
 
 ### Economics per 1,000 Users:
-*   **Gross Revenue**: $17,500 (Mixed Team/Pro avg)
-*   **Platform Margin (70%)**: $12,250
-*   **API Cost Pool (30%)**: $5,250
+*   **Gross Revenue**: $25,000 (Mixed Team/Pro avg)
+*   **Platform Margin (70%)**: $17,500
+*   **API Cost Pool (30%)**: $7,500
 *   **Server/Infra Cost**: ~$500
-*   **Net Profit**: ~$11,750 / month
+*   **Net Profit**: ~$17,000 / month
 
 ---
 

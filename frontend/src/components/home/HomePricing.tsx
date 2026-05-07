@@ -99,7 +99,7 @@ function PaidTierCard({
         </div>
         <div className="flex items-center gap-2 mt-1">
             <p className="text-[10px] font-black text-[var(--accent)] uppercase tracking-widest">
-                ${tier.key === 'team' ? '15' : '20'} per user
+                ${tier.key === 'team' ? '20' : '30'} per user
             </p>
             <span className="text-slate-800 text-[10px]">|</span>
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">

@@ -215,7 +215,7 @@ export function BillingSettings() {
                 <h4 className="text-2xl font-bold text-[var(--text-primary)]">{currentPlan?.name} Plan</h4>
                 <p className="text-sm text-[var(--text-muted)] mt-1">
                   {subscription?.current_period_end 
-                    ? `Billed ${subscription.metadata?.seat_count || 1} seats at ${subscription.plan_key === 'team' ? '$15' : '$20'}/user.`
+                    ? `Billed ${subscription.metadata?.seat_count || 1} seats at ${subscription.plan_key === 'team' ? '$20' : '$30'}/user.`
                     : subscription?.trial_expires_at 
                       ? `Your 60-day trial window closes on ${new Date(subscription.trial_expires_at).toLocaleDateString()}.`
                       : "Standard community plan for small teams."}
@@ -238,7 +238,7 @@ export function BillingSettings() {
               {subscription?.plan_key === "free" ? (
                 <div className="p-5 rounded-xl bg-white/[0.03] border border-white/5 backdrop-blur-sm">
                   <div className="text-xs font-black uppercase tracking-[0.2em] text-[var(--accent)] mb-2">Initialize Per-User Plan</div>
-                  <div className="text-sm text-[var(--text-secondary)] mb-4 leading-relaxed">Upgrade to Team ($15) or Pro ($20) for unlimited seats and priority AI.</div>
+                  <div className="text-sm text-[var(--text-secondary)] mb-4 leading-relaxed">Upgrade to Team ($20) or Pro ($30) for unlimited seats and priority AI.</div>
                   <button 
                     onClick={() => {
                         setPrefs(prev => ({ ...prev, plan_key: "team" }));
@@ -369,7 +369,7 @@ export function BillingSettings() {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">Seat Math</span>
-                  <span className="text-sm font-black text-[var(--text-primary)]">{prefs.seat_count} Users × ${prefs.plan_key === 'team' ? '15' : '20'}</span>
+                  <span className="text-sm font-black text-[var(--text-primary)]">{prefs.seat_count} Users × ${prefs.plan_key === 'team' ? '20' : '30'}</span>
                 </div>
                 {prefs.usage_tier === 'high' && (
                     <div className="flex justify-between items-center">
