@@ -73,3 +73,6 @@ class LlmUsageMiddleware:
             except ValueError:
                 continue
         return None
+
+# Alias for backwards compatibility with old settings configurations
+TeamStatusMiddleware = LlmUsageMiddleware

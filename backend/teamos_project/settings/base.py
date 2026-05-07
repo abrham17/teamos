@@ -68,7 +68,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
-    "llm_orchestrator.middleware.TeamStatusMiddleware",
+    "llm_orchestrator.middleware.LlmUsageMiddleware",
 ]
 
 ROOT_URLCONF = "teamos_project.urls"
