@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { useWikiStore } from "@/stores/useWikiStore";
 import { api } from "@/lib/api";
-import { fetchBillingPlans, fetchBillingQuote, startTeamCheckout, type BillingPlansCatalog, type BillingPlanRow, type BillingQuote } from "@/lib/billingCheckout";
+import { fetchBillingPlans, fetchBillingQuote, startTeamCheckout, type BillingPlansCatalog, type BillingQuote } from "@/lib/billingCheckout";
 import { useToast } from "@/components/ui/Toast";
-import { AlertCircle, Check, CreditCard, Loader2, Sparkles, Zap, Timer, Users, ShieldAlert, ArrowRight } from "lucide-react";
+import { AlertCircle, Check, CreditCard, Loader2, Sparkles, Zap, Timer, Users, ShieldAlert } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 interface TeamSubscription {
@@ -16,12 +16,16 @@ interface TeamSubscription {
   current_period_end?: string;
   trial_expires_at?: string;
   grace_expires_at?: string;
-  metadata?: any;
+  metadata?: {
+    seat_count?: number;
+    usage_tier?: string;
+    [key: string]: unknown;
+  };
 }
 
 export function BillingSettings() {
   const { currentTeamId } = useWikiStore();
-  const { success, info, error } = useToast();
+  const { info, error } = useToast();
   
   const [subscription, setSubscription] = useState<TeamSubscription | null>(null);
   const [catalog, setCatalog] = useState<BillingPlansCatalog | null>(null);
@@ -111,8 +115,8 @@ export function BillingSettings() {
         window.open(checkout.checkout_url, "_blank");
         info("Opening Paddle checkout...");
       }
-    } catch (e: any) {
-      error(e.message || "Checkout failed");
+    } catch (e: unknown) {
+      error(e instanceof Error ? e.message : "Checkout failed");
     } finally {
       setCheckoutBusy(null);
     }

@@ -11,7 +11,7 @@ import {
   normalizeEmail,
   type PendingAction,
 } from "@/lib/settingsConfirm";
-import { Download, Users, Plus, Shield, Settings2, AlertTriangle, Trash2, CreditCard } from "lucide-react";
+import { Download, Users, Plus, Shield, Settings2, AlertTriangle, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { BillingSettings } from "@/components/settings/BillingSettings";
 

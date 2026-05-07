@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { SignUpButton, useUser } from "@clerk/nextjs";
-import { ArrowRight, Check, Loader2, Sparkles, Zap, Shield, Globe, Users } from "lucide-react";
+import { ArrowRight, Check, Loader2, Sparkles, Zap, Shield, Users } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 import { api } from "@/lib/api";
@@ -56,7 +56,6 @@ function PaidTierCard({
       ? formatUsd(quote.monthly_total_usd)
       : tier.price_label;
 
-  const isPro = tier.key === "pro";
 
   return (
     <motion.div
@@ -197,7 +196,7 @@ function PaidTierCard({
 }
 
 export function HomePricing() {
-  const { user, isSignedIn } = useUser();
+  const { isSignedIn } = useUser();
   const currentTeamId = useWikiStore((s) => s.currentTeamId);
   const { info, error } = useToast();
 

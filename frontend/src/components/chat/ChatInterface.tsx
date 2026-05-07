@@ -70,7 +70,6 @@ export function ChatInterface() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
-  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
 
   const [chatMode, setChatMode] = useState<ChatMode>("ask");
@@ -83,7 +82,6 @@ export function ChatInterface() {
     if (!currentTeamId) return;
     let cancelled = false;
     setSessionReady(false);
-    setBootstrapError(null);
     (async () => {
       try {
         const data = await api.get<ChatSession[]>(`/chat/${currentTeamId}/sessions/`);
@@ -93,7 +91,6 @@ export function ChatInterface() {
           setActiveSessionId((prev) =>
             prev && data.some((s) => s.id === prev) ? prev : data[0].id,
           );
-          setBootstrapError(null);
         } else {
           let created: ChatSession | null = null;
           let lastErr: unknown = null;
@@ -113,12 +110,10 @@ export function ChatInterface() {
           }
           setSessions([created]);
           setActiveSessionId(created.id);
-          setBootstrapError(null);
         }
       } catch (e) {
         console.error(e);
         const msg = "Could not start chat. Check you are signed in and try again.";
-        setBootstrapError(msg);
         toastError(msg);
       } finally {
         if (!cancelled) setSessionReady(true);
@@ -130,37 +125,7 @@ export function ChatInterface() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- toastError identity must not re-run bootstrap
   }, [currentTeamId]);
 
-  const retryBootstrap = useCallback(() => {
-    if (!currentTeamId) return;
-    setBootstrapError(null);
-    setSessionReady(false);
-    void (async () => {
-      try {
-        const data = await api.get<ChatSession[]>(`/chat/${currentTeamId}/sessions/`);
-        setSessions(data);
-        if (data.length > 0) {
-          setActiveSessionId((prev) =>
-            prev && data.some((s) => s.id === prev) ? prev : data[0].id,
-          );
-          setBootstrapError(null);
-        } else {
-          const created = await api.post<ChatSession>(`/chat/${currentTeamId}/sessions/`, {
-            title: "New Chat",
-          });
-          setSessions([created]);
-          setActiveSessionId(created.id);
-          setBootstrapError(null);
-        }
-      } catch (e) {
-        console.error(e);
-        const msg = "Could not start chat. Check you are signed in and try again.";
-        setBootstrapError(msg);
-        toastError(msg);
-      } finally {
-        setSessionReady(true);
-      }
-    })();
-  }, [currentTeamId, toastError]);
+  }, [currentTeamId]);
 
   useEffect(() => {
     if (!currentTeamId) return;

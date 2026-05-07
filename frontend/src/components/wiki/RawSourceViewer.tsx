@@ -69,7 +69,6 @@ export default function RawSourceViewer({
   const [sources, setSources] = useState<RawSourceSummary[]>([]);
   const [detail, setDetail] = useState<RawSourceDetail | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(sourceId || null);
-  const [loading, setLoading] = useState(false);
 
   // Fetch source list
   useEffect(() => {
@@ -86,12 +85,10 @@ export default function RawSourceViewer({
       setDetail(null);
       return;
     }
-    setLoading(true);
     api
       .get<RawSourceDetail>(`/wiki/${teamId}/raw-sources/${selectedId}/`)
       .then(setDetail)
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .catch(console.error);
   }, [selectedId, teamId]);
 
   const renderHighlightedText = (text: string) => {
