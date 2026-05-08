@@ -64,6 +64,13 @@ const suggestions = {
           editor.chain().focus().deleteRange(range).toggleCodeBlock().run()
         },
       },
+      {
+        title: 'Callout / Note',
+        command: ({ editor, range }: CommandContext) => {
+          // @ts-ignore
+          editor.chain().focus().deleteRange(range).insertContent({ type: 'callout', attrs: { type: 'note' }, content: [{ type: 'paragraph' }] }).run()
+        },
+      },
     ].filter(item => item.title.toLowerCase().startsWith(query.toLowerCase())).slice(0, 10)
   },
 

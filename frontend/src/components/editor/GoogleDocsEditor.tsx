@@ -19,6 +19,7 @@ import SlashCommand from "./extensions/SlashCommand";
 import suggestion from "./extensions/suggestions";
 import Wikilink from "./extensions/Wikilink";
 import getWikilinkSuggestion from "./extensions/WikilinkSuggestion";
+import { Callout } from "./extensions/Callout";
 import EditorToolbar from "./EditorToolbar";
 
 export type GoogleDocsEditorHandle = {
@@ -46,7 +47,9 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
 ) {
   const extensions = useMemo(() => {
     const base = [
-      StarterKit.configure({}),
+      StarterKit.configure({
+        blockquote: false, // We'll use our own or style it
+      }),
       Markdown.configure({}),
       Underline,
       TextAlign.configure({
@@ -54,7 +57,7 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
       }),
       Highlight,
       Placeholder.configure({
-        placeholder: "Write your knowledge here... Type '/' for commands, '[[' for links.",
+        placeholder: "Start typing... Use '/' for commands or '[[' for wiki links.",
       }),
       Link.configure({ openOnClick: false }),
       Table.configure({ resizable: true }),
@@ -65,6 +68,7 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
       Wikilink.configure({
         suggestion: getWikilinkSuggestion(teamId),
       }),
+      Callout,
     ];
 
     if (ydoc && provider) {
@@ -84,7 +88,7 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
     content: initialText,
     editorProps: {
       attributes: {
-        class: "prose prose-invert max-w-none focus:outline-none min-h-[500px] p-4",
+        class: "prose prose-invert max-w-none focus:outline-none min-h-[500px] pb-32",
       },
     },
     onUpdate: ({ editor }) => {
@@ -116,9 +120,9 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
   if (!editor) return null;
 
   return (
-    <div className="w-full border border-white/10 rounded-xl overflow-hidden bg-white/5 backdrop-blur-md">
+    <div className="w-full bg-transparent">
       <EditorToolbar editor={editor} />
-      <div className="max-h-[70vh] overflow-y-auto">
+      <div className="mt-8">
         <EditorContent editor={editor} />
       </div>
     </div>

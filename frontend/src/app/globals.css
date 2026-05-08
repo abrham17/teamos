@@ -323,3 +323,85 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+
+/* ─── Editor Callouts (Obsidian Style) ─────────────────────────────────── */
+.callout-block {
+  margin: 1.5em 0;
+  padding: 1.25em 1.5em;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-left: 4px solid var(--accent);
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.callout-block::before {
+  content: 'Note';
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  margin-bottom: 0.75em;
+  opacity: 0.8;
+}
+
+.callout-block:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: translateX(4px);
+}
+
+.callout-block[data-type="warning"] { border-left-color: var(--warning); }
+.callout-block[data-type="warning"]::before { content: 'Warning'; color: var(--warning); }
+
+.callout-block[data-type="danger"] { border-left-color: var(--danger); }
+.callout-block[data-type="danger"]::before { content: 'Danger'; color: var(--danger); }
+
+/* ─── Custom Utilities ────────────────────────────────────────────────── */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* Prose Invert Overrides */
+.prose-invert {
+  --tw-prose-body: var(--text-secondary);
+  --tw-prose-headings: var(--text-primary);
+  --tw-prose-links: var(--accent);
+  --tw-prose-bold: var(--text-primary);
+  --tw-prose-counters: var(--text-muted);
+  --tw-prose-bullets: var(--accent);
+  --tw-prose-hr: var(--border-subtle);
+  --tw-prose-quotes: var(--text-primary);
+  --tw-prose-quote-borders: var(--accent);
+  --tw-prose-captions: var(--text-muted);
+  --tw-prose-code: var(--accent);
+  --tw-prose-pre-code: var(--text-primary);
+  --tw-prose-pre-bg: var(--bg-800);
+  --tw-prose-th-borders: var(--border-strong);
+  --tw-prose-td-borders: var(--border-subtle);
+}
+
+.prose h1, .prose h2, .prose h3 {
+  letter-spacing: -0.02em;
+  font-weight: 800;
+}
+
+.prose p {
+  line-height: 1.8;
+}

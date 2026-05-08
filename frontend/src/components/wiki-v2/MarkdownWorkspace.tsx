@@ -278,38 +278,69 @@ export function MarkdownWorkspace() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[var(--bg-900)] w-full">
-      <div className="flex items-center h-14 border-b border-[var(--border-subtle)] bg-[var(--surface-1)] px-4 gap-3 shrink-0">
-        <button onClick={() => router.push("/wiki")} className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-800)] transition-colors">
+    <div className="flex flex-col h-full bg-[var(--bg-950)] w-full overflow-hidden">
+      {/* Premium Header */}
+      <div className="flex items-center h-16 border-b border-white/5 bg-[var(--bg-950)]/80 backdrop-blur-xl px-6 gap-4 shrink-0 z-20">
+        <button 
+          onClick={() => router.push("/wiki")} 
+          className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-all active:scale-95"
+        >
           <ChevronLeft className="w-4 h-4" />
-          Back
-        </button>
-        <div className="w-px h-4 bg-[var(--border-subtle)] mx-1" />
-        <button onClick={() => setWikiSidebarOpen(true)} className="p-2 text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent-subtle)] rounded-lg transition-colors" title="Open Page">
-          <FolderOpen className="w-4 h-4" />
+          <span>Dashboard</span>
         </button>
         
-        <div className="ml-auto flex flex-wrap items-center gap-3">
+        <div className="w-px h-6 bg-white/10 mx-1" />
+        
+        <button 
+          onClick={() => setWikiSidebarOpen(true)} 
+          className="p-2.5 text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent-subtle)] rounded-xl transition-all active:scale-95" 
+          title="Open Library"
+        >
+          <FolderOpen className="w-5 h-5" />
+        </button>
+        
+        <div className="flex-1 min-w-0 mx-4">
+          <input
+            className="w-full bg-transparent border-none outline-none text-lg font-semibold text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:placeholder-white/20 transition-all"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Untitled Document"
+          />
+        </div>
+
+        <div className="flex items-center gap-4">
+          {saveStatus !== "idle" && (
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all duration-500 border ${
+              saveStatus === "saving" 
+                ? "bg-[var(--warning-bg)]/20 text-[var(--warning)] border-[var(--warning)]/30 animate-pulse" 
+                : "bg-[var(--success-bg)]/20 text-[var(--success)] border-[var(--success)]/30"
+            }`}>
+              <div className={`w-1.5 h-1.5 rounded-full ${saveStatus === "saving" ? "bg-[var(--warning)]" : "bg-[var(--success)]"}`} />
+              {saveStatus === "saving" ? "Syncing" : "Saved"}
+            </div>
+          )}
+
           {!isNew && page && page.citations && page.citations.length > 0 && (
             <button
               onClick={() => setShowCitations(!showCitations)}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+              className={`text-xs px-4 py-2 rounded-xl border transition-all font-medium ${
                 showCitations 
-                  ? "bg-[var(--accent-subtle)] text-[var(--accent)] border-[var(--accent)]" 
-                  : "bg-[var(--surface-1)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--accent)]"
+                  ? "bg-[var(--accent)] text-[var(--bg-950)] border-[var(--accent)] shadow-[0_0_20px_rgba(var(--accent-rgb),0.3)]" 
+                  : "bg-white/5 text-[var(--text-secondary)] border-white/10 hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
               }`}
             >
               Citations ({page.citations.length})
             </button>
           )}
+
           {!isNew && page ? (
-            <>
-              <label className="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-muted)]">
+            <div className="flex items-center gap-2">
+              <label className="hidden sm:flex cursor-pointer items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors">
                 <input
                   type="checkbox"
                   checked={autoApproveWiki}
                   onChange={(e) => persistWikiAutoApprove(e.target.checked)}
-                  className="rounded border-[var(--border-subtle)]"
+                  className="rounded-sm border-white/20 bg-white/5 checked:bg-[var(--accent)]"
                 />
                 Auto-approve
               </label>
@@ -317,116 +348,112 @@ export function MarkdownWorkspace() {
                 type="button"
                 disabled={publishBusy}
                 onClick={() => void handlePublish()}
-                className="rounded-lg border border-[var(--border-subtle)] bg-[var(--accent)] px-3 py-1.5 text-xs font-bold text-[var(--bg-950)] hover:opacity-90 disabled:opacity-50"
+                className="rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] px-5 py-2 text-xs font-bold text-[var(--bg-950)] hover:shadow-[0_0_20px_rgba(var(--accent-rgb),0.4)] hover:scale-[1.02] active:scale-95 disabled:opacity-50 transition-all"
               >
                 {publishBusy ? "Publishing…" : "Publish"}
               </button>
-            </>
-          ) : null}
-          {saveStatus !== "idle" && (
-            <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all duration-300 ${
-              saveStatus === "saving" 
-                ? "bg-[var(--warning-bg)] text-[var(--warning)] animate-pulse" 
-                : "bg-[var(--success-bg)] text-[var(--success)]"
-            }`}>
-              <div className={`w-1 h-1 rounded-full ${saveStatus === "saving" ? "bg-[var(--warning)]" : "bg-[var(--success)]"}`} />
-              {saveStatus === "saving" ? "Saving..." : "Saved"}
             </div>
-          )}
-          {loading && (
-            <span className="text-xs text-[var(--text-muted)] animate-pulse">Loading...</span>
-          )}
+          ) : null}
         </div>
       </div>
 
-      <div className="px-8 pt-6 pb-4 border-b border-[var(--border-subtle)] shrink-0 max-w-4xl mx-auto w-full">
-        {citationSource === "chat" && (citationSnippet || citationChunk || citationAnchorHint) && (
-          <div className="mb-4 rounded-lg border border-[var(--accent-subtle)] bg-[var(--surface-1)] px-4 py-3 text-sm">
-            <div className="font-semibold text-[var(--text-primary)]">Opened from chat citation</div>
-            <div className="mt-1 text-[var(--text-muted)]">
-              {citationAnchorHint && (
-                <span>
-                  Section hint: <span className="text-[var(--text-primary)]">{citationAnchorHint}</span>.{" "}
-                </span>
-              )}
-              {citationChunk && (
-                <span>
-                  Chunk: <span className="font-mono text-[var(--text-primary)]">{citationChunk}</span>.{" "}
-                </span>
-              )}
-              {citationSnippet && "Use Find snippet to jump close to the referenced text."}
-            </div>
-            {citationSnippet && (
-              <div className="mt-2 flex items-center gap-2">
-                <button
-                  onClick={handleFindCitationSnippet}
-                  className="px-3 py-1.5 rounded border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs"
-                >
-                  Find snippet
-                </button>
-                <div className="text-xs text-[var(--text-dim)] truncate">{citationSnippet}</div>
+      <div className="flex-1 flex min-h-0 relative">
+        {/* Main Editor Area */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar bg-[var(--bg-950)]">
+          <div className="max-w-5xl mx-auto w-full min-h-full flex flex-col">
+            {citationSource === "chat" && (citationSnippet || citationChunk || citationAnchorHint) && (
+              <div className="m-8 mb-0 rounded-2xl border border-[var(--accent)]/20 bg-[var(--accent-subtle)]/10 p-6 backdrop-blur-sm animate-in fade-in slide-in-from-top-4 duration-500">
+                <div className="flex items-center gap-2 font-bold text-[var(--accent)] mb-2 uppercase tracking-tighter text-xs">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
+                  AI Context Bridge
+                </div>
+                <div className="text-[var(--text-secondary)] text-sm leading-relaxed">
+                  {citationAnchorHint && (
+                    <span>
+                      Referencing section: <span className="text-[var(--text-primary)] font-semibold">{citationAnchorHint}</span>.{" "}
+                    </span>
+                  )}
+                  {citationChunk && (
+                    <span>
+                      Data chunk ID: <span className="font-mono text-[var(--accent)]">{citationChunk}</span>.{" "}
+                    </span>
+                  )}
+                  {citationSnippet && "We've located the specific passage referenced in your discussion."}
+                </div>
+                {citationSnippet && (
+                  <div className="mt-4 flex items-center gap-3">
+                    <button
+                      onClick={handleFindCitationSnippet}
+                      className="px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--bg-950)] font-bold text-xs hover:shadow-lg transition-all active:scale-95"
+                    >
+                      Jump to passage
+                    </button>
+                    <div className="text-xs text-[var(--text-muted)] italic truncate max-w-md border-l border-white/10 pl-3">
+                      "{citationSnippet}"
+                    </div>
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
-        <input
-          className="w-full bg-transparent border-none outline-none text-3xl font-bold text-[var(--text-primary)] placeholder-[var(--text-muted)] opacity-50 focus:opacity-100 transition-opacity"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Page Title"
-        />
-      </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto w-full flex justify-center">
-        <div className="max-w-4xl w-full px-8 py-6">
-          <FrontmatterPanel frontmatter={frontmatter} onChange={setFrontmatter} />
-          <GoogleDocsEditor
-            ref={editorRef}
-            initialText={content}
-            onChange={setContent}
-            teamId={currentTeamId}
-          />
+            <div className="px-8 py-10 flex-1">
+              <FrontmatterPanel frontmatter={frontmatter} onChange={setFrontmatter} />
+              <div className="mt-6">
+                <GoogleDocsEditor
+                  ref={editorRef}
+                  initialText={content}
+                  onChange={setContent}
+                  teamId={currentTeamId}
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Citations Sidebar */}
         {showCitations && page?.citations && page.citations.length > 0 && (
-          <div className="w-80 border-l border-[var(--border-subtle)] bg-[var(--surface-1)] flex flex-col shrink-0">
-            <div className="p-4 border-b border-[var(--border-subtle)] flex justify-between items-center">
-              <h3 className="font-semibold text-[var(--text-primary)]">Source Citations</h3>
+          <div className="w-96 border-l border-white/5 bg-[var(--bg-950)]/50 backdrop-blur-2xl flex flex-col shrink-0 animate-in slide-in-from-right duration-500">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center">
+              <h3 className="font-bold text-lg text-[var(--text-primary)] tracking-tight">Citations</h3>
               <button 
                 onClick={() => setShowCitations(false)}
-                className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                className="p-2 text-[var(--text-muted)] hover:text-white hover:bg-white/5 rounded-lg transition-all"
               >
                 ✕
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
               {page.citations.map((c) => (
-                <div key={c.id} className="p-3 bg-[var(--surface-2)] rounded-lg border border-[var(--border-subtle)] text-sm">
-                  <div className="font-medium text-[var(--accent)] mb-1 flex items-center gap-2">
+                <div key={c.id} className="group p-5 bg-white/[0.02] hover:bg-white/[0.05] rounded-2xl border border-white/5 transition-all duration-300">
+                  <div className="font-bold text-[var(--accent)] mb-2 flex items-center gap-2 group-hover:translate-x-1 transition-transform">
                     {c.source_type === "pdf" ? "📄" : c.source_type === "youtube" ? "🎬" : "📝"}
                     <span className="truncate" title={c.original_filename}>{c.original_filename}</span>
                   </div>
-                  {c.wiki_section && (
-                    <div className="text-[var(--text-secondary)] text-xs mb-1">
-                      Section: <span className="text-[var(--text-primary)]">{c.wiki_section}</span>
-                    </div>
-                  )}
-                  {c.source_page_number && (
-                    <div className="text-[var(--text-muted)] text-xs">
-                      Page: {c.source_page_number}
-                    </div>
-                  )}
-                  {c.source_timestamp && (
-                    <div className="text-[var(--text-muted)] text-xs">
-                      Time: {c.source_timestamp}
-                    </div>
-                  )}
+                  <div className="space-y-1.5">
+                    {c.wiki_section && (
+                      <div className="text-[var(--text-secondary)] text-xs flex justify-between">
+                        <span className="text-[var(--text-muted)]">Section</span>
+                        <span className="font-medium text-[var(--text-primary)]">{c.wiki_section}</span>
+                      </div>
+                    )}
+                    {c.source_page_number && (
+                      <div className="text-[var(--text-secondary)] text-xs flex justify-between">
+                        <span className="text-[var(--text-muted)]">Page</span>
+                        <span className="font-medium text-[var(--text-primary)]">{c.source_page_number}</span>
+                      </div>
+                    )}
+                    {c.source_timestamp && (
+                      <div className="text-[var(--text-secondary)] text-xs flex justify-between">
+                        <span className="text-[var(--text-muted)]">Timestamp</span>
+                        <span className="font-medium text-[var(--text-primary)]">{c.source_timestamp}</span>
+                      </div>
+                    )}
+                  </div>
                   <button 
                     onClick={() => setViewingRawSourceId(c.raw_source_id)}
-                    className="mt-2 inline-block text-xs text-[var(--accent)] hover:underline"
+                    className="mt-4 w-full py-2 bg-white/5 hover:bg-[var(--accent)] hover:text-[var(--bg-950)] text-xs font-bold rounded-xl transition-all border border-white/5"
                   >
-                    View Raw Source ↗
+                    Explore Raw Source
                   </button>
                 </div>
               ))}
@@ -436,12 +463,13 @@ export function MarkdownWorkspace() {
       </div>
 
       {viewingRawSourceId && currentTeamId && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-8">
-          <div className="w-full max-w-4xl max-h-[90vh] bg-[var(--bg-900)] rounded-xl overflow-hidden shadow-2xl border border-[var(--border-subtle)] relative">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-8 animate-in fade-in duration-300">
+          <div className="w-full max-w-6xl h-[90vh] bg-[var(--bg-900)] rounded-3xl overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.5)] border border-white/10 relative">
             <RawSourceViewer 
               teamId={currentTeamId} 
               sourceId={viewingRawSourceId} 
               onClose={() => setViewingRawSourceId(null)} 
+              fullHeight
             />
           </div>
         </div>
