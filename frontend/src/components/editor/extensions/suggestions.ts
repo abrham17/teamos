@@ -67,7 +67,7 @@ const suggestions = {
       {
         title: 'Callout / Note',
         command: ({ editor, range }: CommandContext) => {
-          // @ts-ignore
+          // @ts-expect-error
           editor.chain().focus().deleteRange(range).insertContent({ type: 'callout', attrs: { type: 'note' }, content: [{ type: 'paragraph' }] }).run()
         },
       },

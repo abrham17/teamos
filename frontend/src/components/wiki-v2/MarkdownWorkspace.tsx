@@ -389,7 +389,7 @@ export function MarkdownWorkspace() {
                       Jump to passage
                     </button>
                     <div className="text-xs text-[var(--text-muted)] italic truncate max-w-md border-l border-white/10 pl-3">
-                      "{citationSnippet}"
+                      &quot;{citationSnippet}&quot;
                     </div>
                   </div>
                 )}

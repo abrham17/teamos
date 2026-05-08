@@ -57,6 +57,7 @@ interface Props {
   highlightStart?: number;
   highlightEnd?: number;
   onClose?: () => void;
+  fullHeight?: boolean;
 }
 
 export default function RawSourceViewer({
@@ -65,6 +66,7 @@ export default function RawSourceViewer({
   highlightStart,
   highlightEnd,
   onClose,
+  fullHeight,
 }: Props) {
   const [sources, setSources] = useState<RawSourceSummary[]>([]);
   const [detail, setDetail] = useState<RawSourceDetail | null>(null);
@@ -201,7 +203,8 @@ export default function RawSourceViewer({
             background: var(--bg-surface, #1a1a2e);
             border-radius: 12px;
             color: var(--text-primary, #e0e0e0);
-            max-height: 80vh;
+            max-height: ${fullHeight ? 'none' : '80vh'};
+            height: ${fullHeight ? '100%' : 'auto'};
             overflow-y: auto;
           }
           .raw-source-header {
@@ -299,7 +302,7 @@ export default function RawSourceViewer({
             line-height: 1.6;
             white-space: pre-wrap;
             word-break: break-word;
-            max-height: 50vh;
+            max-height: ${fullHeight ? 'none' : '50vh'};
             overflow-y: auto;
             color: var(--text-primary, #ccc);
           }
