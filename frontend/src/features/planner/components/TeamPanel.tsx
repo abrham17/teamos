@@ -9,13 +9,12 @@ interface TeamPanelProps {
   tasks: PlanTask[];
   teamMembers: TeamMember[];
   projectMembers: ProjectMember[];
-  onAssignRole?: (userId: string, role: string) => void;
   onRemoveMember?: (userId: string) => void;
   onOpenAddMember?: () => void;
   onEditRole?: (userId: string, role: string) => void;
 }
 
-export function TeamPanel({ tasks, teamMembers, projectMembers, onAssignRole, onRemoveMember, onOpenAddMember, onEditRole }: TeamPanelProps) {
+export function TeamPanel({ tasks, teamMembers, projectMembers, onRemoveMember, onOpenAddMember, onEditRole }: TeamPanelProps) {
   // Map project members first to show their explicit roles
   const projectMemberMap = new Map(projectMembers.map(m => [m.user.id, m]));
 
