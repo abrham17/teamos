@@ -67,7 +67,7 @@ const suggestions = {
       {
         title: 'Callout / Note',
         command: ({ editor, range }: CommandContext) => {
-          // @ts-expect-error
+          // @ts-expect-error: insertContent is missing from the manually defined CommandContext type
           editor.chain().focus().deleteRange(range).insertContent({ type: 'callout', attrs: { type: 'note' }, content: [{ type: 'paragraph' }] }).run()
         },
       },
