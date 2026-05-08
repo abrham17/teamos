@@ -95,6 +95,18 @@ export const api = {
     if (!res.ok) throw new Error(extractErrorMessage(payload));
     return unwrapEnvelope(payload) as T;
   },
+  postForm: async <T = unknown>(url: string, data: FormData): Promise<T> => {
+    const authHeader = await getAuthHeader();
+    const res = await fetch(`${API_URL}${url}`, {
+      method: "POST",
+      headers: { ...authHeader }, // Browser sets content-type with boundary
+      body: data,
+      credentials: "include",
+    });
+    const payload = await parseResponse(res);
+    if (!res.ok) throw new Error(extractErrorMessage(payload));
+    return unwrapEnvelope(payload) as T;
+  },
   put: async <T = unknown>(url: string, data: unknown): Promise<T> => {
     const authHeader = await getAuthHeader();
     const res = await fetch(`${API_URL}${url}`, {

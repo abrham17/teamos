@@ -11,6 +11,11 @@ import { TableHeader } from "@tiptap/extension-table-header";
 import { Underline } from "@tiptap/extension-underline";
 import { TextAlign } from "@tiptap/extension-text-align";
 import { Highlight } from "@tiptap/extension-highlight";
+import { Image } from "@tiptap/extension-image";
+import { BulletList } from "@tiptap/extension-bullet-list";
+import { OrderedList } from "@tiptap/extension-ordered-list";
+import { ListItem } from "@tiptap/extension-list-item";
+import { Blockquote } from "@tiptap/extension-blockquote";
 import { Markdown } from "@tiptap/markdown";
 import Collaboration from "@tiptap/extension-collaboration";
 import { useEffect, useImperativeHandle, useMemo, forwardRef } from "react";
@@ -48,18 +53,23 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
   const extensions = useMemo(() => {
     const base = [
       StarterKit.configure({
-        blockquote: false, // We'll use our own or style it
+        // blockquote: false, // Keeping default behavior now
       }),
       Markdown.configure({}),
       Underline,
       TextAlign.configure({
-        types: ["heading", "paragraph"],
+        types: ["heading", "paragraph", "bulletList", "orderedList"],
       }),
       Highlight,
+      BulletList,
+      OrderedList,
+      ListItem,
+      Blockquote,
       Placeholder.configure({
         placeholder: "Start typing... Use '/' for commands or '[[' for wiki links.",
       }),
       Link.configure({ openOnClick: false }),
+      Image,
       Table.configure({ resizable: true }),
       TableRow,
       TableHeader,
@@ -121,7 +131,7 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
 
   return (
     <div className="w-full bg-transparent">
-      <EditorToolbar editor={editor} />
+      <EditorToolbar editor={editor} teamId={teamId} />
       <div className="mt-8">
         <EditorContent editor={editor} />
       </div>

@@ -19,6 +19,7 @@
 
   /* Accent — Cyberpunk Cyan */
   --accent: #00d4e8;
+  --accent-rgb: 0, 212, 232;
   --accent-light: #70ffff;
   --accent-dark: #009ab0;
   --accent-glow: rgba(0, 212, 232, 0.35);
@@ -141,6 +142,7 @@
   --text-dim: #9898b2;
 
   --accent: #0070f3;
+  --accent-rgb: 0, 112, 243;
   --accent-light: #3291ff;
   --accent-dark: #0050bb;
   --accent-glow: rgba(0, 112, 243, 0.22);

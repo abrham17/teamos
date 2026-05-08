@@ -11,8 +11,12 @@ import {
   MessageSquareQuote, Network
 } from "lucide-react";
 
+import { useState } from "react";
+import { ImageUploadModal } from "./ImageUploadModal";
+
 interface Props {
   editor: Editor | null;
+  teamId: string;
 }
 
 interface ToolbarButtonProps {
@@ -22,19 +26,26 @@ interface ToolbarButtonProps {
   title: string;
 }
 
-export default function EditorToolbar({ editor }: Props) {
+export default function EditorToolbar({ editor, teamId }: Props) {
+  const [showImageModal, setShowImageModal] = useState(false);
   if (!editor) return null;
 
   const Button = ({ onClick, isActive, children, title }: ToolbarButtonProps) => (
     <button
-      onClick={onClick}
+      onClick={(e) => {
+        e.preventDefault();
+        onClick();
+      }}
       title={title}
-      className={`p-2 rounded-xl transition-all duration-200 active:scale-90 flex items-center justify-center ${isActive
-          ? "bg-[var(--accent)] text-[var(--bg-950)] shadow-[0_0_15px_rgba(var(--accent-rgb),0.3)]"
-          : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5"
+      className={`p-2 rounded-xl transition-all duration-300 active:scale-95 flex items-center justify-center relative group ${isActive
+          ? "bg-[var(--accent)] text-[var(--bg-950)] scale-110 shadow-[0_0_20px_rgba(var(--accent-rgb),0.4)] z-10"
+          : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/10 hover:scale-105"
         }`}
     >
       {children}
+      {isActive && (
+        <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-[var(--bg-950)] rounded-full opacity-50" />
+      )}
     </button>
   );
 
@@ -161,18 +172,14 @@ export default function EditorToolbar({ editor }: Props) {
       <div className="flex items-center gap-1 px-1">
         <Button
           onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+          isActive={editor.isActive("table")}
           title="Insert Table"
         >
           <TableIcon size={16} />
         </Button>
         <Button
-          onClick={() => {
-            const url = window.prompt('URL');
-            if (url) {
-              // @ts-expect-error - image extension might not be explicitly typed if custom
-              editor.chain().focus().setImage({ src: url }).run();
-            }
-          }}
+          onClick={() => setShowImageModal(true)}
+          isActive={editor.isActive("image") || showImageModal}
           title="Insert Image"
         >
           <ImageIcon size={16} />
@@ -182,11 +189,21 @@ export default function EditorToolbar({ editor }: Props) {
             // Logic to insert a graph placeholder or specific graph block
             editor.chain().focus().insertContent('[[graph]]').run()
           }}
+          isActive={editor.isActive("graph")}
           title="Insert Knowledge Graph"
         >
           <Network size={16} />
         </Button>
       </div>
+
+      <ImageUploadModal
+        open={showImageModal}
+        onClose={() => setShowImageModal(false)}
+        teamId={teamId}
+        onUpload={(url) => {
+          editor.chain().focus().setImage({ src: url }).run();
+        }}
+      />
     </div>
   );
 }
