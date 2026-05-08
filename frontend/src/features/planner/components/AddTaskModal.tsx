@@ -19,21 +19,24 @@ interface AddTaskModalProps {
   }) => void;
   teamMembers: TeamMember[];
   initialStartDate?: string;
+  initialStatus?: string;
 }
 
-export function AddTaskModal({ isOpen, onClose, onSubmit, teamMembers, initialStartDate }: AddTaskModalProps) {
+export function AddTaskModal({ isOpen, onClose, onSubmit, teamMembers, initialStartDate, initialStatus }: AddTaskModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
   const [assigneeId, setAssigneeId] = useState("");
   const [startDate, setStartDate] = useState(initialStartDate || "");
   const [endDate, setEndDate] = useState("");
+  const [status, setStatus] = useState(initialStatus || "todo");
 
   React.useEffect(() => {
-    if (isOpen && initialStartDate) {
-      setStartDate(initialStartDate);
+    if (isOpen) {
+      if (initialStartDate) setStartDate(initialStartDate);
+      if (initialStatus) setStatus(initialStatus);
     }
-  }, [isOpen, initialStartDate]);
+  }, [isOpen, initialStartDate, initialStatus]);
 
   if (!isOpen) return null;
 
@@ -44,7 +47,7 @@ export function AddTaskModal({ isOpen, onClose, onSubmit, teamMembers, initialSt
       title,
       description,
       priority,
-      status: "todo",
+      status,
       assignee_id: assigneeId || null,
       start_date: startDate || null,
       end_date: endDate || null,

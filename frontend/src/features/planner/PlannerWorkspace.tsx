@@ -18,6 +18,7 @@ import { LayoutGrid, Calendar, History, Columns, BarChartHorizontal, Users } fro
 import { TeamMember, PlanTask } from "./types";
 import { AddTaskModal } from "./components/AddTaskModal";
 import { AddMilestoneModal } from "./components/AddMilestoneModal";
+import { AddMemberModal } from "./components/AddMemberModal";
 
 type PlannerView = "overview" | "calendar" | "activity" | "board" | "timeline" | "team";
 
@@ -36,7 +37,11 @@ export function PlannerWorkspace() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [isAddMilestoneOpen, setIsAddMilestoneOpen] = useState(false);
+  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
   const [prefilledDate, setPrefilledDate] = useState<string | undefined>();
+  const [prefilledStatus, setPrefilledStatus] = useState<string | undefined>();
+  const [editMemberId, setEditMemberId] = useState<string | null>(null);
+  const [editMemberRole, setEditMemberRole] = useState<string | undefined>();
 
   const {
     projects,
@@ -224,6 +229,7 @@ export function PlannerWorkspace() {
               onRefreshDetail={refreshProjectDetail}
               onOpenAddTask={() => {
                 setPrefilledDate(undefined);
+                setPrefilledStatus(undefined);
                 setIsAddTaskOpen(true);
               }}
               onOpenAddMilestone={() => setIsAddMilestoneOpen(true)}
@@ -234,6 +240,11 @@ export function PlannerWorkspace() {
             <BoardPanel 
               tasks={activeProject?.tasks || []} 
               onUpdateTask={handleUpdateTask} 
+              onAddTask={(status) => {
+                setPrefilledDate(undefined);
+                setPrefilledStatus(status);
+                setIsAddTaskOpen(true);
+              }}
             />
           ) : activeView === "calendar" ? (
             <CalendarPanel 
@@ -241,6 +252,7 @@ export function PlannerWorkspace() {
               loading={loadingCalendar} 
               onAddEvent={(date) => {
                 setPrefilledDate(date.toISOString().split('T')[0]);
+                setPrefilledStatus("todo");
                 setIsAddTaskOpen(true);
               }}
             />
@@ -248,6 +260,12 @@ export function PlannerWorkspace() {
             <TimelinePanel 
               tasks={activeProject?.tasks || []} 
               milestones={activeProject?.milestones || []} 
+              onAddTask={() => {
+                setPrefilledDate(undefined);
+                setPrefilledStatus(undefined);
+                setIsAddTaskOpen(true);
+              }}
+              onAddMilestone={() => setIsAddMilestoneOpen(true)}
             />
           ) : activeView === "team" ? (
             <TeamPanel 
@@ -256,6 +274,16 @@ export function PlannerWorkspace() {
               projectMembers={activeProject?.members || []}
               onAssignRole={handleAssignRole}
               onRemoveMember={handleRemoveMember}
+              onOpenAddMember={() => {
+                setEditMemberId(null);
+                setEditMemberRole(undefined);
+                setIsAddMemberOpen(true);
+              }}
+              onEditRole={(userId, role) => {
+                setEditMemberId(userId);
+                setEditMemberRole(role);
+                setIsAddMemberOpen(true);
+              }}
             />
           ) : (
             <ActivityPanel activity={activity} loading={loadingActivity} />
@@ -279,12 +307,23 @@ export function PlannerWorkspace() {
         onSubmit={handleCreateTask}
         teamMembers={teamMembers}
         initialStartDate={prefilledDate}
+        initialStatus={prefilledStatus}
       />
 
       <AddMilestoneModal
         isOpen={isAddMilestoneOpen}
         onClose={() => setIsAddMilestoneOpen(false)}
         onSubmit={handleCreateMilestone}
+      />
+
+      <AddMemberModal
+        isOpen={isAddMemberOpen}
+        onClose={() => setIsAddMemberOpen(false)}
+        onSubmit={handleAssignRole}
+        teamMembers={teamMembers}
+        alreadyInProjectIds={activeProject?.members.map(m => m.user.id) || []}
+        initialUserId={editMemberId}
+        initialRole={editMemberRole}
       />
     </div>
   );

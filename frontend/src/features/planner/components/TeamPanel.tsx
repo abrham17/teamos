@@ -11,9 +11,11 @@ interface TeamPanelProps {
   projectMembers: ProjectMember[];
   onAssignRole?: (userId: string, role: string) => void;
   onRemoveMember?: (userId: string) => void;
+  onOpenAddMember?: () => void;
+  onEditRole?: (userId: string, role: string) => void;
 }
 
-export function TeamPanel({ tasks, teamMembers, projectMembers, onAssignRole, onRemoveMember }: TeamPanelProps) {
+export function TeamPanel({ tasks, teamMembers, projectMembers, onAssignRole, onRemoveMember, onOpenAddMember, onEditRole }: TeamPanelProps) {
   // Map project members first to show their explicit roles
   const projectMemberMap = new Map(projectMembers.map(m => [m.user.id, m]));
 
@@ -39,11 +41,22 @@ export function TeamPanel({ tasks, teamMembers, projectMembers, onAssignRole, on
   return (
     <div className="p-8 h-full overflow-y-auto custom-scrollbar bg-[var(--bg-950)]/50">
       <div className="max-w-6xl mx-auto space-y-10 pb-12">
-        <header>
-          <h2 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Team Workload</h2>
-          <p className="text-xs text-[var(--text-muted)] font-bold uppercase tracking-widest mt-1">
-            Resource Allocation & Task Distribution
-          </p>
+        <header className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">Team Workload</h2>
+            <p className="text-xs text-[var(--text-muted)] font-bold uppercase tracking-widest mt-1">
+              Resource Allocation & Task Distribution
+            </p>
+          </div>
+          {onOpenAddMember && (
+            <button
+              onClick={onOpenAddMember}
+              className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-white text-[10px] font-bold uppercase tracking-widest rounded-xl hover:opacity-90 transition-all shadow-xl shadow-[var(--accent-glow)]"
+            >
+              <UserPlus className="w-4 h-4" />
+              Add Project Member
+            </button>
+          )}
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -75,12 +88,9 @@ export function TeamPanel({ tasks, teamMembers, projectMembers, onAssignRole, on
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  {member.isProjectMember && onAssignRole && (
+                  {member.isProjectMember && onEditRole && (
                     <button 
-                      onClick={() => {
-                        const newRole = prompt(`Update role for ${member.user.first_name || member.user.email}:`, member.projectRole);
-                        if (newRole && newRole !== member.projectRole) onAssignRole(member.user.id, newRole);
-                      }}
+                      onClick={() => onEditRole(member.user.id, member.projectRole || "")}
                       className="p-2 hover:bg-[var(--accent-subtle)] rounded-xl text-[var(--text-dim)] hover:text-[var(--accent)] transition-all"
                       title="Update Role"
                     >
@@ -98,12 +108,9 @@ export function TeamPanel({ tasks, teamMembers, projectMembers, onAssignRole, on
                       <Trash2 className="w-4 h-4" />
                     </button>
                   )}
-                  {!member.isProjectMember && onAssignRole && (
+                  {!member.isProjectMember && onEditRole && (
                     <button 
-                      onClick={() => {
-                        const role = prompt("Assign a project role (e.g. Lead, Developer):", "Contributor");
-                        if (role) onAssignRole(member.user.id, role);
-                      }}
+                      onClick={() => onEditRole(member.user.id, "Contributor")}
                       className="p-2 hover:bg-[var(--accent-subtle)] rounded-xl text-[var(--text-dim)] hover:text-[var(--accent)] transition-all"
                       title="Assign to Project"
                     >

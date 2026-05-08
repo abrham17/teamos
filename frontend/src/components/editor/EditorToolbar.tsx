@@ -8,7 +8,7 @@ import {
   Table as TableIcon,
   Underline as UnderlineIcon, AlignLeft,
   AlignCenter, AlignRight, Image as ImageIcon,
-  MessageSquareQuote, Network
+  MessageSquareQuote
 } from "lucide-react";
 
 import { useState } from "react";
@@ -183,16 +183,6 @@ export default function EditorToolbar({ editor, teamId }: Props) {
           title="Insert Image"
         >
           <ImageIcon size={16} />
-        </Button>
-        <Button
-          onClick={() => {
-            // Logic to insert a graph placeholder or specific graph block
-            editor.chain().focus().insertContent('[[graph]]').run()
-          }}
-          isActive={editor.isActive("graph")}
-          title="Insert Knowledge Graph"
-        >
-          <Network size={16} />
         </Button>
       </div>
 

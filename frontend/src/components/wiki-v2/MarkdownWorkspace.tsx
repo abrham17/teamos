@@ -11,6 +11,7 @@ import FrontmatterPanel from "@/components/wiki/FrontmatterPanel";
 import { useToast } from "@/components/ui/Toast";
 import { WikiPublishReviewModal, type WikiChangeSetPayload } from "@/components/wiki-v2/WikiPublishReviewModal";
 import RawSourceViewer from "@/components/wiki/RawSourceViewer";
+import { FloatingAIChat } from "@/components/chat/FloatingAIChat";
 
 interface Citation {
   id: string;
@@ -493,6 +494,8 @@ export function MarkdownWorkspace() {
           reloadPageAfterReview();
         }}
       />
+
+      <FloatingAIChat />
     </div>
   );
 }

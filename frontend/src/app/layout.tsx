@@ -4,7 +4,6 @@ import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ui/ThemeProvider";
 import { ToastProvider } from "@/components/ui/Toast";
-import { FloatingAIChat } from "@/components/chat/FloatingAIChat";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,7 +39,6 @@ export default function RootLayout({
           <ThemeProvider>
             <ToastProvider>
               {children}
-              <FloatingAIChat />
             </ToastProvider>
           </ThemeProvider>
         </ClerkProvider>

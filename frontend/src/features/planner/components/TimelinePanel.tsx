@@ -10,15 +10,19 @@ import {
   Maximize2,
   Minimize2,
   X,
+  Plus,
+  Flag
 } from "lucide-react";
 
 interface TimelinePanelProps {
   tasks: PlanTask[];
   milestones: PlanMilestone[];
+  onAddTask?: () => void;
+  onAddMilestone?: () => void;
   teamMembers: TeamMember[];
 }
 
-export function TimelinePanel({ tasks, milestones }: Omit<TimelinePanelProps, 'teamMembers'>) {
+export function TimelinePanel({ tasks, milestones, onAddTask, onAddMilestone }: Omit<TimelinePanelProps, 'teamMembers'>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const expandedContainerRef = useRef<HTMLDivElement>(null);
@@ -87,6 +91,21 @@ export function TimelinePanel({ tasks, milestones }: Omit<TimelinePanelProps, 't
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={onAddTask}
+            className="flex items-center gap-2 px-3 py-1.5 bg-[var(--accent)] text-white text-[10px] font-bold uppercase tracking-widest rounded-lg hover:opacity-90 transition-all shadow-sm"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Task
+          </button>
+          <button
+            onClick={onAddMilestone}
+            className="flex items-center gap-2 px-3 py-1.5 bg-[var(--surface-2)] text-[var(--text-secondary)] text-[10px] font-bold uppercase tracking-widest rounded-lg hover:bg-[var(--surface-3)] transition-all border border-[var(--border-subtle)]"
+          >
+            <Flag className="w-3.5 h-3.5" />
+            Add Milestone
+          </button>
+          <div className="w-px h-6 bg-[var(--border-subtle)] mx-1" />
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="h-8 w-8 flex items-center justify-center hover:bg-[var(--surface-2)] rounded-lg transition-colors border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--accent)]"

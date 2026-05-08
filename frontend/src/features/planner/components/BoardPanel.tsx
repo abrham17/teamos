@@ -8,6 +8,7 @@ import { Plus, MoreHorizontal, Calendar, Signal, User, AlertCircle, Clock, Check
 interface BoardPanelProps {
   tasks: PlanTask[];
   onUpdateTask: (id: string, updates: Partial<PlanTask>) => void;
+  onAddTask?: (status: PlanTask["status"]) => void;
   teamMembers: TeamMember[];
 }
 
@@ -18,7 +19,7 @@ const COLUMNS = [
   { id: "blocked", label: "Blocked", color: "bg-rose-500", icon: AlertCircle },
 ] as const;
 
-export function BoardPanel({ tasks, onUpdateTask }: Omit<BoardPanelProps, 'teamMembers'>) {
+export function BoardPanel({ tasks, onUpdateTask, onAddTask }: Omit<BoardPanelProps, 'teamMembers'>) {
   return (
     <div className="flex gap-6 h-full overflow-x-auto p-6 custom-scrollbar bg-[var(--bg-950)]/50">
       {COLUMNS.map((column) => {
@@ -37,7 +38,10 @@ export function BoardPanel({ tasks, onUpdateTask }: Omit<BoardPanelProps, 'teamM
                 </span>
               </div>
               <div className="flex items-center gap-1">
-                <button className="p-1.5 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors">
+                <button 
+                  onClick={() => onAddTask?.(column.id as PlanTask["status"])}
+                  className="p-1.5 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors"
+                >
                   <Plus className="w-4 h-4" />
                 </button>
                 <button className="p-1.5 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-dim)]">

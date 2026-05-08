@@ -53,27 +53,28 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
   const extensions = useMemo(() => {
     const base = [
       StarterKit.configure({
-        // blockquote: false, // Keeping default behavior now
+        bulletList: false,
+        orderedList: false,
+        listItem: false,
+        blockquote: false,
       }),
-      Markdown.configure({}),
       Underline,
       TextAlign.configure({
-        types: ["heading", "paragraph", "bulletList", "orderedList"],
+        types: ["heading", "paragraph"],
       }),
       Highlight,
       BulletList,
       OrderedList,
       ListItem,
       Blockquote,
-      Placeholder.configure({
-        placeholder: "Start typing... Use '/' for commands or '[[' for wiki links.",
-      }),
-      Link.configure({ openOnClick: false }),
       Image,
-      Table.configure({ resizable: true }),
+      Table.configure({
+        resizable: true,
+      }),
       TableRow,
       TableHeader,
       TableCell,
+      Markdown.configure({}),
       SlashCommand.configure({ suggestion }),
       Wikilink.configure({
         suggestion: getWikilinkSuggestion(teamId),
@@ -98,7 +99,7 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
     content: initialText,
     editorProps: {
       attributes: {
-        class: "prose prose-invert max-w-none focus:outline-none min-h-[500px] pb-32",
+        class: "prose prose-invert max-w-none focus:outline-none min-h-[500px] pb-32 tiptap",
       },
     },
     onUpdate: ({ editor }) => {
