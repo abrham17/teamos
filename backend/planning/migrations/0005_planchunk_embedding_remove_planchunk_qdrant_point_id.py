@@ -6,6 +6,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('planning', '0004_projectmember'),
+        ('wiki', '0004_pgvector_setup'),
     ]
 
     operations = [
