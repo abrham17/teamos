@@ -159,8 +159,10 @@ CHAT_RAG_RESULT_LIMIT = int(os.environ.get("CHAT_RAG_RESULT_LIMIT", "30"))
 # --- Email Settings ---
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = os.environ.get("SMTP_HOST")
-EMAIL_PORT = int(os.environ.get("SMTP_PORT", 587))
-EMAIL_USE_TLS = True
+_EMAIL_PORT = int(os.environ.get("SMTP_PORT", 587))
+EMAIL_PORT = _EMAIL_PORT
+EMAIL_USE_TLS = (_EMAIL_PORT == 587)
+EMAIL_USE_SSL = (_EMAIL_PORT == 465)
 EMAIL_HOST_USER = os.environ.get("SMTP_USER")
 EMAIL_HOST_PASSWORD = os.environ.get("SMTP_PASSWORD")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "TeamOS <hello@team-os.tech>")
