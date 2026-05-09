@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     RegisterView, LoginView, LogoutView, MeView, UpdateProfileView,
-    ClerkProvisionView,
+    ClerkProvisionView, FinalizeOnboardingView,
     TeamListCreateView, TeamDetailView, TeamMembersView,
     InviteCreateView, InviteListView, InviteResendView, InviteRevokeView,
     AcceptInviteView, TeamAuditEventsView, TransferOwnershipView,
@@ -14,6 +14,7 @@ urlpatterns = [
     path("me/", MeView.as_view(), name="accounts-me"),
     path("me/profile/", UpdateProfileView.as_view(), name="accounts-update-profile"),
     path("provision/", ClerkProvisionView.as_view(), name="accounts-provision"),
+    path("onboarding/finalize/", FinalizeOnboardingView.as_view(), name="accounts-onboarding-finalize"),
     path("teams/", TeamListCreateView.as_view(), name="accounts-teams"),
     path("teams/<uuid:team_id>/", TeamDetailView.as_view(), name="accounts-team-detail"),
     path("teams/<uuid:team_id>/members/", TeamMembersView.as_view(), name="accounts-team-members"),
