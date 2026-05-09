@@ -224,7 +224,7 @@ if OPENAI_EMBEDDING_DIMENSIONS is not None:
     except ValueError:
         OPENAI_EMBEDDING_DIMENSIONS = None
 # Assembled wiki context for chat RAG (character budget; drop lowest-ranked chunks first).
-CHAT_RAG_MAX_CONTEXT_CHARS = int(os.environ.get("CHAT_RAG_MAX_CONTEXT_CHARS", "5000"))
+CHAT_RAG_MAX_CONTEXT_CHARS = int(os.environ.get("CHAT_RAG_MAX_CONTEXT_CHARS", "20000"))
 CHAT_RAG_RESULT_LIMIT = int(os.environ.get("CHAT_RAG_RESULT_LIMIT", "10"))
 # Chat TTS (OpenAI audio/speech); requires OPENAI_API_KEY even when LLM_BACKEND=groq.
 OPENAI_TTS_MODEL = os.environ.get("OPENAI_TTS_MODEL", "tts-1")
@@ -261,8 +261,8 @@ PLAN_TIERS = {
     "free": {
         "embed_model": "nomic-embed-text",
         "embed_provider": "local",
-        "chunk_size": 1200,
-        "chunk_overlap": 150,
+        "chunk_size": 4500,
+        "chunk_overlap": 450,
         "chunking_strategy": "character",
         "retrieve_k": 5,
         "rerank_k": 3,
@@ -275,8 +275,8 @@ PLAN_TIERS = {
     "team": {
         "embed_model": "text-embedding-3-small",
         "embed_provider": "openai",
-        "chunk_size": 2000,
-        "chunk_overlap": 200,
+        "chunk_size": 4500,
+        "chunk_overlap": 450,
         "chunking_strategy": "sentence",
         "retrieve_k": 20,
         "rerank_k": 8,
@@ -289,8 +289,8 @@ PLAN_TIERS = {
     "pro": {
         "embed_model": "text-embedding-3-large",
         "embed_provider": "openai",
-        "chunk_size": 3500,
-        "chunk_overlap": 350,
+        "chunk_size": 6000,
+        "chunk_overlap": 600,
         "chunking_strategy": "semantic",
         "retrieve_k": 50,
         "rerank_k": 12,
