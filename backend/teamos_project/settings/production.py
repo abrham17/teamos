@@ -43,10 +43,16 @@ DATABASES = {
 }
 
 # Redis for Channels / Celery (Upstash or native)
+REDIS_URL = os.environ.get("REDIS_URL", "")
+
+# Fix for Heroku Redis (rediss://) requiring ssl_cert_reqs
+if REDIS_URL.startswith("rediss://") and "ssl_cert_reqs" not in REDIS_URL:
+    REDIS_URL += "?ssl_cert_reqs=none"
+
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": os.environ.get("REDIS_URL"),
+        "LOCATION": REDIS_URL,
     }
 }
 
@@ -54,13 +60,13 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [os.environ.get("REDIS_URL")],
+            "hosts": [REDIS_URL],
         },
     },
 }
 
-CELERY_BROKER_URL = os.environ.get("REDIS_URL")
-CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL")
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = REDIS_URL
 
 # Security
 SECURE_SSL_REDIRECT = True
