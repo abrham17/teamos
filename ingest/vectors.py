@@ -60,15 +60,30 @@ class VectorStore:
         if model is None:
             model = embedding_model_name()
         
-        try:
-            response = self._embed_client.embeddings.create(
-                input=[text.replace("\n", " ")],
-                model=model,
-            )
-            return response.data[0].embedding
-        except OpenAIError as exc:
-            logger.error("OpenAI embedding failed: %s", exc)
-            raise exc
+        # Robustness: Remove problematic chars and retry up to 2 times
+        clean_text = text.replace("\n", " ").strip()
+        if not clean_text:
+            clean_text = "Empty content"
+
+        last_err = None
+        for attempt in range(3):
+            try:
+                response = self._embed_client.embeddings.create(
+                    input=[clean_text],
+                    model=model,
+                )
+                if not response or not getattr(response, "data", None) or len(response.data) == 0:
+                    raise ValueError("No embedding data received from API")
+                
+                return response.data[0].embedding
+            except Exception as exc:
+                last_err = exc
+                logger.warning("Embedding attempt %s failed: %s", attempt + 1, exc)
+                import time
+                time.sleep(1) # Brief backoff
+        
+        logger.error("All embedding attempts failed. Last error: %s", last_err)
+        raise last_err
 
     def upsert_chunks(self, team_id, page_id, chunks_data: list):
         """

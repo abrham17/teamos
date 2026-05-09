@@ -18,18 +18,21 @@ class AppwriteMediaStorage(Storage):
         self.storage_service = AppwriteStorageService(self.client)
         self.bucket_id = os.environ.get("APPWRITE_BUCKET_ID", "default")
 
+    def _get_file_id(self, name):
+        import hashlib
+        return hashlib.md5(name.encode()).hexdigest()
+
     def _open(self, name, mode='rb'):
         # Appwrite doesn't support random access easily; we download the whole file
         try:
-            result = self.storage_service.get_file_download(self.bucket_id, name)
+            file_id = self._get_file_id(name)
+            result = self.storage_service.get_file_download(self.bucket_id, file_id)
             return ContentFile(result)
         except Exception:
             return None
 
     def _save(self, name, content):
-        # Generate a unique file ID (or use name as ID if compatible)
-        # We'll use the 'unique()' helper or the name itself
-        file_id = name.replace("/", "_") # Appwrite IDs don't like slashes
+        file_id = self._get_file_id(name)
         
         # Read content into memory
         content_bytes = content.read()
@@ -48,21 +51,25 @@ class AppwriteMediaStorage(Storage):
 
     def exists(self, name):
         try:
-            self.storage_service.get_file(self.bucket_id, name.replace("/", "_"))
+            file_id = self._get_file_id(name)
+            self.storage_service.get_file(self.bucket_id, file_id)
             return True
         except Exception:
             return False
 
     def url(self, name):
         # Returns the public download/preview URL
-        return f"{os.environ.get('APPWRITE_ENDPOINT')}/storage/buckets/{self.bucket_id}/files/{name.replace('/', '_')}/view?project={os.environ.get('APPWRITE_PROJECT_ID')}"
+        file_id = self._get_file_id(name)
+        return f"{os.environ.get('APPWRITE_ENDPOINT')}/storage/buckets/{self.bucket_id}/files/{file_id}/view?project={os.environ.get('APPWRITE_PROJECT_ID')}"
 
     def delete(self, name):
         try:
-            self.storage_service.delete_file(self.bucket_id, name.replace("/", "_"))
+            file_id = self._get_file_id(name)
+            self.storage_service.delete_file(self.bucket_id, file_id)
         except Exception:
             pass
 
     def size(self, name):
-        file_info = self.storage_service.get_file(self.bucket_id, name.replace("/", "_"))
+        file_id = self._get_file_id(name)
+        file_info = self.storage_service.get_file(self.bucket_id, file_id)
         return file_info.get('sizeOriginal', 0)
