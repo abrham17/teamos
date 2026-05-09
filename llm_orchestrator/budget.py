@@ -29,9 +29,9 @@ def calculate_team_monthly_budget(team_subscription) -> float:
     """
     plan = team_subscription.plan_key
     
-    # Free tier has a very small fixed cap
+    # Free tier has a slightly larger cap for internal testing/trials
     if plan == "free":
-        return 0.50
+        return 5.00
         
     # Calculate revenue based on seats
     seat_count = team_subscription.metadata.get("seat_count", 1)
