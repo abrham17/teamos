@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    RegisterView, LoginView, LogoutView, MeView,
+    RegisterView, LoginView, LogoutView, MeView, UpdateProfileView,
     ClerkProvisionView,
     TeamListCreateView, TeamDetailView, TeamMembersView,
     InviteCreateView, InviteListView, InviteResendView, InviteRevokeView,
@@ -12,6 +12,7 @@ urlpatterns = [
     path("login/", LoginView.as_view(), name="accounts-login"),
     path("logout/", LogoutView.as_view(), name="accounts-logout"),
     path("me/", MeView.as_view(), name="accounts-me"),
+    path("me/profile/", UpdateProfileView.as_view(), name="accounts-update-profile"),
     path("provision/", ClerkProvisionView.as_view(), name="accounts-provision"),
     path("teams/", TeamListCreateView.as_view(), name="accounts-teams"),
     path("teams/<uuid:team_id>/", TeamDetailView.as_view(), name="accounts-team-detail"),
