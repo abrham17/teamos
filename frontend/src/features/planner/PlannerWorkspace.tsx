@@ -272,7 +272,6 @@ export function PlannerWorkspace() {
               tasks={activeProject?.tasks || []} 
               teamMembers={teamMembers} 
               projectMembers={activeProject?.members || []}
-              onAssignRole={handleAssignRole}
               onRemoveMember={handleRemoveMember}
               onOpenAddMember={() => {
                 setEditMemberId(null);
