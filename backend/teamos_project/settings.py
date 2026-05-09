@@ -27,14 +27,7 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-%m=6(vxy^kclb#
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = [
-    "api.team-os.tech",
-    'team-os.tech',
-    "https://teamos-w37k.vercel.app",
-    ".onrender.com",
-    "localhost",
-    "127.0.0.1",
-]
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "api.team-os.tech,team-os.tech,localhost").split(",")
 
 # Load environment variables early so they can be used in settings below
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -73,6 +66,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -149,6 +143,15 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 AUTH_USER_MODEL = 'accounts.User'
 
@@ -162,6 +165,20 @@ REST_FRAMEWORK = {
         'teamos_project.authentication.CookieJWTAuthentication',
     ],
 }
+
+# --- Production Security ---
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "https://team-os.tech").split(",")
+
+# --- CORS ---
+CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "https://team-os.tech").split(",")
+CORS_ALLOW_CREDENTIALS = True
 # Environment variables are loaded at the top of the file
 
 PLAN_TIERS = {
@@ -189,5 +206,9 @@ FREE_TRIAL_DAYS = 60
 FREE_TRIAL_TOKEN_BUDGET = 5000
 FREE_TRIAL_SEAT_LIMIT = 3
 PAYMENT_GRACE_PERIOD_DAYS = 7
+
+# --- Media Files ---
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 

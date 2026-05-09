@@ -472,3 +472,29 @@ class ContradictionResolutionView(APIView):
 
         return ok({"status": "resolved", "changeset_id": str(cs.id)})
 
+
+class WikiImageUploadView(APIView):
+    """POST /api/wiki/:team_id/upload-image/ — Upload an image and get a URL."""
+    permission_classes = [IsAuthenticated, CanEditWiki]
+
+    def post(self, request, team_id):
+        import os
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return fail("No file uploaded.", status_code=400, code="no_file")
+        
+        # Check if it's an image
+        if not file_obj.content_type.startswith('image/'):
+            return fail("File must be an image.", status_code=400, code="invalid_file_type")
+
+        # Save the file
+        from django.core.files.storage import default_storage
+        import uuid
+        
+        ext = os.path.splitext(file_obj.name)[1]
+        filename = f"wiki_images/{team_id}/{uuid.uuid4()}{ext}"
+        path = default_storage.save(filename, file_obj)
+        url = default_storage.url(path)
+        
+        return ok({"url": url})
+

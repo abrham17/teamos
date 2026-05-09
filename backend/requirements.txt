@@ -64,7 +64,7 @@ wcwidth==0.6.0
 zope.interface==8.4
 dj-database-url==2.2.0
 whitenoise==6.7.0
-qdrant-client==1.14.0
+pgvector==0.3.6
 groq==0.18.0
 pytest==8.3.3
 sentence-transformers>=3.0.0

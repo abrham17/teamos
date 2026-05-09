@@ -1,32 +1,20 @@
-import hashlib
 import logging
-import random
-
 from django.conf import settings
 from openai import OpenAI, OpenAIError
-from qdrant_client import QdrantClient
-from qdrant_client.http import models as rest
+from pgvector.django import CosineDistance
 
-from teamos_project.llm_config import effective_embedding_dimensions, embedding_model_name
+from teamos_project.llm_config import embedding_model_name
 
 logger = logging.getLogger(__name__)
 
 
 class VectorStore:
     """
-    Qdrant + OpenAI-compatible SDK.
-
-    - ``LLM_BACKEND=groq`` (development): chat completions go to Groq; embeddings use
-      ``OPENAI_API_KEY`` when configured and ``USE_DETERMINISTIC_EMBEDDINGS`` is false,
-      otherwise deterministic local vectors.
-    - ``LLM_BACKEND=openai`` (production): OpenAI client for chat + embeddings when key set.
+    PGVector + OpenAI-compatible SDK.
+    Uses Django models (PageChunk, PlanChunk) to store and search embeddings.
     """
 
     def __init__(self):
-        self.qdrant = QdrantClient(
-            url=settings.QDRANT_URL,
-            api_key=settings.QDRANT_API_KEY,
-        )
         backend = getattr(settings, "LLM_BACKEND", "openai").lower()
         self._llm_backend = backend
 
@@ -64,8 +52,6 @@ class VectorStore:
                 return None
         return self._hf_model
 
-
-
     def _get_embedding(self, text: str, model: str | None = None):
         embedder = self._embed_client
 
@@ -92,109 +78,61 @@ class VectorStore:
         
         raise RuntimeError("No embedding provider available. Set OPENAI_API_KEY or install sentence-transformers.")
 
-
-
-    def ensure_collection(self, team_id: str, vector_size: int | None = None):
-        if vector_size is None:
-            vector_size = effective_embedding_dimensions()
-        collection_name = f"team_{team_id}"
-        collections = self.qdrant.get_collections().collections
-        if not any(c.name == collection_name for c in collections):
-            logger.info("Creating Qdrant collection: %s", collection_name)
-            self.qdrant.create_collection(
-                collection_name=collection_name,
-                vectors_config=rest.VectorParams(
-                    size=vector_size,
-                    distance=rest.Distance.COSINE,
-                ),
-            )
-        return collection_name
-
-    def upsert_chunks(self, team_id: str, page_id: str, chunks_data: list):
+    def upsert_chunks(self, team_id, page_id, chunks_data: list):
         """
         chunks_data: list of dicts with {id, content, index, title}
         """
-        collection_name = self.ensure_collection(str(team_id))
-        points = []
-
+        from wiki.models import PageChunk
+        
         for chunk in chunks_data:
             vector = self._get_embedding(chunk["content"])
-            points.append(
-                rest.PointStruct(
-                    id=chunk["id"],
-                    vector=vector,
-                    payload={
-                        "page_id": str(page_id),
-                        "page_title": chunk["title"],
-                        "chunk_index": chunk["index"],
-                        "content": chunk["content"],
-                        "team_id": str(team_id),
-                    },
-                )
-            )
-
-        self.qdrant.upsert(
-            collection_name=collection_name,
-            points=points,
-        )
+            PageChunk.objects.filter(id=chunk["id"]).update(embedding=vector)
 
     def search_similar_pages(self, team_id: str, query_text: str, limit: int = 5):
-        collection_name = self.ensure_collection(str(team_id))
+        from wiki.models import PageChunk
+        
         vector = self._get_embedding(query_text)
-
-        if hasattr(self.qdrant, "query_points"):
-            resp = self.qdrant.query_points(
-                collection_name=collection_name,
-                query=vector,
-                limit=limit,
-                with_payload=True,
-            )
-            return list(resp.points)
-
-        return self.qdrant.search(
-            collection_name=collection_name,
-            query_vector=vector,
-            limit=limit,
-            with_payload=True,
+        
+        # Filter by team_id (via page__team_id) and order by cosine distance
+        results = (
+            PageChunk.objects.filter(page__team_id=team_id)
+            .annotate(distance=CosineDistance("embedding", vector))
+            .order_by("distance")[:limit]
         )
+        
+        # Mocking the Qdrant response structure for compatibility
+        class MockPoint:
+            def __init__(self, chunk):
+                self.id = str(chunk.id)
+                self.payload = {
+                    "page_id": str(chunk.page_id),
+                    "page_title": chunk.page.title,
+                    "chunk_index": chunk.chunk_index,
+                    "content": chunk.content,
+                    "team_id": str(team_id),
+                }
+                self.score = 1.0 # Could be derived from distance if needed
+        
+        return [MockPoint(r) for r in results]
 
     def upsert_plan_chunks(self, team_id: str, project_id: str, chunks_data: list):
         """
         chunks_data: list of dicts with
         {id, content, index, project_name, source_kind, source_ref_id, title}
         """
-        collection_name = self.ensure_collection(str(team_id))
-        points = []
+        from planning.models import PlanChunk
+        
         for chunk in chunks_data:
             vector = self._get_embedding(chunk["content"])
-            points.append(
-                rest.PointStruct(
-                    id=chunk["id"],
-                    vector=vector,
-                    payload={
-                        "source_type": "plan",
-                        "project_id": str(project_id),
-                        "project_name": chunk["project_name"],
-                        "source_kind": chunk["source_kind"],
-                        "source_ref_id": chunk.get("source_ref_id"),
-                        "title": chunk["title"],
-                        "chunk_index": chunk["index"],
-                        "chunk_id": chunk["id"],
-                        "content": chunk["content"],
-                        "team_id": str(team_id),
-                    },
-                )
-            )
-        self.qdrant.upsert(collection_name=collection_name, points=points)
+            PlanChunk.objects.filter(id=chunk["id"]).update(embedding=vector)
 
     def delete_points(self, team_id: str, point_ids: list[str]):
-        if not point_ids:
-            return
-        collection_name = self.ensure_collection(str(team_id))
-        self.qdrant.delete(
-            collection_name=collection_name,
-            points_selector=rest.PointIdsList(points=point_ids),
-        )
+        """
+        In PGVector, deleting the DB rows (PageChunk/PlanChunk) handles this.
+        This method is kept for API compatibility but doesn't need to do anything
+        if the caller already deletes the rows.
+        """
+        pass
 
 
 vector_store = VectorStore()
