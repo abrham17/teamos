@@ -66,6 +66,7 @@ dj-database-url==2.2.0
 whitenoise==6.7.0
 pgvector==0.3.6
 groq==0.18.0
+appwrite==6.1.0
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.2.0+cpu
 sentence-transformers==3.0.1

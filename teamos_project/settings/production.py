@@ -90,8 +90,11 @@ CSRF_TRUSTED_ORIGINS = [
 extra_origins = os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")
 CSRF_TRUSTED_ORIGINS += [o.strip() for o in extra_origins if o.strip()]
 
-# Static Files (Optimized with Whitenoise)
+# Static Files & Media (Optimized with Whitenoise & Appwrite)
 STORAGES = {
+    "default": {
+        "BACKEND": "teamos_project.storage.AppwriteMediaStorage",
+    },
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
@@ -128,8 +131,9 @@ CORS_ALLOW_METHODS = [
 # CSRF already configured above
 
 # Simple JWT Cookie Security
+SIMPLE_JWT["AUTH_COOKIE_DOMAIN"] = ".team-os.tech"
 SIMPLE_JWT["AUTH_COOKIE_SECURE"] = True
-SIMPLE_JWT["AUTH_COOKIE_SAMESITE"] = "None"  # Required for cross-site cookies in production
+SIMPLE_JWT["AUTH_COOKIE_SAMESITE"] = "Lax"
 
 # Groq / OpenAI API Keys
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
