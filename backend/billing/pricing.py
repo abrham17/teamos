@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import Any
 
 TEAM_PER_USER_USD = 20.00
@@ -13,6 +13,9 @@ class PriceQuote:
     monthly_total_cents: int
     variant_key: str
     breakdown: list[dict[str, Any]]
+
+    def as_dict(self):
+        return asdict(self)
 
 
 def compute_quote(*, plan_key: str, seat_count: int, usage_tier: str = "standard") -> PriceQuote:
