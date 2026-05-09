@@ -98,6 +98,46 @@ class MeView(APIView):
         return ok(UserSerializer(request.user).data)
 
 
+class FinalizeOnboardingView(APIView):
+    """
+    Final step for users who signed up via Google/Clerk.
+    Sets their name and creates their first team manually.
+    """
+    def post(self, request):
+        user = request.user
+        first_name = request.data.get("first_name", "").strip()
+        last_name = request.data.get("last_name", "").strip()
+        team_name = request.data.get("team_name", "").strip()
+        
+        if not first_name or not last_name or not team_name:
+            return fail("First name, last name, and team name are required.", status_code=400)
+            
+        # Update user
+        user.first_name = first_name
+        user.last_name = last_name
+        user.save()
+        
+        # Create team if they don't have one
+        membership = TeamMember.objects.filter(user=user).first()
+        if not membership:
+            base_slug = slugify(team_name) or "team"
+            slug = base_slug
+            n = 1
+            while Team.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{n}"; n += 1
+            
+            team = Team.objects.create(name=team_name, slug=slug, created_by=user)
+            membership = TeamMember.objects.create(team=team, user=user, role="owner")
+        else:
+            team = membership.team
+            
+        return ok({
+            "user": UserSerializer(user).data,
+            "team": TeamSerializer(team).data,
+            "role": membership.role
+        })
+
+
 class UpdateProfileView(APIView):
     def patch(self, request):
         user = request.user
@@ -115,50 +155,36 @@ class UpdateProfileView(APIView):
 
 class ClerkProvisionView(APIView):
     """
-    Ensures a first-time Clerk-authenticated user gets an initial team
-    and owner membership so TeamOS modules can run immediately.
+    Ensures a first-time Clerk-authenticated user gets an initial team.
+    If names or team are missing, signals onboarding required.
     """
 
     def post(self, request):
         user = request.user
         
         # Enforce name check
-        onboarding_required = not (user.first_name and user.last_name)
-        
+        has_name = bool(user.first_name and user.last_name)
         membership = TeamMember.objects.filter(user=user).select_related("team").first()
-        if membership:
-            return ok(
-                {
-                    "user": UserSerializer(user).data,
-                    "team": TeamSerializer(membership.team).data,
-                    "role": membership.role,
-                    "provisioned": False,
-                    "onboarding_required": onboarding_required,
-                }
-            )
-
-        # If it's a brand new user, we still provision the team but tell them to finish profile
-        base_name = user.first_name.strip() or user.email.split("@")[0] or "Personal"
-        team_name = f"{base_name}'s Team"
-        base_slug = slugify(team_name) or "personal-team"
-        slug = base_slug
-        n = 1
-        while Team.objects.filter(slug=slug).exists():
-            slug = f"{base_slug}-{n}"; n += 1
-
-        team = Team.objects.create(name=team_name, slug=slug, created_by=user)
-        TeamMember.objects.create(team=team, user=user, role="owner")
         
-        return ok(
-            {
+        # If they lack a name OR a team, onboarding is required
+        onboarding_required = not has_name or not membership
+        
+        if onboarding_required:
+            return ok({
                 "user": UserSerializer(user).data,
-                "team": TeamSerializer(team).data,
-                "role": "owner",
-                "provisioned": True,
-                "onboarding_required": onboarding_required,
-            },
-            status_code=status.HTTP_201_CREATED,
-        )
+                "team": TeamSerializer(membership.team).data if membership else None,
+                "role": membership.role if membership else None,
+                "provisioned": False,
+                "onboarding_required": True,
+            })
+
+        return ok({
+            "user": UserSerializer(user).data,
+            "team": TeamSerializer(membership.team).data,
+            "role": membership.role,
+            "provisioned": False,
+            "onboarding_required": False,
+        })
 
 
 # ── Teams ──────────────────────────────────────────────────────────
