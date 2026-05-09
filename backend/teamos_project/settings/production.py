@@ -135,14 +135,17 @@ SIMPLE_JWT["AUTH_COOKIE_DOMAIN"] = ".team-os.tech"
 SIMPLE_JWT["AUTH_COOKIE_SECURE"] = True
 SIMPLE_JWT["AUTH_COOKIE_SAMESITE"] = "Lax"
 
-# Groq / OpenAI API Keys
+# Groq / OpenAI / OpenRouter API Keys
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-# PGVector is handled natively via DATABASE_URL
-# Production: force OpenAI for LLM and Embeddings
-LLM_BACKEND = "openai"
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+
+# Production: force OpenAI or OpenRouter for LLM and Embeddings
+LLM_BACKEND = os.environ.get("LLM_BACKEND", "openai")
 OPENAI_CHAT_MODEL = "gpt-4o"
 OPENAI_MINI_MODEL = "gpt-4o-mini"
+OPENAI_NANO_MODEL = "gpt-4.1-nano"
 OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 OPENAI_EMBEDDING_DIMENSIONS = 1536
 USE_DETERMINISTIC_EMBEDDINGS = False

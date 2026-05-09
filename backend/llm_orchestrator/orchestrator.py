@@ -43,14 +43,26 @@ def llm_call(
     # 3. Execution
     start_time = time.time()
     
-    # Use the shared client from vector_store or create a new one if needed
-    client = vector_store.openai
+    # Selection of client
+    client = None
+    
+    # Priority 1: OpenRouter (if explicitly chosen or key exists)
+    if (getattr(settings, "LLM_BACKEND", "") == "openrouter" or 
+        not settings.OPENAI_API_KEY) and getattr(settings, "OPENROUTER_API_KEY", ""):
+        client = OpenAI(
+            api_key=settings.OPENROUTER_API_KEY,
+            base_url=getattr(settings, "OPENROUTER_API_BASE", "https://openrouter.ai/api/v1"),
+            default_headers={
+                "HTTP-Referer": "https://team-os.tech",
+                "X-Title": "TeamOS",
+            }
+        )
+    # Priority 2: Direct OpenAI
+    elif settings.OPENAI_API_KEY:
+        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    
     if not client:
-        # Fallback client creation if vector_store is not initialized or has no client
-        if settings.OPENAI_API_KEY:
-            client = OpenAI(api_key=settings.OPENAI_API_KEY)
-        else:
-            raise ValueError("No LLM client available. Check OPENAI_API_KEY.")
+        raise ValueError("No LLM client available. Set OPENAI_API_KEY or OPENROUTER_API_KEY.")
 
     try:
         # Handle JSON mode if requested and supported
