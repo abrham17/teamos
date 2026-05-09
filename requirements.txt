@@ -67,3 +67,4 @@ whitenoise==6.7.0
 pgvector==0.3.6
 groq==0.18.0
 appwrite==6.1.0
+gevent==24.2.1
