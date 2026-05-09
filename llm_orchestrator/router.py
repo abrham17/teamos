@@ -5,13 +5,11 @@ from django.utils import timezone
 # Model Constants
 MODEL_GPT_4O = "gpt-4o"
 MODEL_GPT_4O_MINI = "gpt-4o-mini"
-MODEL_GPT_4_1_NANO = "gpt-4.1-nano"
 
 # Pricing (per 1M tokens) - Reference May 2026
 MODEL_PRICING = {
     MODEL_GPT_4O: {"input": 2.50, "output": 10.00},
     MODEL_GPT_4O_MINI: {"input": 0.15, "output": 0.60},
-    MODEL_GPT_4_1_NANO: {"input": 0.10, "output": 0.40},
 }
 
 # Operation Value Scores & Priority Models (Section 5)
@@ -19,10 +17,10 @@ OPERATION_CONFIG = {
     "chat_ask": {"value_score": "medium", "priority_model": MODEL_GPT_4O, "fallback": MODEL_GPT_4O_MINI},
     "chat_agent": {"value_score": "high", "priority_model": MODEL_GPT_4O, "fallback": MODEL_GPT_4O_MINI},
     "plan_generate": {"value_score": "high", "priority_model": MODEL_GPT_4O, "fallback": MODEL_GPT_4O_MINI},
-    "ingest_decompose": {"value_score": "medium", "priority_model": MODEL_GPT_4O_MINI, "fallback": MODEL_GPT_4_1_NANO},
-    "ingest_relate": {"value_score": "low", "priority_model": MODEL_GPT_4_1_NANO, "fallback": MODEL_GPT_4_1_NANO},
-    "ingest_governance": {"value_score": "low", "priority_model": MODEL_GPT_4_1_NANO, "fallback": MODEL_GPT_4_1_NANO},
-    "template_detect": {"value_score": "low", "priority_model": MODEL_GPT_4_1_NANO, "fallback": MODEL_GPT_4_1_NANO},
+    "ingest_decompose": {"value_score": "medium", "priority_model": MODEL_GPT_4O_MINI, "fallback": MODEL_GPT_4O_MINI},
+    "ingest_relate": {"value_score": "low", "priority_model": MODEL_GPT_4O_MINI, "fallback": MODEL_GPT_4O_MINI},
+    "ingest_governance": {"value_score": "low", "priority_model": MODEL_GPT_4O_MINI, "fallback": MODEL_GPT_4O_MINI},
+    "template_detect": {"value_score": "low", "priority_model": MODEL_GPT_4O_MINI, "fallback": MODEL_GPT_4O_MINI},
 }
 
 def get_routed_model(team_subscription, operation: str) -> Tuple[str, str]:
@@ -36,15 +34,15 @@ def get_routed_model(team_subscription, operation: str) -> Tuple[str, str]:
     if status in ["trial_expired", "suspended"]:
         raise ValueError(f"Subscription status '{status}' prevents LLM usage.")
 
-    # 2. Free Tier: Always GPT-4.1-nano
+    # 2. Free Tier: Always GPT-4o-mini
     if plan == "free":
-        return MODEL_GPT_4_1_NANO, "free_fixed"
+        return MODEL_GPT_4O_MINI, "free_fixed"
 
     # 3. Grace Period Check
     if status in ["past_due", "canceled"] and team_subscription.grace_expires_at:
         if timezone.now() < team_subscription.grace_expires_at:
-            # Downgrade to nano during grace period to save costs
-            return MODEL_GPT_4_1_NANO, "grace_period_fallback"
+            # Downgrade to mini during grace period to save costs
+            return MODEL_GPT_4O_MINI, "grace_period_fallback"
 
     # 4. Continuous Cost Curve Calculation
     spend_ratio = calculate_spend_ratio(team_subscription)
@@ -78,7 +76,7 @@ def get_routed_model(team_subscription, operation: str) -> Tuple[str, str]:
             return MODEL_GPT_4O_MINI, "pro_background_routing"
         
         if spend_ratio > 0.60:
-            return MODEL_GPT_4_1_NANO, "team_background_routing"
+            return MODEL_GPT_4O_MINI, "team_background_routing"
         return MODEL_GPT_4O_MINI, "team_background_routing"
 
     # 6. Probabilistic Selection (for remaining cases)
@@ -88,7 +86,7 @@ def get_routed_model(team_subscription, operation: str) -> Tuple[str, str]:
     elif r < (w_4o + w_mini):
         return MODEL_GPT_4O_MINI, "continuous_curve"
     else:
-        return MODEL_GPT_4_1_NANO, "continuous_curve"
+        return MODEL_GPT_4O_MINI, "continuous_curve"
 
 def calculate_spend_ratio(team_subscription) -> float:
     from .budget import get_current_spend_ratio
