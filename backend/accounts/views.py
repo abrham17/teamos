@@ -36,24 +36,29 @@ def set_jwt_cookies(response, user):
     refresh = RefreshToken.for_user(user)
     
     # Use settings for cookie security if available, else defaults
-    cookie_secure = getattr(settings, "SIMPLE_JWT", {}).get("AUTH_COOKIE_SECURE", False)
-    cookie_samesite = getattr(settings, "SIMPLE_JWT", {}).get("AUTH_COOKIE_SAMESITE", "Lax")
+    simple_jwt_settings = getattr(settings, "SIMPLE_JWT", {})
+    cookie_secure = simple_jwt_settings.get("AUTH_COOKIE_SECURE", False)
+    cookie_samesite = simple_jwt_settings.get("AUTH_COOKIE_SAMESITE", "Lax")
+    cookie_domain = simple_jwt_settings.get("AUTH_COOKIE_DOMAIN", None)
+    
+    common_kwargs = {
+        "httponly": True,
+        "secure": cookie_secure,
+        "samesite": cookie_samesite,
+        "domain": cookie_domain,
+    }
     
     response.set_cookie(
         "refresh_token", 
         str(refresh), 
-        httponly=True, 
-        secure=cookie_secure,
-        samesite=cookie_samesite, 
-        max_age=30 * 86400
+        max_age=30 * 86400,
+        **common_kwargs
     )
     response.set_cookie(
         "access_token", 
         str(refresh.access_token), 
-        httponly=True, 
-        secure=cookie_secure,
-        samesite=cookie_samesite, 
-        max_age=7 * 86400
+        max_age=7 * 86400,
+        **common_kwargs
     )
     return response
 
