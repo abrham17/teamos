@@ -63,10 +63,13 @@ CELERY_BROKER_URL = os.environ.get("REDIS_URL")
 CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL")
 
 # Security
-SECURE_SSL_REDIRECT = False 
+SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
-CSRF_COOKIE_SAMESITE = "None"
+SESSION_COOKIE_DOMAIN = ".team-os.tech"
+CSRF_COOKIE_DOMAIN = ".team-os.tech"
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 
@@ -122,13 +125,10 @@ CORS_ALLOW_METHODS = [
 SIMPLE_JWT["AUTH_COOKIE_SECURE"] = True
 SIMPLE_JWT["AUTH_COOKIE_SAMESITE"] = "None"  # Required for cross-site cookies in production
 
-# Qdrant setup
-QDRANT_URL = os.environ.get("QDRANT_URL")
-QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
-
 # Groq / OpenAI API Keys
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+# PGVector is handled natively via DATABASE_URL
 # Production: force OpenAI for LLM unless ALLOW_NON_OPENAI_LLM_IN_PRODUCTION=1.
 LLM_BACKEND = production_llm_backend_from_env(os.environ)
 USE_DETERMINISTIC_EMBEDDINGS = False
@@ -137,5 +137,4 @@ USE_DETERMINISTIC_EMBEDDINGS = False
 CHAT_RAG_MAX_CONTEXT_CHARS = int(os.environ.get("CHAT_RAG_MAX_CONTEXT_CHARS", "100000"))
 CHAT_RAG_RESULT_LIMIT = int(os.environ.get("CHAT_RAG_RESULT_LIMIT", "30"))
 
-if not QDRANT_URL:
-    logger.critical("QDRANT_URL is not set; vector search and ingest will fail until configured.")
+# RAG logic uses PGVector natively through models.
