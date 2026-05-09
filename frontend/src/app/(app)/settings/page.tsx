@@ -470,7 +470,65 @@ export default function SettingsPage() {
 
         {activeTab === "profile" && (
           <>
-            {/* Profile Section */}
+            {/* Personal Profile Section */}
+            <section>
+              <div className="mb-4">
+                <h3 className="text-lg font-medium text-[var(--text-primary)]">Personal Profile</h3>
+                <p className="text-sm text-[var(--text-muted)] mt-1">Manage your identity across TeamOS.</p>
+              </div>
+              <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-xl p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-dim)] px-1">First Name</label>
+                    <input
+                      type="text"
+                      value={members.find(m => m.user.id === myUserId)?.user.first_name || ""}
+                      onChange={async (e) => {
+                        const val = e.target.value;
+                        setMembers(prev => prev.map(m => m.user.id === myUserId ? { ...m, user: { ...m.user, first_name: val } } : m));
+                      }}
+                      onBlur={async (e) => {
+                        try {
+                          await api.patch("/auth/me/profile/", {
+                            first_name: e.target.value,
+                            last_name: members.find(m => m.user.id === myUserId)?.user.last_name || ""
+                          });
+                          success("First name updated.");
+                        } catch (err: any) {
+                          error(err.message || "Update failed.");
+                        }
+                      }}
+                      className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg-900)] border border-[var(--border-subtle)] focus:border-[var(--accent)] outline-none text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-dim)] px-1">Last Name</label>
+                    <input
+                      type="text"
+                      value={members.find(m => m.user.id === myUserId)?.user.last_name || ""}
+                      onChange={async (e) => {
+                        const val = e.target.value;
+                        setMembers(prev => prev.map(m => m.user.id === myUserId ? { ...m, user: { ...m.user, last_name: val } } : m));
+                      }}
+                      onBlur={async (e) => {
+                        try {
+                          await api.patch("/auth/me/profile/", {
+                            first_name: members.find(m => m.user.id === myUserId)?.user.first_name || "",
+                            last_name: e.target.value
+                          });
+                          success("Last name updated.");
+                        } catch (err: any) {
+                          error(err.message || "Update failed.");
+                        }
+                      }}
+                      className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg-900)] border border-[var(--border-subtle)] focus:border-[var(--accent)] outline-none text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Team Profile Section */}
             <section>
               <div className="mb-4">
                 <h3 className="text-lg font-medium text-[var(--text-primary)]">Team Profile</h3>
