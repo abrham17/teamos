@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from pgvector.django import VectorField
 from accounts.models import User, Team
 
 
@@ -59,7 +60,7 @@ class PageChunk(models.Model):
     section_title = models.CharField(max_length=300, blank=True)
     content = models.TextField()
     content_hash = models.CharField(max_length=64, db_index=True)  # SHA-256
-    qdrant_point_id = models.CharField(max_length=100, blank=True)
+    embedding = VectorField(dimensions=1536, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

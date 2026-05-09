@@ -69,7 +69,6 @@ def reindex_project(project: Project) -> int:
             title=payload["title"],
             content=content,
             content_hash=PlanChunk.hash_content(content),
-            qdrant_point_id="",
         )
         created_chunks.append(chunk)
         point_payloads.append(
@@ -86,9 +85,6 @@ def reindex_project(project: Project) -> int:
 
     if point_payloads:
         vector_store.upsert_plan_chunks(str(project.team_id), str(project.id), point_payloads)
-        for chunk in created_chunks:
-            chunk.qdrant_point_id = str(chunk.id)
-        PlanChunk.objects.bulk_update(created_chunks, ["qdrant_point_id"])
 
     # Sync with associated WikiPage if exists
     if hasattr(project, "wiki_page") and project.wiki_page:

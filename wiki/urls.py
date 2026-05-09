@@ -14,6 +14,7 @@ from .views import (
     RawSourceListView,
     RawSourceDetailView,
     ContradictionResolutionView,
+    WikiImageUploadView,
 )
 
 urlpatterns = [
@@ -36,5 +37,6 @@ urlpatterns = [
     path("<uuid:team_id>/raw-sources/<uuid:source_id>/", RawSourceDetailView.as_view()),
     # Contradiction Resolution
     path("<uuid:team_id>/contradictions/<uuid:changeset_id>/", ContradictionResolutionView.as_view()),
+    path("<uuid:team_id>/upload-image/", WikiImageUploadView.as_view()),
 ]
 

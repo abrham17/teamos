@@ -157,7 +157,6 @@ def _persist_chunks(page: WikiPage, chunks: list[str]) -> int:
             chunk_index=idx,
             content=c,
             content_hash=hashlib.sha256(c.encode()).hexdigest(),
-            qdrant_point_id=f"{page.id}:{idx}",
         )
         for idx, c in enumerate(chunks)
     ]

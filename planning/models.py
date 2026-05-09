@@ -2,6 +2,7 @@ import uuid
 import hashlib
 
 from django.db import models
+from pgvector.django import VectorField
 
 from accounts.models import Team, User
 
@@ -132,7 +133,7 @@ class PlanChunk(models.Model):
     title = models.CharField(max_length=300)
     content = models.TextField()
     content_hash = models.CharField(max_length=64, db_index=True)
-    qdrant_point_id = models.CharField(max_length=100, blank=True)
+    embedding = VectorField(dimensions=1536, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
