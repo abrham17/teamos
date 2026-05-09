@@ -28,6 +28,7 @@ interface TeamUser {
   email: string;
   first_name?: string;
   last_name?: string;
+  display_name?: string;
 }
 
 interface TeamMemberRow {
@@ -370,10 +371,10 @@ export default function SettingsPage() {
                 <div key={m.id} className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-800)]">
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-full bg-[var(--bg-900)] border border-[var(--border-subtle)] flex items-center justify-center font-bold text-[var(--accent)]">
-                      {m.user?.email?.[0].toUpperCase() || '?'}
+                      {(m.user?.display_name?.[0] || m.user?.email?.[0] || '?').toUpperCase()}
                     </div>
                     <div>
-                      <div className="font-medium text-[var(--text-primary)]">{m.user?.first_name} {m.user?.last_name}</div>
+                      <div className="font-medium text-[var(--text-primary)]">{m.user?.display_name || "Anonymous User"}</div>
                       <div className="text-sm text-[var(--text-muted)]">{m.user?.email}</div>
                     </div>
                   </div>
