@@ -5,9 +5,11 @@ from .models import User, Team, TeamMember, TeamInvite, TeamAuditEvent
 
 
 class UserSerializer(serializers.ModelSerializer):
+    display_name = serializers.ReadOnlyField()
+
     class Meta:
         model = User
-        fields = ["id", "clerk_user_id", "username", "email", "first_name", "last_name", "avatar_url", "created_at"]
+        fields = ["id", "clerk_user_id", "username", "email", "first_name", "last_name", "display_name", "avatar_url", "created_at"]
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -84,6 +86,7 @@ class TeamMemberSerializer(serializers.ModelSerializer):
 
 
 class TeamInviteSerializer(serializers.ModelSerializer):
+    created_by = UserSerializer(read_only=True)
     accept_url = serializers.SerializerMethodField()
     lifecycle_status = serializers.SerializerMethodField()
 
@@ -97,6 +100,7 @@ class TeamInviteSerializer(serializers.ModelSerializer):
             "expires_at",
             "used_at",
             "revoked_at",
+            "created_by",
             "send_status",
             "sent_at",
             "lifecycle_status",
