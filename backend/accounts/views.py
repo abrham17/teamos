@@ -143,12 +143,15 @@ class UpdateProfileView(APIView):
         user = request.user
         first_name = request.data.get("first_name", "").strip()
         last_name = request.data.get("last_name", "").strip()
+        avatar_url = request.data.get("avatar_url", "").strip()
         
         if not first_name or not last_name:
             return fail("First and last names are required.", status_code=400, code="name_required")
             
         user.first_name = first_name
         user.last_name = last_name
+        if avatar_url:
+            user.avatar_url = avatar_url
         user.save()
         return ok(UserSerializer(user).data)
 

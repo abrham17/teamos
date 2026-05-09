@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useWikiStore } from "@/stores/useWikiStore";
+import { useTheme } from "@/components/ui/ThemeProvider";
 import { api } from "@/lib/api";
 import {
   Book,
@@ -19,6 +20,8 @@ import {
   ChevronRight,
   ChevronDown,
   Check,
+  Sun,
+  Moon,
   Command,
 } from "lucide-react";
 
@@ -47,12 +50,14 @@ interface User {
   id: string;
   email: string;
   display_name: string;
+  avatar_url?: string;
 }
 
 export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { currentTeamId, setCurrentTeamId } = useWikiStore();
+  const { theme, toggle: toggleTheme } = useTheme();
 
   const [user, setUser]                 = useState<User | null>(null);
   const [teams, setTeams]               = useState<Team[]>([]);
@@ -422,22 +427,41 @@ export function Sidebar() {
           {!collapsed && <span>Logout</span>}
         </button>
 
+        {/* Theme toggle */}
+        <button
+          onClick={toggleTheme}
+          title={collapsed ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}
+          className={bottomBtnCls()}
+        >
+          {theme === "dark"
+            ? <Sun className="w-4 h-4 shrink-0" />
+            : <Moon className="w-4 h-4 shrink-0" />
+          }
+          {!collapsed && <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>}
+        </button>
+
         {/* User Profile */}
-        <div className="px-2 pt-1 mt-1 border-t border-white/5">
+        <div className={`pt-2 mt-2 border-t border-white/5 ${collapsed ? "flex justify-center" : "px-1"}`}>
           {collapsed ? (
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[var(--surface-2)] text-[var(--accent)] font-bold text-xs">
-              {user?.display_name?.[0]?.toUpperCase() || "U"}
+            <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center bg-[var(--surface-2)] text-[var(--accent)] font-bold text-xs">
+              {user?.avatar_url
+                ? <img src={user.avatar_url} alt="" className="w-full h-full" />
+                : (user?.display_name?.[0]?.toUpperCase() || "U")
+              }
             </div>
           ) : (
-            <div className="flex items-center gap-3 px-3 py-3 rounded-xl bg-[var(--surface-2)]/50 border border-white/5">
-              <div className="w-8 h-8 rounded-lg bg-[var(--accent-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[var(--accent)] font-bold text-xs shrink-0">
-                {user?.display_name?.[0]?.toUpperCase() || "U"}
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl">
+              <div className="w-8 h-8 rounded-lg overflow-hidden bg-[var(--accent-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[var(--accent)] font-bold text-xs shrink-0">
+                {user?.avatar_url
+                  ? <img src={user.avatar_url} alt="" className="w-full h-full" />
+                  : (user?.display_name?.[0]?.toUpperCase() || "U")
+                }
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[13px] font-bold text-[var(--text-primary)] truncate">
                   {user?.display_name || "Anonymous User"}
                 </div>
-                <div className="text-[10px] text-[var(--text-dim)] truncate uppercase tracking-tighter">
+                <div className="text-[10px] text-[var(--text-dim)] truncate">
                   {user?.email || "No email"}
                 </div>
               </div>

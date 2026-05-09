@@ -14,6 +14,7 @@ import {
 import { Download, Users, Plus, Shield, Settings2, AlertTriangle, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { BillingSettings } from "@/components/settings/BillingSettings";
+import { AVATAR_OPTIONS } from "@/lib/avatars";
 
 interface TeamData {
   id: string;
@@ -76,7 +77,14 @@ export default function SettingsPage() {
     plan_key: "team" | "pro" | "enterprise";
     seat_count: number;
     usage_tier: "low" | "standard" | "high";
-  }>({ plan_key: "team", seat_count: 8, usage_tier: "standard" });
+  }> ({ plan_key: "team", seat_count: 8, usage_tier: "standard" });
+
+  // Profile editing state
+  const [profileFirstName, setProfileFirstName] = useState("");
+  const [profileLastName, setProfileLastName] = useState("");
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const avatarOptions = AVATAR_OPTIONS;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -95,16 +103,45 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!currentTeamId) return;
     api
-      .get<MeResponse>("/auth/me/")
+      .get<MeResponse & { first_name?: string; last_name?: string; avatar_url?: string }>("/auth/me/")
       .then((me) => {
         setMyUserId(me?.id || null);
         setMyEmail(normalizeEmail(me?.email || ""));
+        if (me?.first_name) setProfileFirstName(me.first_name);
+        if (me?.last_name) setProfileLastName(me.last_name);
+        if (me?.avatar_url) setProfileAvatarUrl(me.avatar_url);
       })
       .catch(console.error);
     api.get<TeamData>(`/auth/teams/${currentTeamId}/`).then(setTeam).catch(console.error);
     api.get<TeamMemberRow[]>(`/auth/teams/${currentTeamId}/members/`).then(setMembers).catch(console.error);
     api.get<TeamInviteRow[]>(`/auth/teams/${currentTeamId}/invites/`).then(setInvites).catch(console.error);
   }, [currentTeamId]);
+
+  const handleSaveProfile = async () => {
+    if (!profileFirstName.trim() || !profileLastName.trim()) {
+      error("First and last names are required.");
+      return;
+    }
+    setProfileSaving(true);
+    try {
+      await api.patch("/auth/me/profile/", {
+        first_name: profileFirstName.trim(),
+        last_name: profileLastName.trim(),
+        avatar_url: profileAvatarUrl,
+      });
+      success("Profile saved!");
+      // Update local member list too
+      if (myUserId) {
+        setMembers(prev => prev.map(m => m.user.id === myUserId ? {
+          ...m, user: { ...m.user, first_name: profileFirstName, last_name: profileLastName, display_name: `${profileFirstName} ${profileLastName}` }
+        } : m));
+      }
+    } catch (err: unknown) {
+      error(toErrorMessage(err, "Failed to save profile."));
+    } finally {
+      setProfileSaving(false);
+    }
+  };
 
   const refreshMembers = async () => {
     if (!currentTeamId) return;
@@ -477,54 +514,78 @@ export default function SettingsPage() {
                 <h3 className="text-lg font-medium text-[var(--text-primary)]">Personal Profile</h3>
                 <p className="text-sm text-[var(--text-muted)] mt-1">Manage your identity across TeamOS.</p>
               </div>
-              <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-xl p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-xl p-6 space-y-6">
+                {/* Avatar Section */}
+                <div className="space-y-3">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-dim)] px-1">Avatar</label>
+                  <div className="flex items-center gap-4 mb-2">
+                    <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-[var(--accent)]/30 bg-[var(--bg-900)] flex items-center justify-center text-[var(--accent)] font-bold text-xl shrink-0">
+                      {profileAvatarUrl
+                        ? <img src={profileAvatarUrl} alt="Avatar" className="w-full h-full" />
+                        : (profileFirstName?.[0]?.toUpperCase() || "U")
+                      }
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-[var(--text-primary)]">
+                        {profileFirstName || ""} {profileLastName || ""}
+                      </p>
+                      <p className="text-xs text-[var(--text-muted)]">Choose an avatar below</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-5 sm:grid-cols-10 gap-2.5">
+                    {avatarOptions.map(avatar => (
+                      <button
+                        key={avatar.id}
+                        type="button"
+                        onClick={() => setProfileAvatarUrl(avatar.svg)}
+                        title={avatar.label}
+                        className={`relative w-full aspect-square rounded-xl overflow-hidden border-2 transition-all hover:scale-105 ${
+                          profileAvatarUrl === avatar.svg
+                            ? "border-[var(--accent)] ring-2 ring-[var(--accent)]/30 scale-105"
+                            : "border-transparent hover:border-white/20"
+                        }`}
+                      >
+                        <img src={avatar.svg} alt={avatar.label} className="w-full h-full" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Name Fields */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-dim)] px-1">First Name</label>
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-dim)] px-1">
+                      First Name <span className="text-[var(--accent)]">*</span>
+                    </label>
                     <input
                       type="text"
-                      value={members.find(m => m.user.id === myUserId)?.user.first_name || ""}
-                      onChange={async (e) => {
-                        const val = e.target.value;
-                        setMembers(prev => prev.map(m => m.user.id === myUserId ? { ...m, user: { ...m.user, first_name: val } } : m));
-                      }}
-                      onBlur={async (e) => {
-                        try {
-                          await api.patch("/auth/me/profile/", {
-                            first_name: e.target.value,
-                            last_name: members.find(m => m.user.id === myUserId)?.user.last_name || ""
-                          });
-                          success("First name updated.");
-                        } catch (err: unknown) {
-                          error(err instanceof Error ? err.message : "Update failed.");
-                        }
-                      }}
+                      value={profileFirstName}
+                      onChange={(e) => setProfileFirstName(e.target.value)}
                       className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg-900)] border border-[var(--border-subtle)] focus:border-[var(--accent)] outline-none text-sm"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-dim)] px-1">Last Name</label>
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-dim)] px-1">
+                      Last Name <span className="text-[var(--accent)]">*</span>
+                    </label>
                     <input
                       type="text"
-                      value={members.find(m => m.user.id === myUserId)?.user.last_name || ""}
-                      onChange={async (e) => {
-                        const val = e.target.value;
-                        setMembers(prev => prev.map(m => m.user.id === myUserId ? { ...m, user: { ...m.user, last_name: val } } : m));
-                      }}
-                      onBlur={async (e) => {
-                        try {
-                          await api.patch("/auth/me/profile/", {
-                            first_name: members.find(m => m.user.id === myUserId)?.user.first_name || "",
-                            last_name: e.target.value
-                          });
-                          success("Last name updated.");
-                        } catch (err: unknown) {
-                          error(err instanceof Error ? err.message : "Update failed.");
-                        }
-                      }}
+                      value={profileLastName}
+                      onChange={(e) => setProfileLastName(e.target.value)}
                       className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg-900)] border border-[var(--border-subtle)] focus:border-[var(--accent)] outline-none text-sm"
                     />
                   </div>
+                </div>
+
+                {/* Save Button */}
+                <div className="flex justify-end pt-2">
+                  <button
+                    onClick={handleSaveProfile}
+                    disabled={profileSaving}
+                    className="px-6 py-2.5 rounded-xl bg-[var(--accent)] text-[var(--bg-950)] font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {profileSaving ? "Saving..." : "Save Changes"}
+                  </button>
                 </div>
               </div>
             </section>
