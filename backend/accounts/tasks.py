@@ -32,12 +32,23 @@ def send_team_invite_email(self, invite_id: str, trace_id: str | None = None):
 
     frontend_url = getattr(settings, "FRONTEND_URL", "").rstrip("/")
     accept_url = f"{frontend_url}/accept-invite?token={invite.token}" if frontend_url else str(invite.token)
-    subject = f"You are invited to join {invite.team.name} on TeamOS"
+    
+    # Get sender identity
+    from accounts.models import TeamMember
+    sender_membership = TeamMember.objects.filter(team=invite.team, user=invite.created_by).first()
+    sender_role = sender_membership.role.title() if sender_membership else "Member"
+    sender_name = invite.created_by.display_name
+    team_name = invite.team.name
+
+    subject = f"{sender_name} invited you to join {team_name} on TeamOS"
     body = (
         f"Hi,\n\n"
-        f"{invite.created_by.email} invited you to join team '{invite.team.name}' as {invite.role}.\n\n"
-        f"Accept invite: {accept_url}\n\n"
-        f"This invite expires at: {invite.expires_at.isoformat()}\n"
+        f"{sender_name} ({sender_role}) from team '{team_name}' has invited you to join them on TeamOS as an {invite.role.title()}.\n\n"
+        f"Click the link below to accept the invitation and start collaborating:\n"
+        f"{accept_url}\n\n"
+        f"This invitation will expire in 7 days (on {invite.expires_at.strftime('%Y-%m-%d')}).\n\n"
+        f"Best regards,\n"
+        f"The TeamOS Bot"
     )
 
     try:

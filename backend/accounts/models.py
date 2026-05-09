@@ -15,7 +15,12 @@ class User(AbstractUser):
     REQUIRED_FIELDS = ["username"]
 
     def __str__(self):
-        return self.email
+        return self.display_name
+
+    @property
+    def display_name(self):
+        full_name = f"{self.first_name} {self.last_name}".strip()
+        return full_name if full_name else self.email
 
 
 class Team(models.Model):
