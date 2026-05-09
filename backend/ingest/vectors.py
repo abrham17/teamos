@@ -21,9 +21,14 @@ class VectorStore:
         self._embed_client: OpenAI | None = None
         self.openai: OpenAI | None = None
 
-        # 1. Check for OpenRouter
+        openai_key = getattr(settings, "OPENAI_API_KEY", "")
         openrouter_key = getattr(settings, "OPENROUTER_API_KEY", "")
-        if openrouter_key:
+        
+        def is_valid(k):
+            return k and k.strip() and k.lower() != "not_set"
+
+        # 1. Setup OpenRouter if valid
+        if is_valid(openrouter_key):
             self.openai = OpenAI(
                 api_key=openrouter_key,
                 base_url=getattr(settings, "OPENROUTER_API_BASE", "https://openrouter.ai/api/v1"),
@@ -34,11 +39,10 @@ class VectorStore:
             )
             self._embed_client = self.openai
 
-        # 2. Check for OpenAI (Overrides OpenRouter if both exist, for better embedding reliability)
-        if settings.OPENAI_API_KEY:
-            openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        # 2. Setup OpenAI if valid (overrides OpenRouter for embeddings)
+        if is_valid(openai_key):
+            openai_client = OpenAI(api_key=openai_key)
             self._embed_client = openai_client
-            # Only override chat client if backend is explicitly 'openai'
             if backend == "openai":
                 self.openai = openai_client
 
