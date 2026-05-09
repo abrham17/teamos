@@ -200,6 +200,27 @@ class TeamListCreateView(APIView):
         return ok(TeamSerializer(teams, many=True).data)
 
     def post(self, request):
+        # Enforce free tier limits: Max 2 free teams per user
+        owned_teams = TeamMember.objects.filter(
+            user=request.user, 
+            role="owner", 
+            team__is_deleted=False
+        ).select_related("team")
+        
+        free_teams_count = 0
+        for m in owned_teams:
+            # Check the subscription status (if None or 'free', it counts against the limit)
+            sub = getattr(m.team, "subscription", None)
+            if not sub or sub.plan_key == "free":
+                free_teams_count += 1
+                
+        if free_teams_count >= 2:
+            return fail(
+                "You have reached the maximum of 2 free workspaces. Please upgrade an existing workspace to create more.", 
+                status_code=403, 
+                code="max_free_teams_reached"
+            )
+
         name = request.data.get("name", "").strip()
         if not name:
             return fail("Name required.", status_code=400, code="team_name_required")
