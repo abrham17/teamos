@@ -495,8 +495,8 @@ export default function SettingsPage() {
                             last_name: members.find(m => m.user.id === myUserId)?.user.last_name || ""
                           });
                           success("First name updated.");
-                        } catch (err: any) {
-                          error(err.message || "Update failed.");
+                        } catch (err: unknown) {
+                          error(err instanceof Error ? err.message : "Update failed.");
                         }
                       }}
                       className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg-900)] border border-[var(--border-subtle)] focus:border-[var(--accent)] outline-none text-sm"
@@ -518,8 +518,8 @@ export default function SettingsPage() {
                             last_name: e.target.value
                           });
                           success("Last name updated.");
-                        } catch (err: any) {
-                          error(err.message || "Update failed.");
+                        } catch (err: unknown) {
+                          error(err instanceof Error ? err.message : "Update failed.");
                         }
                       }}
                       className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg-900)] border border-[var(--border-subtle)] focus:border-[var(--accent)] outline-none text-sm"

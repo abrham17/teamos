@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { useTheme } from "@/components/ui/ThemeProvider";
 import { api } from "@/lib/api";
 import {
   Book,
@@ -20,8 +19,6 @@ import {
   ChevronRight,
   ChevronDown,
   Check,
-  Sun,
-  Moon,
   Command,
 } from "lucide-react";
 
@@ -56,7 +53,6 @@ export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { currentTeamId, setCurrentTeamId } = useWikiStore();
-  const { theme, toggle: toggleTheme } = useTheme();
 
   const [user, setUser]                 = useState<User | null>(null);
   const [teams, setTeams]               = useState<Team[]>([]);

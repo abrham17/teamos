@@ -35,8 +35,8 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
       // Reload to ensure all stores (wiki, etc) have the new team context
       window.location.reload();
       onComplete();
-    } catch (err: any) {
-      error(err.message || "Failed to finalize onboarding.");
+    } catch (err: unknown) {
+      error(err instanceof Error ? err.message : "Failed to finalize onboarding.");
     } finally {
       setLoading(false);
     }
