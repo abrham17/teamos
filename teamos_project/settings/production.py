@@ -139,8 +139,12 @@ SIMPLE_JWT["AUTH_COOKIE_SAMESITE"] = "Lax"
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 # PGVector is handled natively via DATABASE_URL
-# Production: force OpenAI for LLM unless ALLOW_NON_OPENAI_LLM_IN_PRODUCTION=1.
-LLM_BACKEND = production_llm_backend_from_env(os.environ)
+# Production: force OpenAI for LLM and Embeddings
+LLM_BACKEND = "openai"
+OPENAI_CHAT_MODEL = "gpt-4o"
+OPENAI_MINI_MODEL = "gpt-4o-mini"
+OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
+OPENAI_EMBEDDING_DIMENSIONS = 1536
 USE_DETERMINISTIC_EMBEDDINGS = False
 
 # Larger assembled RAG context for production (override via env).

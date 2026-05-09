@@ -37,46 +37,22 @@ class VectorStore:
             if self._embed_client is None:
                 self._embed_client = self.openai
 
-        # Initialize local HF model placeholder
-        self._hf_model = None
-
-    def _get_hf_model(self):
-        """Lazy load the sentence-transformers model so it doesn't block startup."""
-        if self._hf_model is None:
-            try:
-                from sentence_transformers import SentenceTransformer
-                logger.info("Loading local HuggingFace embedding model (all-MiniLM-L6-v2)...")
-                self._hf_model = SentenceTransformer("all-MiniLM-L6-v2")
-            except ImportError:
-                logger.error("sentence-transformers not installed. Fallback to mock.")
-                return None
-        return self._hf_model
-
     def _get_embedding(self, text: str, model: str | None = None):
-        embedder = self._embed_client
+        if self._embed_client is None:
+            raise RuntimeError("OPENAI_API_KEY is not set. OpenAI embeddings are required in production.")
 
-        if embedder:
-            if model is None:
-                model = embedding_model_name()
-            try:
-                response = embedder.embeddings.create(
-                    input=[text.replace("\n", " ")],
-                    model=model,
-                )
-                return response.data[0].embedding
-            except OpenAIError as exc:
-                logger.warning(
-                    "OpenAI embedding failed (%s: %s); falling back to local HuggingFace model.",
-                    type(exc).__name__,
-                    exc,
-                )
+        if model is None:
+            model = embedding_model_name()
         
-        # Fall back to HF model if no OpenAI key or OpenAI failed
-        hf_model = self._get_hf_model()
-        if hf_model is not None:
-            return hf_model.encode(text).tolist()
-        
-        raise RuntimeError("No embedding provider available. Set OPENAI_API_KEY or install sentence-transformers.")
+        try:
+            response = self._embed_client.embeddings.create(
+                input=[text.replace("\n", " ")],
+                model=model,
+            )
+            return response.data[0].embedding
+        except OpenAIError as exc:
+            logger.error("OpenAI embedding failed: %s", exc)
+            raise exc
 
     def upsert_chunks(self, team_id, page_id, chunks_data: list):
         """
