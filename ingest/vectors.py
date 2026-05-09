@@ -19,27 +19,39 @@ class VectorStore:
         self._llm_backend = backend
 
         self._embed_client: OpenAI | None = None
-        if settings.OPENAI_API_KEY:
-            self._embed_client = OpenAI(api_key=settings.OPENAI_API_KEY)
-
         self.openai: OpenAI | None = None
+
+        # 1. Check for OpenRouter
+        openrouter_key = getattr(settings, "OPENROUTER_API_KEY", "")
+        if openrouter_key:
+            self.openai = OpenAI(
+                api_key=openrouter_key,
+                base_url=getattr(settings, "OPENROUTER_API_BASE", "https://openrouter.ai/api/v1"),
+                default_headers={
+                    "HTTP-Referer": "https://team-os.tech",
+                    "X-Title": "TeamOS",
+                }
+            )
+            self._embed_client = self.openai
+
+        # 2. Check for OpenAI (Overrides OpenRouter if both exist, for better embedding reliability)
+        if settings.OPENAI_API_KEY:
+            openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
+            self._embed_client = openai_client
+            # Only override chat client if backend is explicitly 'openai'
+            if backend == "openai":
+                self.openai = openai_client
+
+        # 3. Fallback for Groq
         if backend == "groq" and getattr(settings, "GROQ_API_KEY", ""):
             self.openai = OpenAI(
                 api_key=settings.GROQ_API_KEY,
-                base_url=getattr(
-                    settings,
-                    "GROQ_API_BASE",
-                    "https://api.groq.com/openai/v1",
-                ),
+                base_url=getattr(settings, "GROQ_API_BASE", "https://api.groq.com/openai/v1"),
             )
-        elif settings.OPENAI_API_KEY:
-            self.openai = OpenAI(api_key=settings.OPENAI_API_KEY)
-            if self._embed_client is None:
-                self._embed_client = self.openai
 
     def _get_embedding(self, text: str, model: str | None = None):
         if self._embed_client is None:
-            raise RuntimeError("OPENAI_API_KEY is not set. OpenAI embeddings are required in production.")
+            raise RuntimeError("Neither OPENAI_API_KEY nor OPENROUTER_API_KEY is set. Embeddings are required.")
 
         if model is None:
             model = embedding_model_name()
