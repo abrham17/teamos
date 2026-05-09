@@ -98,6 +98,21 @@ class MeView(APIView):
         return ok(UserSerializer(request.user).data)
 
 
+class UpdateProfileView(APIView):
+    def patch(self, request):
+        user = request.user
+        first_name = request.data.get("first_name", "").strip()
+        last_name = request.data.get("last_name", "").strip()
+        
+        if not first_name or not last_name:
+            return fail("First and last names are required.", status_code=400, code="name_required")
+            
+        user.first_name = first_name
+        user.last_name = last_name
+        user.save()
+        return ok(UserSerializer(user).data)
+
+
 class ClerkProvisionView(APIView):
     """
     Ensures a first-time Clerk-authenticated user gets an initial team
@@ -105,34 +120,42 @@ class ClerkProvisionView(APIView):
     """
 
     def post(self, request):
-        membership = TeamMember.objects.filter(user=request.user).select_related("team").first()
+        user = request.user
+        
+        # Enforce name check
+        onboarding_required = not (user.first_name and user.last_name)
+        
+        membership = TeamMember.objects.filter(user=user).select_related("team").first()
         if membership:
             return ok(
                 {
-                    "user": UserSerializer(request.user).data,
+                    "user": UserSerializer(user).data,
                     "team": TeamSerializer(membership.team).data,
                     "role": membership.role,
                     "provisioned": False,
+                    "onboarding_required": onboarding_required,
                 }
             )
 
-        base_name = request.user.first_name.strip() or request.user.email.split("@")[0] or "Personal"
+        # If it's a brand new user, we still provision the team but tell them to finish profile
+        base_name = user.first_name.strip() or user.email.split("@")[0] or "Personal"
         team_name = f"{base_name}'s Team"
         base_slug = slugify(team_name) or "personal-team"
         slug = base_slug
         n = 1
         while Team.objects.filter(slug=slug).exists():
-            slug = f"{base_slug}-{n}"
-            n += 1
+            slug = f"{base_slug}-{n}"; n += 1
 
-        team = Team.objects.create(name=team_name, slug=slug, created_by=request.user)
-        TeamMember.objects.create(team=team, user=request.user, role="owner")
+        team = Team.objects.create(name=team_name, slug=slug, created_by=user)
+        TeamMember.objects.create(team=team, user=user, role="owner")
+        
         return ok(
             {
-                "user": UserSerializer(request.user).data,
+                "user": UserSerializer(user).data,
                 "team": TeamSerializer(team).data,
                 "role": "owner",
                 "provisioned": True,
+                "onboarding_required": onboarding_required,
             },
             status_code=status.HTTP_201_CREATED,
         )

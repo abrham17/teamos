@@ -16,8 +16,8 @@ class RegisterSerializer(serializers.Serializer):
     email = serializers.EmailField()
     username = serializers.CharField(max_length=150, required=False, allow_blank=True)
     password = serializers.CharField(min_length=8, write_only=True)
-    first_name = serializers.CharField(max_length=60, default="")
-    last_name = serializers.CharField(max_length=60, default="")
+    first_name = serializers.CharField(max_length=60, required=True)
+    last_name = serializers.CharField(max_length=60, required=True)
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
