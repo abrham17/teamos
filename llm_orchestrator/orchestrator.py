@@ -30,11 +30,11 @@ def llm_call(
     Handles routing, tracking, and execution.
     """
     # 1. Get team subscription
+    from billing.models import TeamSubscription
     try:
         subscription = team.subscription
-    except TeamSubscription.DoesNotExist:
-        # Fallback for teams without subscription record (should not happen with signals)
-        from billing.models import TeamSubscription
+    except Exception:
+        # Fallback for teams without subscription record
         subscription, _ = TeamSubscription.objects.get_or_create(team=team)
 
     # 2. Route to appropriate model
@@ -45,12 +45,18 @@ def llm_call(
     
     # Selection of client
     client = None
-    
-    # Priority 1: OpenRouter (if explicitly chosen or key exists)
-    if (getattr(settings, "LLM_BACKEND", "") == "openrouter" or 
-        not settings.OPENAI_API_KEY) and getattr(settings, "OPENROUTER_API_KEY", ""):
+    openai_key = getattr(settings, "OPENAI_API_KEY", "")
+    openrouter_key = getattr(settings, "OPENROUTER_API_KEY", "")
+    backend = getattr(settings, "LLM_BACKEND", "openai").lower()
+
+    # Treat "Not_set" or empty as invalid
+    def is_valid(k):
+        return k and k.strip() and k.lower() != "not_set"
+
+    # Priority 1: OpenRouter
+    if (backend == "openrouter" or not is_valid(openai_key)) and is_valid(openrouter_key):
         client = OpenAI(
-            api_key=settings.OPENROUTER_API_KEY,
+            api_key=openrouter_key,
             base_url=getattr(settings, "OPENROUTER_API_BASE", "https://openrouter.ai/api/v1"),
             default_headers={
                 "HTTP-Referer": "https://team-os.tech",
@@ -58,11 +64,11 @@ def llm_call(
             }
         )
     # Priority 2: Direct OpenAI
-    elif settings.OPENAI_API_KEY:
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    elif is_valid(openai_key):
+        client = OpenAI(api_key=openai_key)
     
     if not client:
-        raise ValueError("No LLM client available. Set OPENAI_API_KEY or OPENROUTER_API_KEY.")
+        raise ValueError("No valid LLM client available. Please set OPENAI_API_KEY or OPENROUTER_API_KEY.")
 
     try:
         # Handle JSON mode if requested and supported
