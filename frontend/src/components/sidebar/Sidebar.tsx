@@ -46,12 +46,19 @@ const NAV_ITEMS = [
   { href: "/analytics", icon: BarChart3,    label: "Analytics" },
 ];
 
+interface User {
+  id: string;
+  email: string;
+  display_name: string;
+}
+
 export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { currentTeamId, setCurrentTeamId } = useWikiStore();
   const { theme, toggle: toggleTheme } = useTheme();
 
+  const [user, setUser]                 = useState<User | null>(null);
   const [teams, setTeams]               = useState<Team[]>([]);
   const [collapsed, setCollapsed]       = useState(false);
   const [teamDropOpen, setTeamDropOpen] = useState(false);
@@ -69,8 +76,9 @@ export function Sidebar() {
     setCollapsed(localStorage.getItem("teamos-sidebar-collapsed") === "true");
   }, []);
 
-  /* ── Fetch teams ── */
+  /* ── Fetch teams & User ── */
   useEffect(() => {
+    api.get<User>("/auth/me/").then(setUser).catch(console.error);
     api
       .get<Team[]>("/auth/teams/")
       .then((data) => {
@@ -418,18 +426,28 @@ export function Sidebar() {
           {!collapsed && <span>Logout</span>}
         </button>
 
-        {/* Theme toggle */}
-        <button
-          onClick={toggleTheme}
-          title={collapsed ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}
-          className={bottomBtnCls()}
-        >
-          {theme === "dark"
-            ? <Sun className="w-4 h-4 shrink-0" />
-            : <Moon className="w-4 h-4 shrink-0" />
-          }
-          {!collapsed && <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>}
-        </button>
+        {/* User Profile */}
+        <div className="px-2 pt-1 mt-1 border-t border-white/5">
+          {collapsed ? (
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[var(--surface-2)] text-[var(--accent)] font-bold text-xs">
+              {user?.display_name?.[0]?.toUpperCase() || "U"}
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 px-3 py-3 rounded-xl bg-[var(--surface-2)]/50 border border-white/5">
+              <div className="w-8 h-8 rounded-lg bg-[var(--accent-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[var(--accent)] font-bold text-xs shrink-0">
+                {user?.display_name?.[0]?.toUpperCase() || "U"}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-bold text-[var(--text-primary)] truncate">
+                  {user?.display_name || "Anonymous User"}
+                </div>
+                <div className="text-[10px] text-[var(--text-dim)] truncate uppercase tracking-tighter">
+                  {user?.email || "No email"}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Expand button (only visible when collapsed) */}
         {collapsed && (
