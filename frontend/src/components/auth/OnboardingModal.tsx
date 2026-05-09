@@ -12,26 +12,31 @@ interface OnboardingModalProps {
 export function OnboardingModal({ onComplete }: OnboardingModalProps) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [teamName, setTeamName] = useState("");
   const [loading, setLoading] = useState(false);
   const { success, error } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!firstName.trim() || !lastName.trim()) {
-      error("Both names are required to continue.");
+    if (!firstName.trim() || !lastName.trim() || !teamName.trim()) {
+      error("All fields are required to continue.");
       return;
     }
 
     setLoading(true);
     try {
-      await api.patch("/auth/me/profile/", {
+      await api.post("/auth/onboarding/finalize/", {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
+        team_name: teamName.trim(),
       });
-      success("Profile updated! Welcome to TeamOS.");
+      success("Profile & Team created! Welcome to TeamOS.");
+      
+      // Reload to ensure all stores (wiki, etc) have the new team context
+      window.location.reload();
       onComplete();
     } catch (err: any) {
-      error(err.message || "Failed to update profile.");
+      error(err.message || "Failed to finalize onboarding.");
     } finally {
       setLoading(false);
     }
@@ -79,6 +84,23 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
                 placeholder="e.g. Doe"
                 className="w-full px-4 py-3 rounded-xl bg-[var(--bg-900)] border border-[var(--border-subtle)] focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition-all outline-none"
               />
+            </div>
+
+            <div className="space-y-1.5 pt-2">
+              <label className="text-[10px] uppercase tracking-widest font-bold text-[var(--accent)] px-1">
+                First Team Name
+              </label>
+              <input
+                type="text"
+                required
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+                placeholder="e.g. My Awesome Team"
+                className="w-full px-4 py-3 rounded-xl bg-[var(--bg-950)] border border-[var(--accent)]/30 focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition-all outline-none"
+              />
+              <p className="text-[9px] text-[var(--text-dim)] px-1">
+                You can change this later in settings.
+              </p>
             </div>
 
             <button
