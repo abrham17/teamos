@@ -46,9 +46,14 @@ type MarkdownStorage = {
 };
 
 function setEditorMarkdownContent(editor: NonNullable<ReturnType<typeof useEditor>>, markdown: string) {
-  const value = markdown || "";
-  // Ensure the editor treats this as markdown.
-  // With @tiptap/markdown, setContent is overridden.
+  let value = markdown || "";
+
+  // Pre-process [[Wikilinks]] if they are raw in markdown
+  // This helps TipTap's Wikilink extension recognize them on load
+  value = value.replace(/\[\[([^\]]+)\]\]/g, (match, title) => {
+    return `<span data-wikilink data-title="${title}" class="wikilink">[[${title}]]</span>`;
+  });
+
   editor.commands.setContent(value, {
     emitUpdate: false,
     parseOptions: { preserveWhitespace: "full" },
@@ -87,6 +92,7 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
         // Default options are fine
       }),
       Link.configure({
+        autolink: true,
         openOnClick: false,
         HTMLAttributes: {
           class: "text-[var(--accent)] underline cursor-pointer",
