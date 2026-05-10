@@ -458,7 +458,7 @@ export function ChatInterface() {
           </button>
         )}
 
-        <div className="shrink-0 bg-[var(--bg-950)] px-4 pt-2 pb-[2px] w-full z-20">
+        <div className="shrink-0 bg-[var(--bg-950)] px-4 pt-2 w-full z-20">
           <div className="relative mx-auto flex w-full max-w-4xl flex-col gap-2">
             <div className="flex items-center justify-between px-2">
                 <ChatModeSegmentedControl value={chatMode} onChange={setChatMode} capabilities={chatCaps} />
