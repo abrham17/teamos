@@ -1,7 +1,9 @@
 import re
+import json
 import logging
 from django.utils.text import slugify
 from django.db.models import Q
+from django.http import StreamingHttpResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -21,6 +23,7 @@ from .serializers import (
     PageTemplateSerializer,
     WikiChangeSetSerializer,
 )
+from llm_orchestrator.orchestrator import llm_call
 
 logger = logging.getLogger(__name__)
 
@@ -497,4 +500,69 @@ class WikiImageUploadView(APIView):
         url = default_storage.url(path)
         
         return ok({"url": url})
+
+
+class WikiAutocompleteView(APIView):
+    """
+    POST /api/wiki/:team_id/autocomplete/
+    Streams an AI response directly for inline document autocomplete ("Notion AI" style).
+    Body: { "prompt": "...", "context_before": "...", "context_after": "..." }
+    """
+    permission_classes = [IsAuthenticated, CanEditWiki]
+
+    def post(self, request, team_id):
+        prompt = request.data.get("prompt", "").strip()
+        context_before = request.data.get("context_before", "")
+        context_after = request.data.get("context_after", "")
+
+        if not prompt:
+            return fail("Prompt is required.", status_code=400, code="prompt_required")
+
+        membership = request.team_membership
+        quota = check_quota(membership.team, "token_consume")
+        if not quota.allowed:
+            return fail("Plan token limit reached.", status_code=402, code="plan_limit_exceeded")
+
+        system_instruction = (
+            "You are a sophisticated AI writing assistant integrated directly into a collaborative Markdown editor. "
+            "Your task is to fulfill the user's prompt based on the context of the document they are currently writing.\n\n"
+            "Document Context Before Cursor:\n"
+            f"```\n{context_before[-2000:]}\n```\n\n"
+            "Document Context After Cursor:\n"
+            f"```\n{context_after[:2000]}\n```\n\n"
+            "CRITICAL RULES:\n"
+            "1. ONLY output the exact text to be inserted at the cursor position. Do NOT include pleasantries, explanations, or 'Here is the text:' prefixes.\n"
+            "2. Output must be in proper GitHub Flavored Markdown (if applicable).\n"
+            "3. Seamlessly match the tone, style, and formatting of the surrounding text."
+        )
+
+        messages = [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": prompt}
+        ]
+
+        def event_stream():
+            try:
+                stream, model_used, routed_by = llm_call(
+                    team=membership.team,
+                    operation="wiki_autocomplete",
+                    messages=messages,
+                    user=request.user,
+                    stream=True
+                )
+                
+                for chunk in stream:
+                    token = chunk.choices[0].delta.content or ""
+                    if token:
+                        yield f"event: chunk\ndata: {json.dumps({'token': token})}\n\n"
+                
+                yield f"event: done\ndata: {json.dumps({'status': 'done'})}\n\n"
+            except Exception as e:
+                logger.error("Autocomplete stream failed: %s", e)
+                yield f"event: error\ndata: {json.dumps({'detail': str(e)})}\n\n"
+
+        response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
 
