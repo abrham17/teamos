@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { api } from "@/lib/api";
+import { Search, Loader2 } from "lucide-react";
 
 interface RawSourceSummary {
   id: string;
@@ -71,6 +72,22 @@ export default function RawSourceViewer({
   const [sources, setSources] = useState<RawSourceSummary[]>([]);
   const [detail, setDetail] = useState<RawSourceDetail | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(sourceId || null);
+  const [zoomLevel, setZoomLevel] = useState(100);
+  const [showRealDoc, setShowRealDoc] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [copiedHighlight, setCopiedHighlight] = useState(false);
+  const [copiedFull, setCopiedFull] = useState(false);
+  const markRef = useRef<HTMLElement>(null);
+
+  // Auto-scroll to highlight
+  useEffect(() => {
+    if (markRef.current) {
+      setTimeout(() => {
+        markRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 100); // slight delay to ensure render
+    }
+  }, [detail, highlightStart, highlightEnd, showRealDoc]);
 
   // Fetch source list
   useEffect(() => {
@@ -87,11 +104,39 @@ export default function RawSourceViewer({
       setDetail(null);
       return;
     }
+    setLoadingDetail(true);
     api
       .get<RawSourceDetail>(`/wiki/${teamId}/raw-sources/${selectedId}/`)
       .then(setDetail)
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => setLoadingDetail(false));
   }, [selectedId, teamId]);
+
+  const handleCopyHighlight = () => {
+    if (highlightStart !== undefined && highlightEnd !== undefined && detail) {
+      navigator.clipboard.writeText(detail.extracted_text.slice(highlightStart, highlightEnd));
+      setCopiedHighlight(true);
+      setTimeout(() => setCopiedHighlight(false), 2000);
+    }
+  };
+
+  const handleCopyFull = () => {
+    if (detail) {
+      navigator.clipboard.writeText(detail.extracted_text);
+      setCopiedFull(true);
+      setTimeout(() => setCopiedFull(false), 2000);
+    }
+  };
+
+  const filteredSources = useMemo(() => {
+    if (!searchQuery.trim()) return sources;
+    const lowerQ = searchQuery.toLowerCase();
+    return sources.filter(s => 
+      (s.original_filename && s.original_filename.toLowerCase().includes(lowerQ)) || 
+      (s.source_url && s.source_url.toLowerCase().includes(lowerQ)) ||
+      s.source_type.toLowerCase().includes(lowerQ)
+    );
+  }, [sources, searchQuery]);
 
   const renderHighlightedText = (text: string) => {
     if (
@@ -99,7 +144,11 @@ export default function RawSourceViewer({
       highlightEnd === undefined ||
       highlightStart >= highlightEnd
     ) {
-      return <pre className="raw-source-text">{text}</pre>;
+      return (
+        <div className="document-page-container">
+          <pre className="raw-source-text" style={{ fontSize: `${14 * (zoomLevel / 100)}px` }}>{text}</pre>
+        </div>
+      );
     }
 
     const before = text.slice(0, highlightStart);
@@ -107,11 +156,13 @@ export default function RawSourceViewer({
     const after = text.slice(highlightEnd);
 
     return (
-      <pre className="raw-source-text">
-        {before}
-        <mark className="raw-source-highlight">{highlighted}</mark>
-        {after}
-      </pre>
+      <div className="document-page-container">
+        <pre className="raw-source-text" style={{ fontSize: `${14 * (zoomLevel / 100)}px` }}>
+          {before}
+          <mark ref={markRef} className="raw-source-highlight">{highlighted}</mark>
+          {after}
+        </pre>
+      </div>
     );
   };
 
@@ -160,6 +211,17 @@ export default function RawSourceViewer({
               🔗 {detail.source_url}
             </a>
           )}
+          {detail.file_url && (
+            <a
+              href={detail.file_url}
+              download
+              target="_blank"
+              rel="noopener noreferrer"
+              className="raw-source-link font-bold text-white bg-[var(--accent)] px-3 py-1 rounded-md inline-flex items-center gap-2 mt-2"
+            >
+              ⬇️ Download Original
+            </a>
+          )}
         </div>
 
         {detail.citing_pages.length > 0 && (
@@ -192,10 +254,56 @@ export default function RawSourceViewer({
           </div>
         )}
 
-        <div className="raw-source-content">
-          <h4>Raw Content</h4>
-          {renderHighlightedText(detail.extracted_text)}
+
+        <div className="raw-source-toolbar flex items-center justify-between mb-4 mt-6 p-3 bg-[var(--bg-950)] rounded-lg border border-[var(--border-subtle)]">
+          <div className="flex items-center gap-2">
+            <button className="toolbar-btn" onClick={() => setZoomLevel(z => Math.max(50, z - 10))}>-</button>
+            <span className="text-xs text-[var(--text-muted)] w-12 text-center">{zoomLevel}%</span>
+            <button className="toolbar-btn" onClick={() => setZoomLevel(z => Math.min(200, z + 10))}>+</button>
+          </div>
+          <div className="flex items-center gap-3">
+            {(highlightStart !== undefined && highlightEnd !== undefined) && (
+              <button 
+                className="toolbar-btn text-xs"
+                onClick={handleCopyHighlight}
+              >
+                {copiedHighlight ? "✅ Copied!" : "📋 Copy Highlight"}
+              </button>
+            )}
+            <button 
+              className="toolbar-btn text-xs"
+              onClick={handleCopyFull}
+            >
+              {copiedFull ? "✅ Copied!" : "📋 Copy Full Text"}
+            </button>
+            {detail.file_url && (
+              <button 
+                className={`toolbar-btn text-xs font-bold ${showRealDoc ? 'bg-[var(--accent)] text-white' : ''}`}
+                onClick={() => setShowRealDoc(!showRealDoc)}
+              >
+                {showRealDoc ? "👀 View Parsed Text" : "🖼️ View Real Document"}
+              </button>
+            )}
+          </div>
         </div>
+
+        {showRealDoc && detail.file_url ? (
+          <div 
+            className="real-doc-container w-full rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-white"
+            style={{ height: fullHeight ? '100%' : '75vh' }}
+          >
+            {detail.source_type === 'image' ? (
+              <img src={detail.file_url} className="w-full h-full object-contain" alt="Original source" />
+            ) : (
+              <iframe src={detail.file_url} className="w-full h-full border-0" title="Original source" />
+            )}
+          </div>
+        ) : (
+          <div className="raw-source-content">
+            <h4>Extracted Text</h4>
+            {renderHighlightedText(detail.extracted_text)}
+          </div>
+        )}
 
         <style jsx>{`
           .raw-source-viewer-detail {
@@ -226,6 +334,18 @@ export default function RawSourceViewer({
           .raw-source-back:hover,
           .raw-source-close:hover {
             background: var(--bg-hover, #252545);
+          }
+          .toolbar-btn {
+            background: var(--surface-1);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-primary);
+            padding: 0.3rem 0.6rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+          .toolbar-btn:hover {
+            background: var(--surface-2);
           }
           .raw-source-meta h3 {
             margin: 0 0 0.5rem;
@@ -288,28 +408,64 @@ export default function RawSourceViewer({
             font-size: 0.8rem;
           }
           .raw-source-content {
-            margin-top: 1rem;
+            margin-top: 1.5rem;
+            background: var(--bg-950, #0a0a0a);
+            padding: 2rem;
+            border-radius: 12px;
+            border: 1px solid var(--border-subtle, #333);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
           }
           .raw-source-content h4 {
-            margin: 0 0 0.5rem;
+            margin: 0 0 1.5rem;
             font-size: 0.95rem;
+            align-self: flex-start;
+            color: var(--text-muted, #888);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+          }
+          .document-page-container {
+            width: 100%;
+            max-width: 850px;
+            background: #ffffff;
+            color: #111827;
+            border-radius: 4px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.2);
+            padding: 4rem 5rem;
+            margin: 0 auto;
+            position: relative;
           }
           :global(.raw-source-text) {
-            background: var(--bg-code, #0d0d1a);
-            padding: 1rem;
-            border-radius: 8px;
-            font-size: 0.8rem;
-            line-height: 1.6;
+            font-family: 'Merriweather', 'Georgia', serif;
+            font-size: 14px;
+            line-height: 1.8;
             white-space: pre-wrap;
             word-break: break-word;
             max-height: ${fullHeight ? 'none' : '50vh'};
             overflow-y: auto;
-            color: var(--text-primary, #ccc);
+            color: #1f2937;
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            /* Style scrollbar for the document */
+            scrollbar-width: thin;
+            scrollbar-color: #cbd5e1 transparent;
+          }
+          :global(.raw-source-text::-webkit-scrollbar) {
+            width: 6px;
+          }
+          :global(.raw-source-text::-webkit-scrollbar-thumb) {
+            background-color: #cbd5e1;
+            border-radius: 10px;
           }
           :global(.raw-source-highlight) {
-            background: rgba(108, 92, 231, 0.3);
-            border-bottom: 2px solid var(--accent-primary, #6c5ce7);
+            background: rgba(253, 224, 71, 0.5); /* Yellow highlighter look */
+            color: #000;
+            border-bottom: 2px solid #eab308;
             padding: 0.1rem 0;
+            font-weight: 500;
+            border-radius: 2px;
           }
         `}</style>
       </div>
@@ -328,12 +484,31 @@ export default function RawSourceViewer({
         )}
       </div>
 
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] w-4 h-4" />
+        <input 
+          type="text"
+          placeholder="Search sources by name or type..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-lg py-2 pl-9 pr-4 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+        />
+      </div>
+
       {sources.length === 0 ? (
         <p className="raw-source-empty">No raw sources yet. Ingest a document to get started.</p>
+      ) : filteredSources.length === 0 ? (
+        <p className="raw-source-empty">No sources match your search.</p>
       ) : (
-        <ul className="raw-source-list">
-          {sources.map((s) => (
-            <li key={s.id} onClick={() => setSelectedId(s.id)}>
+        <div className="relative">
+          {loadingDetail && (
+            <div className="absolute inset-0 bg-[var(--bg-surface)]/80 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
+              <Loader2 className="w-8 h-8 text-[var(--accent)] animate-spin" />
+            </div>
+          )}
+          <ul className="raw-source-list">
+            {filteredSources.map((s) => (
+              <li key={s.id} onClick={() => setSelectedId(s.id)}>
               <span className="raw-source-icon">
                 {SOURCE_TYPE_ICONS[s.source_type] || "📁"}
               </span>
@@ -346,9 +521,10 @@ export default function RawSourceViewer({
                   {new Date(s.created_at).toLocaleDateString()}
                 </span>
               </div>
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       <style jsx>{`
