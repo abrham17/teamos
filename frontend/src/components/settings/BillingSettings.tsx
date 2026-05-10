@@ -7,6 +7,7 @@ import { fetchBillingPlans, fetchBillingQuote, startTeamCheckout, type BillingPl
 import { useToast } from "@/components/ui/Toast";
 import { AlertCircle, Check, CreditCard, Loader2, Sparkles, Zap, Timer, Users, ShieldAlert } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { usePaddle } from "@/components/providers/PaddleProvider";
 
 interface TeamSubscription {
   plan_key: string;
@@ -25,7 +26,8 @@ interface TeamSubscription {
 
 export function BillingSettings() {
   const { currentTeamId } = useWikiStore();
-  const { info, error } = useToast();
+  const { info, error, success } = useToast();
+  const { paddle, isReady } = usePaddle();
   
   const [subscription, setSubscription] = useState<TeamSubscription | null>(null);
   const [catalog, setCatalog] = useState<BillingPlansCatalog | null>(null);
@@ -111,7 +113,19 @@ export function BillingSettings() {
         success_url: successUrl,
         cancel_url: cancelUrl,
       });
-      if (checkout?.checkout_url) {
+
+      if (paddle && isReady && checkout?.external_checkout_id) {
+        paddle.Checkout.open({
+          transactionId: checkout.external_checkout_id,
+          settings: {
+            displayMode: "overlay",
+            theme: "dark",
+            locale: "en",
+            successUrl: successUrl,
+          }
+        });
+        info("Opening secure checkout...");
+      } else if (checkout?.checkout_url) {
         window.open(checkout.checkout_url, "_blank");
         info("Opening Paddle checkout...");
       }
