@@ -399,71 +399,129 @@
   --tw-prose-td-borders: var(--border-subtle);
 }
 
-.prose h1, .prose h2, .prose h3 {
-  letter-spacing: -0.02em;
+.prose h1 {
+  font-size: 2.5rem;
+  margin-top: 2rem;
+  margin-bottom: 1.5rem;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
   font-weight: 800;
+  color: var(--text-primary);
+}
+
+.prose h2 {
+  font-size: 1.75rem;
+  margin-top: 2.5rem;
+  margin-bottom: 1rem;
+  letter-spacing: -0.03em;
+  font-weight: 700;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 0.5rem;
+}
+
+.prose h3 {
+  font-size: 1.25rem;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  color: var(--accent);
 }
 
 .prose p {
   line-height: 1.8;
+  margin-bottom: 1.5rem;
+  color: var(--text-secondary);
+}
+
+.prose strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.prose mark {
+  background-color: var(--accent-subtle);
+  color: var(--accent-light);
+  padding: 0.1em 0.3em;
+  border-radius: 0.3em;
+  font-weight: 600;
+}
+
+.prose a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-subtle);
+  transition: all 0.2s ease;
+}
+
+.prose a:hover {
+  background: var(--accent-subtle);
+  border-bottom-color: var(--accent);
 }
 
 /* ─── TipTap Editor Overrides ───────────────────────────────────────── */
 .tiptap {
   outline: none !important;
+  min-height: 600px;
 }
 
 .tiptap ul {
   list-style-type: disc !important;
   padding-left: 1.5rem !important;
-  margin: 1em 0 !important;
+  margin: 1.5em 0 !important;
+}
+
+.tiptap ul li::marker {
+  color: var(--accent);
 }
 
 .tiptap ol {
   list-style-type: decimal !important;
   padding-left: 1.5rem !important;
-  margin: 1em 0 !important;
+  margin: 1.5em 0 !important;
 }
 
-.tiptap li {
-  margin-bottom: 0.25em !important;
+.tiptap li p {
+  margin: 0.25em 0 !important;
 }
 
 .tiptap blockquote {
   border-left: 4px solid var(--accent) !important;
-  padding-left: 1.25rem !important;
-  margin: 1.5em 0 !important;
+  padding: 1rem 1.5rem !important;
+  margin: 2em 0 !important;
   font-style: italic !important;
   color: var(--text-primary) !important;
   background: rgba(var(--accent-rgb), 0.05) !important;
-  padding-top: 0.5rem !important;
-  padding-bottom: 0.5rem !important;
-  border-radius: 0 0.5rem 0.5rem 0 !important;
+  border-radius: 0 1rem 1rem 0 !important;
+  font-size: 1.1rem;
 }
 
 .tiptap table {
   border-collapse: collapse !important;
   table-layout: fixed !important;
   width: 100% !important;
-  margin: 2em 0 !important;
+  margin: 2.5em 0 !important;
   overflow: hidden !important;
+  border-radius: 1rem !important;
   border: 1px solid var(--border-strong) !important;
 }
 
 .tiptap table td,
 .tiptap table th {
   min-width: 1em !important;
-  border: 1px solid var(--border-strong) !important;
-  padding: 0.75rem !important;
+  border: 1px solid var(--border-subtle) !important;
+  padding: 1rem !important;
   vertical-align: top !important;
   box-sizing: border-box !important;
   position: relative !important;
 }
 
 .tiptap table th {
-  font-weight: bold !important;
+  font-weight: 800 !important;
   text-align: left !important;
   background: rgba(255, 255, 255, 0.03) !important;
+  color: var(--text-primary) !important;
 }
 
 .tiptap .selectedCell:after {
@@ -483,4 +541,22 @@
   width: 4px;
   background-color: var(--accent);
   pointer-events: none;
+}
+
+/* Wikilinks */
+.wikilink {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+  background: var(--accent-subtle);
+  padding: 0 0.4em;
+  border-radius: 0.4em;
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.wikilink:hover {
+  background: var(--accent);
+  color: var(--bg-950);
 }

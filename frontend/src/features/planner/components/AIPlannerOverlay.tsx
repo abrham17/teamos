@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import ReactMarkdown from "react-markdown";
 import { motion, AnimatePresence } from "motion/react";
 import {
   X,
@@ -381,9 +382,11 @@ export function AIPlannerOverlay({
                   <h3 className="text-2xl font-bold mb-2 text-[var(--text-primary)]">
                     {generatedPlan.projectName}
                   </h3>
-                  <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                    {generatedPlan.description}
-                  </p>
+                  <div className="prose prose-invert prose-sm max-w-none">
+                    <ReactMarkdown>
+                      {generatedPlan.description}
+                    </ReactMarkdown>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-6">

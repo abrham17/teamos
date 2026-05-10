@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { PlanProjectDetail, PlanTask, TeamMember, PlanMilestone } from "../types";
 import {
   Search,
@@ -285,9 +286,11 @@ export function ProjectOverviewPanel({
             <h1 className="text-4xl font-black text-[var(--text-primary)] tracking-tight">
               {activeProject.name}
             </h1>
-            <p className="text-lg text-[var(--text-muted)] leading-relaxed max-w-3xl">
-              {activeProject.description || "No strategic mission defined."}
-            </p>
+            <div className="prose prose-invert prose-sm max-w-3xl">
+              <ReactMarkdown>
+                {activeProject.description || "No strategic mission defined."}
+              </ReactMarkdown>
+            </div>
           </div>
           <div className="flex items-center gap-3 shrink-0 pt-2">
             <button

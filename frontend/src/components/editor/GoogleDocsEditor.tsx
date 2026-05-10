@@ -15,6 +15,7 @@ import { OrderedList } from "@tiptap/extension-ordered-list";
 import { ListItem } from "@tiptap/extension-list-item";
 import { Blockquote } from "@tiptap/extension-blockquote";
 import { Markdown } from "@tiptap/markdown";
+import { Link } from "@tiptap/extension-link";
 import Collaboration from "@tiptap/extension-collaboration";
 import { useEffect, useImperativeHandle, useMemo, forwardRef } from "react";
 
@@ -72,7 +73,17 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
       TableRow,
       TableHeader,
       TableCell,
-      Markdown.configure({}),
+      Markdown.configure({
+        html: false,
+        transformPastedText: true,
+        transformCopiedText: true,
+      }),
+      Link.configure({
+        openOnClick: false,
+        HTMLAttributes: {
+          class: "text-[var(--accent)] underline cursor-pointer",
+        },
+      }),
       SlashCommand.configure({ suggestion }),
       Wikilink.configure({
         suggestion: getWikilinkSuggestion(teamId),
