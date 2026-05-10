@@ -206,10 +206,11 @@ def run_ingest_job(self, job_id: str, source_text: str = "", trace_id: str | Non
         try:
             run_pipeline(job, source_text=source_text or "", trace_id=trace_id)
         finally:
-            # Ensure staging binary is removed if pipeline exited early or errored before clear.
+            # Only remove staging file if we are finished (done or failed permanently)
+            # DO NOT delete if we might retry, because the file is needed for the next attempt!
             try:
                 job.refresh_from_db()
-                if job.staging_file:
+                if job.status in ("done", "failed") and job.staging_file:
                     job.staging_file.delete(save=False)
                     job.staging_file = None
                     job.save(update_fields=["staging_file", "updated_at"])
