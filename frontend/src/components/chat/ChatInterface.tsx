@@ -330,7 +330,7 @@ export function ChatInterface() {
   const sendDisabled = isStreaming || !sessionReady || !activeSessionId || !input.trim();
 
   return (
-    <div className="flex h-full w-full bg-[var(--bg-950)] relative overflow-hidden font-sans">
+    <div className="flex h-full w-full flex-1 bg-[var(--bg-950)] relative overflow-hidden font-sans">
       <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-[radial-gradient(circle,rgba(var(--accent-rgb),0.08)_0%,transparent_70%)] blur-[100px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-5%] w-[35%] h-[35%] bg-[radial-gradient(circle,rgba(168,85,247,0.06)_0%,transparent_70%)] blur-[80px] pointer-events-none" />
 
@@ -353,10 +353,10 @@ export function ChatInterface() {
         </div>
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col relative z-10 overflow-hidden">
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-6 py-6 min-h-0 custom-scrollbar">
+      <div className="flex min-w-0 flex-1 flex-col relative z-10 overflow-hidden w-full h-full">
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 sm:px-6 pt-6 pb-40 min-h-0 custom-scrollbar w-full">
           {messages.length === 0 && (
-            <div className="flex flex-1 flex-col items-center justify-center px-4 text-center animate-fade-in">
+            <div className="flex flex-1 flex-col items-center justify-center px-4 text-center animate-fade-in my-auto">
               <div className="mb-8 relative">
                 <div className="absolute inset-0 bg-[var(--accent)] blur-[40px] opacity-10 animate-pulse-glow" />
                 <div className="relative flex h-24 w-24 items-center justify-center rounded-[2.5rem] border border-[var(--border-strong)] bg-[var(--surface-1)] shadow-2xl"><Bot className="h-12 w-12 text-[var(--accent)]" /></div>
@@ -430,19 +430,18 @@ export function ChatInterface() {
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)] opacity-80">{status}</div>
              </div>
           )}
-          <div ref={messagesEndRef} className="h-12" />
+          <div ref={messagesEndRef} className="h-4" />
         </div>
 
-        <div className="shrink-0 bg-transparent px-6 pb-4 pt-2 relative">
-          <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-950)] via-[var(--bg-950)]/95 to-transparent pointer-events-none -top-16 h-[calc(100%+64px)]" />
-          <div className="relative mx-auto flex max-w-4xl flex-col gap-3">
+        <div className="absolute bottom-[5px] left-1/2 -translate-x-1/2 w-full max-w-3xl px-4 z-20">
+          <div className="relative mx-auto flex flex-col gap-2 bg-[var(--bg-950)]/90 backdrop-blur-xl p-3 rounded-3xl border border-[var(--border-subtle)] shadow-[0_0_40px_rgba(0,0,0,0.5)]">
             <div className="flex items-center justify-between px-2">
                 <ChatModeSegmentedControl value={chatMode} onChange={setChatMode} capabilities={chatCaps} />
             </div>
-            <div className="relative group">
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-[var(--accent)] to-purple-600 rounded-[2rem] opacity-0 group-focus-within:opacity-15 blur-md transition-opacity duration-500" />
-              <input className="relative w-full rounded-[1.5rem] border border-[var(--border-strong)] bg-[var(--bg-950)]/80 backdrop-blur-xl py-4 pl-7 pr-16 text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/50 focus:shadow-glow shadow-2xl disabled:cursor-not-allowed disabled:opacity-50" placeholder={!sessionReady ? "Initializing Intelligence…" : "Enter command or ask a question…"} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); } }} disabled={inputTypingDisabled} />
-              <button onClick={() => void handleSend()} disabled={sendDisabled} className="absolute right-3 top-3 h-10 w-10 flex items-center justify-center rounded-xl bg-[var(--accent)] text-[var(--bg-950)] transition-all hover:scale-105 hover:shadow-glow active:scale-95 disabled:cursor-not-allowed disabled:opacity-20"><Send className="h-4 w-4" /></button>
+            <div className="relative group w-full">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-[var(--accent)] to-purple-600 rounded-[1.5rem] opacity-0 group-focus-within:opacity-15 blur-md transition-opacity duration-500" />
+              <input className="relative w-full rounded-[1.25rem] border border-[var(--border-strong)] bg-[var(--bg-900)] py-3 pl-5 pr-14 text-sm text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/50 focus:shadow-glow shadow-inner disabled:cursor-not-allowed disabled:opacity-50" placeholder={!sessionReady ? "Initializing Intelligence…" : "Enter command or ask a question…"} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); } }} disabled={inputTypingDisabled} />
+              <button onClick={() => void handleSend()} disabled={sendDisabled} className="absolute right-2 top-1.5 h-9 w-9 flex items-center justify-center rounded-xl bg-[var(--accent)] text-[var(--bg-950)] transition-all hover:scale-105 hover:shadow-glow active:scale-95 disabled:cursor-not-allowed disabled:opacity-20"><Send className="h-4 w-4" /></button>
             </div>
           </div>
         </div>
