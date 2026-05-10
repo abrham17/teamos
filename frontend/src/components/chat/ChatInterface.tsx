@@ -3,45 +3,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { Send, Bot, User, Pencil, X, Check, Copy, RotateCcw } from "lucide-react";
+import { Send, Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { ChatCitationList } from "@/components/chat/ChatCitationList";
 import { ChatModeSegmentedControl, type ChatMode } from "@/components/chat/ChatModeSegmentedControl";
-import { ChatAgentToolTimeline, type AgentToolStep } from "@/components/chat/ChatAgentToolTimeline";
+import { ChatAgentToolTimeline } from "@/components/chat/ChatAgentToolTimeline";
+import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
+import type { ChatSession, Citation, ChatMessage, ChatCapabilities, AgentToolStep } from "@/components/chat/chatTypes";
 
-type ChatSession = { id: string; title: string };
-type Citation = {
-  source?: "wiki" | "plan" | string;
-  title?: string;
-  page_slug?: string;
-  page_title?: string;
-  project_id?: string;
-  project_name?: string;
-  source_kind?: string;
-  confidence?: number;
-  anchor_hint?: string;
-  chunk_id?: string;
-  snippet?: string;
-};
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  citations?: Citation[];
-  metadata?: Record<string, unknown>;
-  toolSteps?: AgentToolStep[];
-};
 type SessionDetailResponse = { messages?: ChatMessage[] };
-type ChatCapabilities = {
-  can_edit_wiki: boolean;
-  can_edit_plans: boolean;
-  can_ingest: boolean;
-  agent_mode_available: boolean;
-  plan_mode_available: boolean;
-};
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
@@ -79,6 +52,8 @@ export function ChatInterface() {
   const [editInput, setEditInput] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   useEffect(() => {
     if (!currentTeamId) return;
@@ -165,6 +140,21 @@ export function ChatInterface() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isStreaming]);
+
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const handler = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowScrollBtn(distFromBottom > 120);
+    };
+    el.addEventListener("scroll", handler, { passive: true });
+    return () => el.removeEventListener("scroll", handler);
+  }, []);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   const sendUserMessage = useCallback(
     async (userMsg: string, options?: { mode?: ChatMode }) => {
@@ -303,6 +293,33 @@ export function ChatInterface() {
     }
   };
 
+  const handleDeleteSession = async (id: string) => {
+    if (!currentTeamId) return;
+    try {
+      await api.delete(`/chat/${currentTeamId}/sessions/${id}/`);
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+      if (activeSessionId === id) {
+        const remaining = sessions.filter((s) => s.id !== id);
+        setActiveSessionId(remaining.length > 0 ? remaining[0].id : null);
+        setMessages([]);
+      }
+    } catch (e) {
+      console.error(e);
+      toastError("Could not delete chat.");
+    }
+  };
+
+  const handleRenameSession = async (id: string, title: string) => {
+    if (!currentTeamId) return;
+    try {
+      await api.patch(`/chat/${currentTeamId}/sessions/${id}/`, { title });
+      setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)));
+    } catch (e) {
+      console.error(e);
+      toastError("Could not rename chat.");
+    }
+  };
+
   const handleSend = async (overrideText?: string, options?: { mode?: ChatMode }) => {
     const text = (overrideText ?? input).trim();
     if (!text) return;
@@ -331,32 +348,28 @@ export function ChatInterface() {
 
   return (
     <div className="flex h-full w-full flex-1 bg-[var(--bg-950)] relative overflow-hidden font-sans">
-      <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-[radial-gradient(circle,rgba(var(--accent-rgb),0.08)_0%,transparent_70%)] blur-[100px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-5%] w-[35%] h-[35%] bg-[radial-gradient(circle,rgba(168,85,247,0.06)_0%,transparent_70%)] blur-[80px] pointer-events-none" />
+      <div className="absolute top-[-10%] left-[5%] w-[40%] h-[40%] bg-[radial-gradient(circle,rgba(var(--accent-rgb),0.08)_0%,transparent_70%)] blur-[100px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[5%] w-[35%] h-[35%] bg-[radial-gradient(circle,rgba(168,85,247,0.06)_0%,transparent_70%)] blur-[80px] pointer-events-none" />
 
 
-      <div className="flex w-[280px] md:w-[320px] shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-900)] z-20">
-        <div className="flex items-center justify-between border-b border-[var(--border-subtle)] p-4">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">Intelligence</h2>
-        </div>
-        <div className="p-4 shrink-0">
-          <button onClick={handleNewChat} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] py-2.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-primary)] transition-all hover:border-[var(--accent)] hover:shadow-glow active:scale-[0.98]">
-            <Bot className="w-4 h-4 text-[var(--accent)]" /> New Briefing
-          </button>
-        </div>
-        <div className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 min-h-0 custom-scrollbar pb-4">
-          {sessions.map((s) => (
-            <button key={s.id} onClick={() => setActiveSessionId(s.id)} className={cn("group relative truncate rounded-xl px-4 py-3 text-left text-sm transition-all duration-200", activeSessionId === s.id ? "bg-[var(--accent-subtle)] border border-[var(--accent)]/20 text-[var(--accent)] font-semibold shadow-inner" : "text-[var(--text-muted)] hover:bg-[var(--surface-1)] hover:text-[var(--text-primary)]")}>
-              {activeSessionId === s.id && <motion.div layoutId="active-session" className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-[var(--accent)] rounded-r-full shadow-glow" />}
-              {s.title}
-            </button>
-          ))}
-        </div>
-      </div>
+      <ChatSidebar
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onSelectSession={setActiveSessionId}
+        onNewChat={handleNewChat}
+        onDeleteSession={handleDeleteSession}
+        onRenameSession={handleRenameSession}
+      />
 
       <div className="flex min-w-0 flex-1 flex-col relative z-10 overflow-hidden w-full h-full">
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 sm:px-6 py-6 min-h-0 custom-scrollbar w-full">
-          {messages.length === 0 && (
+        <div ref={scrollContainerRef} className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 sm:px-6 py-6 min-h-0 custom-scrollbar w-full">
+          {!sessionReady && (
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 animate-fade-in my-auto">
+              <Loader2 className="h-10 w-10 text-[var(--accent)] animate-spin" />
+              <p className="text-sm text-[var(--text-muted)]">Initializing Intelligence…</p>
+            </div>
+          )}
+          {sessionReady && messages.length === 0 && (
             <div className="flex flex-1 flex-col items-center justify-center px-4 text-center animate-fade-in my-auto">
               <div className="mb-8 relative">
                 <div className="absolute inset-0 bg-[var(--accent)] blur-[40px] opacity-10 animate-pulse-glow" />
@@ -380,7 +393,7 @@ export function ChatInterface() {
                   <div className="relative group/msg-content">
                     <div className={cn("rounded-[1.5rem] px-5 py-4 text-[15px] leading-relaxed shadow-lg transition-all", isUser ? "bg-gradient-to-br from-[var(--accent)] to-[#009ab0] font-semibold text-[var(--bg-950)] rounded-tr-none shadow-[var(--accent-glow)]" : "bg-[var(--surface-1)]/80 backdrop-blur-md border border-[var(--border-subtle)] text-[var(--text-primary)] rounded-tl-none")}>
                         {isEditing ? (
-                          <div className="flex flex-col gap-3 min-w-[300px]">
+                          <div className="flex flex-col gap-3 min-w-0 w-full">
                             <textarea className="w-full bg-transparent border-none outline-none text-[var(--bg-950)] placeholder:text-[var(--bg-950)]/50 resize-none overflow-hidden" value={editInput} onChange={(e) => { setEditInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }} autoFocus />
                             <div className="flex justify-end gap-2">
                                 <button onClick={() => setEditingMessageId(null)} className="p-1 rounded-lg hover:bg-white/20 transition-colors"><X className="w-4 h-4" /></button>
@@ -399,8 +412,8 @@ export function ChatInterface() {
                         </button>
                     )}
                     {!isUser && !isLiveAssistant && (
-                        <div className="absolute -right-20 top-2 flex items-center gap-1 opacity-0 group-hover/msg-content:opacity-100 transition-all">
-                            <button onClick={() => { navigator.clipboard.writeText(m.content); }} className="p-2 rounded-xl text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--surface-1)]" title="Copy Response">
+                        <div className="absolute -right-1 -top-9 flex items-center gap-0.5 opacity-0 group-hover/msg-content:opacity-100 transition-all bg-[var(--bg-800)] rounded-lg p-0.5 shadow-lg border border-[var(--border-subtle)]">
+                            <button onClick={() => { navigator.clipboard.writeText(m.content); }} className="p-1.5 rounded-md text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--surface-2)] transition-colors" title="Copy Response">
                                 <Copy className="w-3.5 h-3.5" />
                             </button>
                             {i === messages.length - 1 && (
@@ -409,7 +422,7 @@ export function ChatInterface() {
                                         const lastUser = [...messages].reverse().find(msg => msg.role === "user");
                                         if (lastUser) handleSaveEdit(lastUser.id);
                                     }} 
-                                    className="p-2 rounded-xl text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--surface-1)]" 
+                                    className="p-1.5 rounded-md text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--surface-2)] transition-colors" 
                                     title="Regenerate"
                                 >
                                     <RotateCcw className="w-3.5 h-3.5" />
@@ -434,7 +447,18 @@ export function ChatInterface() {
           <div ref={messagesEndRef} className="h-4" />
         </div>
 
-        <div className="shrink-0 bg-[var(--bg-950)] px-4 py-4 w-full z-20">
+        {/* Scroll-to-bottom FAB */}
+        {showScrollBtn && (
+          <button
+            onClick={scrollToBottom}
+            className="absolute bottom-20 right-6 z-30 p-2.5 rounded-full bg-[var(--surface-1)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-2)] shadow-lg transition-all"
+            title="Scroll to bottom"
+          >
+            <ArrowDown className="w-4 h-4" />
+          </button>
+        )}
+
+        <div className="shrink-0 bg-[var(--bg-950)] px-4 pt-2 pb-[2px] w-full z-20">
           <div className="relative mx-auto flex w-full max-w-4xl flex-col gap-2">
             <div className="flex items-center justify-between px-2">
                 <ChatModeSegmentedControl value={chatMode} onChange={setChatMode} capabilities={chatCaps} />

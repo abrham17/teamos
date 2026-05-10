@@ -1,12 +1,7 @@
 import { Terminal, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-export type AgentToolStep = {
-  name: string;
-  arguments?: string;
-  ok?: boolean;
-  result?: unknown;
-};
+export type { AgentToolStep } from "@/components/chat/chatTypes";
+import type { AgentToolStep } from "@/components/chat/chatTypes";
 
 function summarizeResult(result: unknown): string {
   if (result == null) return "";
