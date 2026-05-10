@@ -408,6 +408,8 @@
   letter-spacing: -0.04em;
   font-weight: 800;
   color: var(--text-primary);
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 0.75rem;
 }
 
 .prose h2,
@@ -418,8 +420,20 @@
   letter-spacing: -0.03em;
   font-weight: 700;
   color: var(--text-primary);
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-strong);
   padding-bottom: 0.5rem;
+  position: relative;
+}
+
+.tiptap h2::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 60px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
 }
 
 .prose h3,
@@ -430,6 +444,8 @@
   letter-spacing: -0.02em;
   font-weight: 600;
   color: var(--accent);
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--accent);
 }
 
 .prose h4,
@@ -464,7 +480,7 @@
 .prose p,
 .tiptap p {
   line-height: 1.8;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
   color: var(--text-secondary);
 }
 
@@ -538,6 +554,11 @@
   margin: 1.5em 0 !important;
 }
 
+.tiptap ol li::marker {
+  color: var(--accent);
+  font-weight: 700;
+}
+
 .tiptap li p {
   margin: 0.25em 0 !important;
 }
@@ -581,6 +602,19 @@
   font-size: 1.1rem;
 }
 
+/* ─── TipTap HR ─────────────────────────────────────────── */
+.tiptap hr {
+  border: none !important;
+  height: 2px !important;
+  background: linear-gradient(to right, transparent, var(--accent), transparent) !important;
+  margin: 2.5rem 0 !important;
+  opacity: 0.4;
+}
+
+.tiptap hr:hover {
+  opacity: 0.7;
+}
+
 .prose blockquote {
   border-left: 3px solid var(--accent);
   padding: 0.85rem 1rem;
@@ -606,8 +640,10 @@
   padding: 1.25rem;
   border-radius: 1rem;
   margin: 1.5rem 0;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-strong);
   overflow-x: auto;
+  position: relative;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
 }
 
 .tiptap pre code {
