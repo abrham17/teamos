@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { Send, Bot, User } from "lucide-react";
+import { Send, Bot, User, Pencil, X, Check, Copy, RotateCcw } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { ChatCitationList } from "@/components/chat/ChatCitationList";
-import { ChatModeSelect, type ChatMode } from "@/components/chat/ChatModeSelect";
+import { ChatModeSegmentedControl, type ChatMode } from "@/components/chat/ChatModeSegmentedControl";
 import { ChatAgentToolTimeline, type AgentToolStep } from "@/components/chat/ChatAgentToolTimeline";
+import { motion } from "motion/react";
+import { cn } from "@/lib/utils";
 
 type ChatSession = { id: string; title: string };
 type Citation = {
@@ -43,7 +45,6 @@ type ChatCapabilities = {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
-
 function agentStepsForMessage(m: ChatMessage): AgentToolStep[] {
   if (m.toolSteps?.length) return m.toolSteps;
   const tr = m.metadata?.tool_trace;
@@ -71,13 +72,14 @@ export function ChatInterface() {
   const [status, setStatus] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
 
-
   const [chatMode, setChatMode] = useState<ChatMode>("ask");
   const [chatCaps, setChatCaps] = useState<ChatCapabilities | null>(null);
+  
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editInput, setEditInput] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  /* Bootstrap: load or create a session; typing stays enabled when only session id is missing */
   useEffect(() => {
     if (!currentTeamId) return;
     let cancelled = false;
@@ -113,35 +115,27 @@ export function ChatInterface() {
         }
       } catch (e) {
         console.error(e);
-        const msg = "Could not start chat. Check you are signed in and try again.";
-        toastError(msg);
+        toastError("Could not start chat.");
       } finally {
         if (!cancelled) setSessionReady(true);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- toastError identity must not re-run bootstrap
-  }, [currentTeamId]);
+    return () => { cancelled = true; };
+  }, [currentTeamId, toastError]);
 
   useEffect(() => {
     if (!currentTeamId) return;
     try {
       const v = sessionStorage.getItem(`teamos-chat-mode-${currentTeamId}`);
-      if (v === "agent" || v === "ask" || v === "plan") setChatMode(v);
-    } catch {
-      /* ignore */
-    }
+      if (v === "agent" || v === "ask" || v === "plan") setChatMode(v as ChatMode);
+    } catch { /* ignore */ }
   }, [currentTeamId]);
 
   useEffect(() => {
     if (!currentTeamId) return;
     try {
       sessionStorage.setItem(`teamos-chat-mode-${currentTeamId}`, chatMode);
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
   }, [currentTeamId, chatMode]);
 
   useEffect(() => {
@@ -155,9 +149,7 @@ export function ChatInterface() {
       .catch(() => {
         if (!cancelled) setChatCaps(null);
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [currentTeamId]);
 
   useEffect(() => {
@@ -174,7 +166,6 @@ export function ChatInterface() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isStreaming]);
 
-
   const sendUserMessage = useCallback(
     async (userMsg: string, options?: { mode?: ChatMode }) => {
       const trimmed = userMsg.trim();
@@ -184,10 +175,9 @@ export function ChatInterface() {
 
       setIsStreaming(true);
       setStatus("Connecting...");
-      setMessages((prev) => [
-        ...prev,
-        { role: "user", content: trimmed, id: `u-${Date.now()}`, metadata: { mode } },
-      ]);
+      
+      const userMsgObj: ChatMessage = { role: "user", content: trimmed, id: `u-${Date.now()}`, metadata: { mode } };
+      setMessages((prev) => [...prev, userMsgObj]);
 
       const auth = await getApiAuthHeaders();
       const assistantId = `a-${Date.now()}`;
@@ -205,26 +195,13 @@ export function ChatInterface() {
           `${API_BASE}/chat/${currentTeamId}/sessions/${activeSessionId}/query/`,
           {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...auth,
-            },
+            headers: { "Content-Type": "application/json", ...auth },
             credentials: "include",
             body: JSON.stringify({ message: trimmed, mode }),
           },
         );
 
-        if (!res.ok) {
-          const raw = await res.text();
-          let errText = raw || res.statusText;
-          try {
-            const j = JSON.parse(raw) as { error?: { message?: string } };
-            if (j?.error?.message) errText = j.error.message;
-          } catch {
-            /* keep raw */
-          }
-          throw new Error(errText || res.statusText);
-        }
+        if (!res.ok) throw new Error("Stream error");
         if (!res.body) throw new Error("No body");
 
         const reader = res.body.getReader();
@@ -284,14 +261,9 @@ export function ChatInterface() {
                   const steps = [...(working.toolSteps ?? [])];
                   let li = -1;
                   for (let i = steps.length - 1; i >= 0; i--) {
-                    if (steps[i].name === name && steps[i].ok === undefined) {
-                      li = i;
-                      break;
-                    }
+                    if (steps[i].name === name && steps[i].ok === undefined) { li = i; break; }
                   }
-                  if (li >= 0) {
-                    steps[li] = { ...steps[li], ok, result };
-                  }
+                  if (li >= 0) steps[li] = { ...steps[li], ok, result };
                   working = { ...working, toolSteps: steps };
                   setMessages((prev) => {
                     const next = [...prev];
@@ -299,33 +271,12 @@ export function ChatInterface() {
                     return next;
                   });
                 } else if (currentEvent === "done") {
-                  const trace = (data as { tool_trace?: AgentToolStep[] }).tool_trace;
-                  if (trace && trace.length) {
-                    working = {
-                      ...working,
-                      toolSteps: trace.map((t) => ({
-                        name: t.name,
-                        arguments: (t as { arguments?: string }).arguments,
-                        ok: (t as { result?: { ok?: boolean } }).result?.ok,
-                        result: (t as { result?: unknown }).result,
-                      })),
-                      metadata: { ...(working.metadata ?? {}), tool_trace: trace },
-                    };
-                    setMessages((prev) => {
-                      const next = [...prev];
-                      next[next.length - 1] = { ...working };
-                      return next;
-                    });
-                  }
                   setIsStreaming(false);
                   setStatus("");
                 } else if (currentEvent === "error") {
-                  throw new Error(String((data as { detail?: string }).detail ?? "Stream error"));
+                  throw new Error("Stream error");
                 }
-              } catch (e) {
-                if (e instanceof SyntaxError) continue;
-                throw e;
-              }
+              } catch { /* skip parse errs */ }
             }
           }
         }
@@ -334,10 +285,6 @@ export function ChatInterface() {
         setIsStreaming(false);
         setStatus("Error fetching response.");
         toastError("Failed to connect to AI server.");
-        setMessages((prev) => prev.filter((m) => m.id !== assistantId));
-      } finally {
-        setIsStreaming(false);
-        setStatus("");
       }
     },
     [activeSessionId, chatMode, currentTeamId, isStreaming, toastError],
@@ -356,204 +303,146 @@ export function ChatInterface() {
     }
   };
 
-  const handleSend = async () => {
-    const text = input.trim();
+  const handleSend = async (overrideText?: string, options?: { mode?: ChatMode }) => {
+    const text = (overrideText ?? input).trim();
     if (!text) return;
     if (!activeSessionId) {
-      toastError("Chat session is not ready. Tap Retry or wait for the session to load.");
+      toastError("Chat session is not ready.");
       return;
     }
-    setInput("");
-    await sendUserMessage(text);
+    if (!overrideText) setInput("");
+    await sendUserMessage(text, options);
   };
 
+  const handleSaveEdit = async (id: string) => {
+    const msg = messages.find(m => m.id === id);
+    if (!msg || !editInput.trim()) return;
+    const idx = messages.findIndex(m => m.id === id);
+    const mode = (msg.metadata?.mode as ChatMode) || chatMode;
+    setMessages(prev => prev.slice(0, idx));
+    setEditingMessageId(null);
+    await handleSend(editInput, { mode });
+  };
 
-  if (!currentTeamId) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-[var(--text-muted)]">
-        Select a team first
-      </div>
-    );
-  }
+  if (!currentTeamId) return <div className="flex flex-1 items-center justify-center text-[var(--text-muted)]">Select a team first</div>;
 
-  /** Allow typing while session is preparing or after a failed bootstrap; only send requires a session. */
   const inputTypingDisabled = isStreaming || !sessionReady;
-  const sendDisabled =
-    isStreaming || !sessionReady || !activeSessionId || !input.trim();
+  const sendDisabled = isStreaming || !sessionReady || !activeSessionId || !input.trim();
 
   return (
-    <div className="flex h-full w-full bg-[var(--bg-900)]">
+    <div className="flex h-full w-full bg-[var(--bg-950)] relative overflow-hidden font-sans">
+      <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-[radial-gradient(circle,rgba(var(--accent-rgb),0.08)_0%,transparent_70%)] blur-[100px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-5%] w-[35%] h-[35%] bg-[radial-gradient(circle,rgba(168,85,247,0.06)_0%,transparent_70%)] blur-[80px] pointer-events-none" />
 
-      {/* Sidebar */}
-      <div className="flex w-[260px] shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--surface-1)]">
-        <div className="flex items-center justify-between border-b border-[var(--border-subtle)] p-4">
-          <h2 className="font-semibold text-[var(--text-primary)]">Chat History</h2>
+      <div className="flex w-[280px] shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-950)]/50 backdrop-blur-xl z-20">
+        <div className="flex items-center justify-between border-b border-[var(--border-subtle)] p-6">
+          <h2 className="text-sm font-bold uppercase tracking-widest text-[var(--text-muted)]">Intelligence</h2>
         </div>
-        <div className="p-3">
-          <button
-            type="button"
-            onClick={handleNewChat}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-800)] py-2 text-sm hover:border-[var(--accent)]"
-          >
-            + New Chat
+        <div className="p-4">
+          <button onClick={handleNewChat} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] py-2.5 text-sm font-semibold text-[var(--text-primary)] transition-all hover:border-[var(--accent)] hover:shadow-glow active:scale-[0.98]">
+            <Bot className="w-4 h-4 text-[var(--accent)]" /> New Briefing
           </button>
         </div>
-        <div className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
+        <div className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 custom-scrollbar">
           {sessions.map((s) => (
-            <button
-              type="button"
-              key={s.id}
-              onClick={() => setActiveSessionId(s.id)}
-              className={`truncate rounded-lg px-3 py-2 text-left text-sm ${
-                activeSessionId === s.id
-                  ? "bg-[var(--accent)] font-medium text-[var(--bg-950)]"
-                  : "text-[var(--text-muted)] hover:bg-[var(--bg-800)] hover:text-[var(--text-primary)]"
-              }`}
-            >
+            <button key={s.id} onClick={() => setActiveSessionId(s.id)} className={cn("group relative truncate rounded-xl px-4 py-3 text-left text-sm transition-all duration-200", activeSessionId === s.id ? "bg-[var(--accent-subtle)] border border-[var(--accent)]/20 text-[var(--accent)] font-semibold shadow-inner" : "text-[var(--text-muted)] hover:bg-[var(--surface-1)] hover:text-[var(--text-primary)]")}>
+              {activeSessionId === s.id && <motion.div layoutId="active-session" className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-[var(--accent)] rounded-r-full shadow-glow" />}
               {s.title}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Main */}
-      <div className="flex min-w-0 flex-1 flex-col">
-
-        <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-6">
+      <div className="flex min-w-0 flex-1 flex-col relative z-10">
+        <div className="flex flex-1 flex-col gap-8 overflow-y-auto px-6 py-8 custom-scrollbar">
           {messages.length === 0 && (
-            <div className="flex flex-1 flex-col items-center justify-center px-4 text-center">
-              <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border border-[var(--border-subtle)] bg-[var(--surface-1)]">
-                <Bot className="h-10 w-10 text-[var(--text-muted)]" />
+            <div className="flex flex-1 flex-col items-center justify-center px-4 text-center animate-fade-in">
+              <div className="mb-8 relative">
+                <div className="absolute inset-0 bg-[var(--accent)] blur-[40px] opacity-10 animate-pulse-glow" />
+                <div className="relative flex h-24 w-24 items-center justify-center rounded-[2.5rem] border border-[var(--border-strong)] bg-[var(--surface-1)] shadow-2xl"><Bot className="h-12 w-12 text-[var(--accent)]" /></div>
               </div>
-              <h2 className="mb-2 text-xl font-bold text-[var(--text-primary)]">Team Intelligence Chat</h2>
-              <p className="max-w-sm text-[var(--text-muted)]">
-                Ask questions about your team&apos;s wiki. Answers can include{" "}
-                <strong className="text-[var(--text-secondary)]">tables and charts</strong> (Markdown + Mermaid) when
-                the data supports it.
-              </p>
+              <h2 className="mb-3 text-2xl font-black tracking-tight text-[var(--text-primary)]">Command Center</h2>
+              <p className="max-w-md text-base leading-relaxed text-[var(--text-muted)]">Connect your team&apos;s knowledge and execute complex workflows.</p>
             </div>
           )}
 
           {messages.map((m, i) => {
-            const isLiveAssistant =
-              m.role === "assistant" && isStreaming && i === messages.length - 1;
+            const isLiveAssistant = m.role === "assistant" && isStreaming && i === messages.length - 1;
+            const isUser = m.role === "user";
+            const isEditing = editingMessageId === m.id;
+            
             return (
-            <div
-              key={m.id || i}
-              className={`mx-auto flex w-full max-w-4xl gap-4 ${m.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              {m.role === "assistant" && (
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--surface-1)]">
-                  <Bot className="h-4 w-4 text-[var(--text-muted)]" />
+              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} key={m.id || i} className={cn("mx-auto flex w-full max-w-4xl gap-4 group/msg", isUser ? "justify-end" : "justify-start")}>
+                {!isUser && <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] shadow-md"><Bot className="h-5 w-5 text-[var(--accent)]" /></div>}
+                <div className={cn("flex max-w-[85%] flex-col gap-3", isUser ? "items-end" : "items-start")}>
+                  {!isUser && agentStepsForMessage(m).length > 0 && <ChatAgentToolTimeline steps={agentStepsForMessage(m)} />}
+                  <div className="relative group/msg-content">
+                    <div className={cn("rounded-[1.5rem] px-5 py-4 text-[15px] leading-relaxed shadow-lg transition-all", isUser ? "bg-gradient-to-br from-[var(--accent)] to-[#009ab0] font-semibold text-[var(--bg-950)] rounded-tr-none shadow-[var(--accent-glow)]" : "bg-[var(--surface-1)]/80 backdrop-blur-md border border-[var(--border-subtle)] text-[var(--text-primary)] rounded-tl-none")}>
+                        {isEditing ? (
+                          <div className="flex flex-col gap-3 min-w-[300px]">
+                            <textarea className="w-full bg-transparent border-none outline-none text-[var(--bg-950)] placeholder:text-[var(--bg-950)]/50 resize-none overflow-hidden" value={editInput} onChange={(e) => { setEditInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }} autoFocus />
+                            <div className="flex justify-end gap-2">
+                                <button onClick={() => setEditingMessageId(null)} className="p-1 rounded-lg hover:bg-white/20 transition-colors"><X className="w-4 h-4" /></button>
+                                <button onClick={() => handleSaveEdit(m.id)} className="p-1 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"><Check className="w-4 h-4" /></button>
+                            </div>
+                          </div>
+                        ) : m.role === "assistant" ? (
+                          <ChatMessageContent content={m.content} streaming={isLiveAssistant} />
+                        ) : (
+                          <span className="whitespace-pre-wrap break-words">{m.content}</span>
+                        )}
+                    </div>
+                    {isUser && !isEditing && (
+                        <button onClick={() => { setEditingMessageId(m.id); setEditInput(m.content); }} className="absolute -left-10 top-2 p-2 rounded-xl text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--surface-1)] opacity-0 group-hover/msg:opacity-100 transition-all" title="Edit Message">
+                            <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                    )}
+                    {!isUser && !isLiveAssistant && (
+                        <div className="absolute -right-20 top-2 flex items-center gap-1 opacity-0 group-hover/msg-content:opacity-100 transition-all">
+                            <button onClick={() => { navigator.clipboard.writeText(m.content); }} className="p-2 rounded-xl text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--surface-1)]" title="Copy Response">
+                                <Copy className="w-3.5 h-3.5" />
+                            </button>
+                            {i === messages.length - 1 && (
+                                <button 
+                                    onClick={() => {
+                                        const lastUser = [...messages].reverse().find(msg => msg.role === "user");
+                                        if (lastUser) handleSaveEdit(lastUser.id);
+                                    }} 
+                                    className="p-2 rounded-xl text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--surface-1)]" 
+                                    title="Regenerate"
+                                >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                </button>
+                            )}
+                        </div>
+                    )}
+                  </div>
+                  {m.citations && m.citations.length > 0 && <div className="mt-1"><ChatCitationList citations={m.citations} /></div>}
                 </div>
-              )}
-
-              <div className={`flex max-w-[85%] flex-col gap-2 ${m.role === "user" ? "items-end" : "items-start"}`}>
-                {m.role === "assistant" && agentStepsForMessage(m).length > 0 ? (
-                  <ChatAgentToolTimeline steps={agentStepsForMessage(m)} />
-                ) : null}
-                <div
-                  className={`rounded-2xl p-4 text-[15px] leading-relaxed ${
-                    m.role === "user"
-                      ? "border border-[var(--border-subtle)] bg-[var(--accent)] font-medium text-[var(--bg-950)]"
-                      : "border border-[var(--border-subtle)] bg-[var(--surface-1)] text-[var(--text-primary)]"
-                  }`}
-                >
-                  {m.role === "assistant" ? (
-                    <ChatMessageContent content={m.content} streaming={isLiveAssistant} />
-                  ) : (
-                    <span className="whitespace-pre-wrap break-words">{m.content}</span>
-                  )}
-                </div>
-
-                {m.citations && m.citations.length > 0 ? <ChatCitationList citations={m.citations} /> : null}
-              </div>
-
-              {m.role === "user" && (
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--bg-800)]">
-                  <User className="h-4 w-4 text-[var(--text-muted)]" />
-                </div>
-              )}
-            </div>
+                {isUser && <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-800)] shadow-md"><User className="h-5 w-5 text-[var(--text-muted)]" /></div>}
+              </motion.div>
             );
           })}
 
-          {isStreaming && (
-            <div className="mx-auto flex w-full max-w-4xl justify-start gap-4">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--surface-1)]">
-                <Bot className="h-4 w-4 text-[var(--text-muted)]" />
-              </div>
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-1.5 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] px-4 py-3">
-                  <span
-                    className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)]"
-                    style={{ animation: "bounce-dot 1.4s infinite ease-in-out both" }}
-                  />
-                  <span
-                    className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)]"
-                    style={{ animation: "bounce-dot 1.4s infinite ease-in-out both 0.2s" }}
-                  />
-                  <span
-                    className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)]"
-                    style={{ animation: "bounce-dot 1.4s infinite ease-in-out both 0.4s" }}
-                  />
-                </div>
-                {status ? (
-                  <div className="ml-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)]">
-                    {status}
-                  </div>
-                ) : null}
-              </div>
-            </div>
+          {isStreaming && status && (
+             <div className="mx-auto flex w-full max-w-4xl justify-start items-center gap-3 animate-fade-in">
+                <div className="flex h-5 w-5 items-center justify-center"><div className="w-2 h-2 bg-[var(--accent)] rounded-full animate-ping" /></div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)] opacity-80">{status}</div>
+             </div>
           )}
-          <div ref={messagesEndRef} />
+          <div ref={messagesEndRef} className="h-12" />
         </div>
 
-        <div className="shrink-0 border-t border-[var(--border-subtle)] bg-[var(--bg-900)] p-6">
-          <div className="relative mx-auto flex max-w-4xl items-stretch gap-2">
-            <ChatModeSelect
-              value={chatMode}
-              onChange={setChatMode}
-              capabilities={
-                chatCaps
-                ?? {
-                  can_edit_wiki: false,
-                  can_edit_plans: false,
-                  can_ingest: false,
-                  agent_mode_available: false,
-                  plan_mode_available: false,
-                }
-              }
-            />
-            <div className="relative min-w-0 flex-1">
-            <input
-              className="w-full rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] py-4 pl-5 pr-14 text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--border-subtle)] focus:ring-1 focus:ring-[var(--border-subtle)] disabled:cursor-not-allowed disabled:opacity-50"
-              placeholder={
-                !sessionReady
-                  ? "Preparing your chat…"
-                  : !activeSessionId
-                    ? "Type a message — connect a session with Retry above, or wait…"
-                    : "Ask TeamOS anything…"
-              }
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void handleSend();
-                }
-              }}
-              disabled={inputTypingDisabled}
-              aria-busy={!sessionReady}
-            />
-            <button
-              type="button"
-              onClick={() => void handleSend()}
-              disabled={sendDisabled}
-              className="absolute right-3 top-3 rounded-xl bg-[var(--accent)] p-2 text-[var(--bg-950)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-30"
-            >
-              <Send className="h-5 w-5" />
-            </button>
+        <div className="shrink-0 bg-transparent p-6 relative">
+          <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-950)] via-[var(--bg-950)]/95 to-transparent pointer-events-none -top-20 h-[calc(100%+80px)]" />
+          <div className="relative mx-auto flex max-w-4xl flex-col gap-4">
+            <div className="flex items-center justify-between px-2">
+                <ChatModeSegmentedControl value={chatMode} onChange={setChatMode} capabilities={chatCaps} />
+            </div>
+            <div className="relative group">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-[var(--accent)] to-purple-600 rounded-[2rem] opacity-0 group-focus-within:opacity-15 blur-md transition-opacity duration-500" />
+              <input className="relative w-full rounded-[1.8rem] border border-[var(--border-strong)] bg-[var(--bg-950)]/80 backdrop-blur-xl py-5 pl-7 pr-16 text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/50 focus:shadow-glow shadow-2xl disabled:cursor-not-allowed disabled:opacity-50" placeholder={!sessionReady ? "Initializing Intelligence…" : "Enter command or ask a question…"} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); } }} disabled={inputTypingDisabled} />
+              <button onClick={() => void handleSend()} disabled={sendDisabled} className="absolute right-3.5 top-3.5 h-12 w-12 flex items-center justify-center rounded-2xl bg-[var(--accent)] text-[var(--bg-950)] transition-all hover:scale-105 hover:shadow-glow active:scale-95 disabled:cursor-not-allowed disabled:opacity-20"><Send className="h-5 w-5" /></button>
             </div>
           </div>
         </div>
