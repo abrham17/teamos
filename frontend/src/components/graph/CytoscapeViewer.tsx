@@ -508,7 +508,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
         cy.destroy();
         cyRef.current = null;
       };
-    }, [nodes, edges]);
+    }, [nodes, edges, layoutName]);
 
     return (
       <div className="relative h-full w-full overflow-hidden bg-[var(--bg-950)] select-none">

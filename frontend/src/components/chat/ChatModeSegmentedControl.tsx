@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { Search, PenTool, Layout, ShieldCheck } from "lucide-react";
+import { Search, Layout, ShieldCheck, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type ChatMode = "ask" | "plan" | "agent";
@@ -24,7 +24,7 @@ export function ChatModeSegmentedControl({
   onChange,
   capabilities,
 }: ChatModeSegmentedControlProps) {
-  const modes: { id: ChatMode; label: string; icon: any; disabled: boolean; color: string }[] = [
+  const modes: { id: ChatMode; label: string; icon: LucideIcon; disabled: boolean; color: string }[] = [
     { 
         id: "ask", 
         label: "Ask", 

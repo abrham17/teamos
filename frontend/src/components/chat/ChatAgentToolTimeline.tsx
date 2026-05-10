@@ -11,8 +11,8 @@ export type AgentToolStep = {
 function summarizeResult(result: unknown): string {
   if (result == null) return "";
   if (typeof result === "object" && result !== null) {
-      if ("error" in result) return String((result as any).error);
-      if ("message" in result) return String((result as any).message);
+      if ("error" in result) return String((result as Record<string, unknown>).error);
+      if ("message" in result) return String((result as Record<string, unknown>).message);
   }
   try {
     const s = JSON.stringify(result);

@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FileText, Database, Layers } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { FileText, Layers } from "lucide-react";
 import { buildChatCitationHref } from "@/lib/chatCitationLink";
 
 export type ChatCitation = {
