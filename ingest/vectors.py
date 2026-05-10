@@ -106,7 +106,7 @@ class VectorStore:
         wiki_results = (
             PageChunk.objects.filter(page__team_id=team_id)
             .annotate(distance=CosineDistance("embedding", vector))
-            .filter(distance__lt=0.28) # Threshold for Cosine Distance (lower is closer)
+            .filter(distance__lt=0.45) # Increased threshold for better recall
             .order_by("distance")[:limit]
         )
         
@@ -114,7 +114,7 @@ class VectorStore:
         plan_results = (
             PlanChunk.objects.filter(project__team_id=team_id)
             .annotate(distance=CosineDistance("embedding", vector))
-            .filter(distance__lt=0.28)
+            .filter(distance__lt=0.45) # Increased threshold for better recall
             .order_by("distance")[:limit]
         )
         
