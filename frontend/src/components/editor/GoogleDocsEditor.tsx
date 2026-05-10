@@ -74,9 +74,7 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
       TableHeader,
       TableCell,
       Markdown.configure({
-        html: false,
-        transformPastedText: true,
-        transformCopiedText: true,
+        // Default options are fine
       }),
       Link.configure({
         openOnClick: false,
