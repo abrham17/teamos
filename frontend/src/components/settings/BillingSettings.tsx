@@ -26,7 +26,7 @@ interface TeamSubscription {
 
 export function BillingSettings() {
   const { currentTeamId } = useWikiStore();
-  const { info, error, success } = useToast();
+  const { info, error } = useToast();
   const { paddle, isReady } = usePaddle();
   
   const [subscription, setSubscription] = useState<TeamSubscription | null>(null);

@@ -3,8 +3,18 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import Script from 'next/script';
 
+interface PaddleInstance {
+  Initialize: (config: { token: string; eventCallback?: (data: any) => void }) => void;
+  Environment: {
+    set: (env: 'sandbox' | 'production') => void;
+  };
+  Checkout: {
+    open: (config: any) => void;
+  };
+}
+
 interface PaddleContextType {
-  paddle: any;
+  paddle: PaddleInstance | null;
   isReady: boolean;
 }
 
@@ -13,7 +23,7 @@ const PaddleContext = createContext<PaddleContextType>({ paddle: null, isReady: 
 export const usePaddle = () => useContext(PaddleContext);
 
 export function PaddleProvider({ children }: { children: React.ReactNode }) {
-  const [paddle, setPaddle] = useState<any>(null);
+  const [paddle, setPaddle] = useState<PaddleInstance | null>(null);
   const [isReady, setIsReady] = useState(false);
 
   // You need to set this in your .env.local
@@ -22,7 +32,7 @@ export function PaddleProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as any).Paddle && !paddle) {
-      const p = (window as any).Paddle;
+      const p = (window as any).Paddle as PaddleInstance;
       p.Initialize({ 
         token: clientToken,
         eventCallback: (data: any) => {
@@ -36,7 +46,7 @@ export function PaddleProvider({ children }: { children: React.ReactNode }) {
 
   const handleLoad = () => {
     if ((window as any).Paddle) {
-      const p = (window as any).Paddle;
+      const p = (window as any).Paddle as PaddleInstance;
       p.Environment.set(isSandbox ? 'sandbox' : 'production');
       p.Initialize({ 
         token: clientToken,

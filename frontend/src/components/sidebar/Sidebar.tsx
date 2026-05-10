@@ -445,7 +445,8 @@ export function Sidebar() {
           {collapsed ? (
             <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center bg-[var(--surface-2)] text-[var(--accent)] font-bold text-xs">
               {user?.avatar_url
-                ? <img src={user.avatar_url} alt="" className="w-full h-full" />
+                ? /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={user.avatar_url} alt="" className="w-full h-full" />
                 : (user?.display_name?.[0]?.toUpperCase() || "U")
               }
             </div>
@@ -453,7 +454,8 @@ export function Sidebar() {
             <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl">
               <div className="w-8 h-8 rounded-lg overflow-hidden bg-[var(--accent-subtle)] border border-[var(--border-strong)] flex items-center justify-center text-[var(--accent)] font-bold text-xs shrink-0">
                 {user?.avatar_url
-                  ? <img src={user.avatar_url} alt="" className="w-full h-full" />
+                  ? /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={user.avatar_url} alt="" className="w-full h-full" />
                   : (user?.display_name?.[0]?.toUpperCase() || "U")
                 }
               </div>

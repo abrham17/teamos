@@ -144,6 +144,7 @@ export default function OnboardingPage() {
                           : "border-transparent hover:border-white/20"
                       }`}
                     >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={avatar.svg} alt={avatar.label} className="w-full h-full" />
                       {selectedAvatar === avatar.id && (
                         <div className="absolute inset-0 bg-[var(--accent)]/20 flex items-center justify-center">
@@ -180,6 +181,7 @@ export default function OnboardingPage() {
               <div className="text-center mb-10">
                 <div className="flex items-center justify-center gap-4 mb-6">
                   {selectedAvatarObj && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
                     <img src={selectedAvatarObj.svg} alt="Your avatar" className="w-16 h-16 rounded-2xl border-2 border-[var(--accent)]/30" />
                   )}
                   <div className="text-left">

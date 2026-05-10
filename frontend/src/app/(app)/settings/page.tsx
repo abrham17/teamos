@@ -521,7 +521,8 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-4 mb-2">
                     <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-[var(--accent)]/30 bg-[var(--bg-900)] flex items-center justify-center text-[var(--accent)] font-bold text-xl shrink-0">
                       {profileAvatarUrl
-                        ? <img src={profileAvatarUrl} alt="Avatar" className="w-full h-full" />
+                        ? /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={profileAvatarUrl} alt="Avatar" className="w-full h-full" />
                         : (profileFirstName?.[0]?.toUpperCase() || "U")
                       }
                     </div>
@@ -545,6 +546,7 @@ export default function SettingsPage() {
                             : "border-transparent hover:border-white/20"
                         }`}
                       >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={avatar.svg} alt={avatar.label} className="w-full h-full" />
                       </button>
                     ))}
