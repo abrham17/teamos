@@ -59,9 +59,10 @@ export default function GraphPage() {
   const [data, setData]                 = useState<GraphData | null>(null);
   const [analytics, setAnalytics]       = useState<GraphAnalytics | null>(null);
   const [loading, setLoading]           = useState(false);
+  const [error, setError]               = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery]   = useState("");
-  const [layout, setLayout]             = useState("cose");
+  const [layout, setLayout]             = useState("grid");
   const [analyticsMode, setAnalyticsMode] = useState<"simple" | "advanced">("simple");
   const [hoverPayload, setHoverPayload] = useState<GraphHoverPayload | null>(null);
   const [nodeHoverDetail, setNodeHoverDetail] = useState<GraphNodeHoverDetail | null>(null);
@@ -90,8 +91,12 @@ export default function GraphPage() {
       .then(([graphData, analyticsData]) => {
         setData(graphData);
         setAnalytics(analyticsData);
+        setError(null);
       })
-      .catch(console.error)
+      .catch((err) => {
+        console.error(err);
+        setError("Failed to load knowledge graph.");
+      })
       .finally(() => setLoading(false));
   }, [currentTeamId, analyticsMode]);
 
@@ -323,6 +328,23 @@ export default function GraphPage() {
 
       {/* Canvas area */}
       <div className="flex-1 relative min-h-0 overflow-hidden">
+
+        {/* Error state */}
+        {error && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-20">
+            <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
+              <Share2 className="w-8 h-8 text-rose-500" />
+            </div>
+            <h3 className="text-base font-semibold text-[var(--text-primary)]">Graph failed to load</h3>
+            <p className="text-sm text-[var(--text-muted)] text-center max-w-xs">{error}</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="mt-2 px-4 py-2 bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-primary)] rounded-xl text-xs font-bold transition-all"
+            >
+              Retry Connection
+            </button>
+          </div>
+        )}
 
         {/* Loading state */}
         {loading && !data && (

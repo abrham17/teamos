@@ -382,7 +382,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
           },
         ],
 
-        layout: getLayoutOptions("cose"),
+        layout: getLayoutOptions("grid"),
 
         minZoom: 0.15,
         maxZoom: 5,
