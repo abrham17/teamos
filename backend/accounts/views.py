@@ -515,7 +515,12 @@ class AcceptInviteView(APIView):
                 return fail("Invite was revoked.", status_code=400, code="invite_revoked")
             if invite.expires_at < timezone.now():
                 return fail("Invite expired.", status_code=400, code="invite_expired")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Invite acceptance attempt: user_email='{request.user.email}', invite_email='{invite.invitee_email}'")
+
             if request.user.email.lower().strip() != invite.invitee_email.lower().strip():
+                logger.warning(f"Invite email mismatch: '{request.user.email}' != '{invite.invitee_email}'")
                 return fail(
                     "This invite is for a different email address.",
                     status_code=403,

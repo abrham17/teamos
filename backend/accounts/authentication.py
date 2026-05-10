@@ -57,6 +57,10 @@ class ClerkJWTAuthentication(BaseAuthentication):
         )
 
         updated = False
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Clerk Auth: clerk_user_id={clerk_user_id}, payload_email='{email}', user_email='{user.email}'")
+
         if email and user.email != email:
             user.email = email
             user.username = email

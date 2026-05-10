@@ -19,8 +19,15 @@ class AppwriteMediaStorage(Storage):
         self.bucket_id = os.environ.get("APPWRITE_BUCKET_ID", "default")
 
     def _get_file_id(self, name):
+        # If name is already a 32-char hex string (our MD5 hash), don't hash it again
+        import re
+        # Check if it looks like an MD5 hash
+        if isinstance(name, str) and re.match(r'^[a-f0-9]{32}$', name):
+            return name
+            
         import hashlib
-        return hashlib.md5(name.encode()).hexdigest()
+        # We use MD5 of the name to create a valid Appwrite File ID
+        return hashlib.md5(str(name).encode()).hexdigest()
 
     def _open(self, name, mode='rb'):
         # Appwrite doesn't support random access easily; we download the whole file
