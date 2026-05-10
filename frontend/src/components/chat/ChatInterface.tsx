@@ -355,6 +355,7 @@ export function ChatInterface() {
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col relative z-10 overflow-hidden w-full h-full">
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 sm:px-6 pt-6 pb-40 min-h-0 custom-scrollbar w-full">
           {messages.length === 0 && (
             <div className="flex flex-1 flex-col items-center justify-center px-4 text-center animate-fade-in my-auto">
               <div className="mb-8 relative">
