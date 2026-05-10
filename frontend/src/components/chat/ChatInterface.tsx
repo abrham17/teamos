@@ -338,12 +338,12 @@ export function ChatInterface() {
         <div className="flex items-center justify-between border-b border-[var(--border-subtle)] p-4">
           <h2 className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">Intelligence</h2>
         </div>
-        <div className="p-4">
-          <button onClick={handleNewChat} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] py-2.5 text-sm font-semibold text-[var(--text-primary)] transition-all hover:border-[var(--accent)] hover:shadow-glow active:scale-[0.98]">
+        <div className="p-4 shrink-0">
+          <button onClick={handleNewChat} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] py-2.5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-primary)] transition-all hover:border-[var(--accent)] hover:shadow-glow active:scale-[0.98]">
             <Bot className="w-4 h-4 text-[var(--accent)]" /> New Briefing
           </button>
         </div>
-        <div className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 custom-scrollbar">
+        <div className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 min-h-0 custom-scrollbar">
           {sessions.map((s) => (
             <button key={s.id} onClick={() => setActiveSessionId(s.id)} className={cn("group relative truncate rounded-xl px-4 py-3 text-left text-sm transition-all duration-200", activeSessionId === s.id ? "bg-[var(--accent-subtle)] border border-[var(--accent)]/20 text-[var(--accent)] font-semibold shadow-inner" : "text-[var(--text-muted)] hover:bg-[var(--surface-1)] hover:text-[var(--text-primary)]")}>
               {activeSessionId === s.id && <motion.div layoutId="active-session" className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-[var(--accent)] rounded-r-full shadow-glow" />}
@@ -353,8 +353,8 @@ export function ChatInterface() {
         </div>
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col relative z-10">
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-6 py-6 custom-scrollbar">
+      <div className="flex min-w-0 flex-1 flex-col relative z-10 overflow-hidden">
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-6 py-6 min-h-0 custom-scrollbar">
           {messages.length === 0 && (
             <div className="flex flex-1 flex-col items-center justify-center px-4 text-center animate-fade-in">
               <div className="mb-8 relative">
