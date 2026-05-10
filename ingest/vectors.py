@@ -95,32 +95,80 @@ class VectorStore:
             vector = self._get_embedding(chunk["content"])
             PageChunk.objects.filter(id=chunk["id"]).update(embedding=vector)
 
-    def search_similar_pages(self, team_id: str, query_text: str, limit: int = 5):
+    def search_similar_pages(self, team_id: str, query_text: str, limit: int = 10):
         from wiki.models import PageChunk
+        from planning.models import PlanChunk
+        from django.db.models import F
         
         vector = self._get_embedding(query_text)
         
-        # Filter by team_id (via page__team_id) and order by cosine distance
-        results = (
+        # 1. Search Wiki PageChunks
+        wiki_results = (
             PageChunk.objects.filter(page__team_id=team_id)
             .annotate(distance=CosineDistance("embedding", vector))
+            .filter(distance__lt=0.28) # Threshold for Cosine Distance (lower is closer)
             .order_by("distance")[:limit]
         )
         
-        # Mocking the Qdrant response structure for compatibility
-        class MockPoint:
-            def __init__(self, chunk):
-                self.id = str(chunk.id)
-                self.payload = {
-                    "page_id": str(chunk.page_id),
-                    "page_title": chunk.page.title,
-                    "chunk_index": chunk.chunk_index,
-                    "content": chunk.content,
-                    "team_id": str(team_id),
-                }
-                self.score = 1.0 # Could be derived from distance if needed
+        # 2. Search PlanChunks
+        plan_results = (
+            PlanChunk.objects.filter(project__team_id=team_id)
+            .annotate(distance=CosineDistance("embedding", vector))
+            .filter(distance__lt=0.28)
+            .order_by("distance")[:limit]
+        )
         
-        return [MockPoint(r) for r in results]
+        # 3. Combine and sort
+        combined = []
+        for r in wiki_results:
+            combined.append({
+                "type": "wiki",
+                "obj": r,
+                "score": 1.0 - float(r.distance),
+                "distance": float(r.distance)
+            })
+        for r in plan_results:
+            combined.append({
+                "type": "plan",
+                "obj": r,
+                "score": 1.0 - float(r.distance),
+                "distance": float(r.distance)
+            })
+            
+        combined.sort(key=lambda x: x["distance"])
+        top_results = combined[:limit]
+
+        # 4. Mock structure for compatibility
+        class MockPoint:
+            def __init__(self, item):
+                obj = item["obj"]
+                self.id = str(obj.id)
+                self.score = item["score"]
+                
+                if item["type"] == "wiki":
+                    self.payload = {
+                        "source_type": "wiki",
+                        "page_id": str(obj.page_id),
+                        "page_title": obj.page.title,
+                        "slug": obj.page.slug,
+                        "chunk_index": obj.chunk_index,
+                        "content": obj.content,
+                        "team_id": str(team_id),
+                    }
+                else:
+                    self.payload = {
+                        "source_type": "plan",
+                        "project_id": str(obj.project_id),
+                        "project_name": obj.project.name,
+                        "source_kind": obj.source_kind,
+                        "source_ref_id": str(obj.source_ref_id) if obj.source_ref_id else None,
+                        "title": obj.title,
+                        "chunk_index": obj.chunk_index,
+                        "content": obj.content,
+                        "team_id": str(team_id),
+                    }
+        
+        return [MockPoint(r) for r in top_results]
 
     def upsert_plan_chunks(self, team_id: str, project_id: str, chunks_data: list):
         """
