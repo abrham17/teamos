@@ -1,4 +1,4 @@
-import { api } from "@/lib/api";
+import { api, getApiAuthHeaders } from "@/lib/api";
 import type {
   PlanCalendarEvent,
   PlanMilestone,
@@ -7,6 +7,108 @@ import type {
   PlanTask,
   TeamMember,
 } from "./types";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+
+export interface PlannerAgentStep {
+  name: string;
+  arguments: string;
+}
+
+export interface PlannerAgentResult {
+  name: string;
+  ok: boolean;
+  result: Record<string, unknown>;
+}
+
+export interface PlannerAgentDone {
+  project_id: string | null;
+  project_name: string;
+  description: string;
+  task_count: number;
+  milestone_count: number;
+  conflict_count: number;
+  conflicts: Array<Record<string, unknown>>;
+  risk: { score: number; factors: string[]; suggestions: string[] };
+  wiki_page_url: string | null;
+  overdue_count: number;
+  knowledge_gaps: string[];
+}
+
+export interface PlannerStreamCallbacks {
+  onStep?: (step: PlannerAgentStep) => void;
+  onResult?: (result: PlannerAgentResult) => void;
+  onStatus?: (status: string) => void;
+  onDone?: (data: PlannerAgentDone) => void;
+  onError?: (detail: string) => void;
+}
+
+export async function planAssistStream(
+  teamId: string,
+  payload: { prompt: string; mode?: "create" | "manage"; project_id?: string },
+  callbacks: PlannerStreamCallbacks,
+): Promise<void> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(await getApiAuthHeaders()),
+  };
+
+  const response = await fetch(`${API_BASE}/planning/${teamId}/assist/stream/`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.body) {
+    callbacks.onError?.("No response body from server.");
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    let currentEvent = "";
+    for (const line of lines) {
+      if (line.startsWith("event: ")) {
+        currentEvent = line.slice(7).trim();
+      } else if (line.startsWith("data: ") && currentEvent) {
+        const rawData = line.slice(6);
+        try {
+          const data = JSON.parse(rawData);
+          switch (currentEvent) {
+            case "agent_step":
+              callbacks.onStep?.({ name: data.name, arguments: data.arguments });
+              break;
+            case "agent_result":
+              callbacks.onResult?.({ name: data.name, ok: data.ok, result: data.result });
+              break;
+            case "agent_status":
+              callbacks.onStatus?.(data.status);
+              break;
+            case "agent_done":
+              callbacks.onDone?.(data as PlannerAgentDone);
+              break;
+            case "agent_error":
+              callbacks.onError?.(data.detail || "Agent execution failed");
+              break;
+          }
+        } catch {
+          // skip malformed JSON
+        }
+        currentEvent = "";
+      }
+    }
+  }
+}
 
 export async function listPlanProjects(teamId: string, query?: string) {
   const q = query?.trim();
@@ -127,4 +229,36 @@ export async function deletePlanTask(teamId: string, projectId: string, taskId: 
 
 export async function deletePlanMilestone(teamId: string, projectId: string, milestoneId: string) {
   return api.delete(`/planning/${teamId}/projects/${projectId}/milestones/${milestoneId}/`);
+}
+
+export async function getProjectConflicts(teamId: string, projectId?: string) {
+  const url = projectId 
+    ? `/planning/${teamId}/projects/${projectId}/conflicts/` 
+    : `/planning/${teamId}/conflicts/`;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return api.get<any[]>(url);
+}
+
+export async function getProjectRisk(teamId: string, projectId: string) {
+  return api.get<{ score: number; factors: string[]; suggestions: string[] }>(`/planning/${teamId}/projects/${projectId}/risk/`);
+}
+
+export async function getTeamOverdue(teamId: string) {
+  return api.get<{ 
+    overdue_tasks: any[]; 
+    missed_milestones: any[];
+  }>(`/planning/${teamId}/overdue/`);
+}
+
+export async function listPlanSnapshots(teamId: string, projectId: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return api.get<any[]>(`/planning/${teamId}/projects/${projectId}/snapshots/`);
+}
+
+export async function createPlanSnapshot(teamId: string, projectId: string, type: "auto" | "manual" | "agent" = "manual") {
+  return api.post(`/planning/${teamId}/projects/${projectId}/snapshots/`, { snapshot_type: type });
+}
+
+export async function restorePlanSnapshot(teamId: string, projectId: string, snapshotId: string) {
+  return api.post(`/planning/${teamId}/projects/${projectId}/snapshots/${snapshotId}/restore/`, {});
 }

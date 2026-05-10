@@ -146,3 +146,26 @@ class PlanChunk(models.Model):
     @staticmethod
     def hash_content(value: str) -> str:
         return hashlib.sha256((value or "").encode("utf-8", errors="ignore")).hexdigest()
+
+
+class PlanSnapshot(models.Model):
+    SNAPSHOT_TYPE_CHOICES = [
+        ("auto", "Auto"),
+        ("manual", "Manual"),
+        ("agent", "Agent"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="snapshots")
+    snapshot_type = models.CharField(max_length=20, choices=SNAPSHOT_TYPE_CHOICES, default="auto")
+    data = models.JSONField(help_text="JSON of full project state")
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_snapshots"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Snapshot of {self.project.name} at {self.created_at}"

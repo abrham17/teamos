@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -10,12 +10,24 @@ import {
   BrainCircuit,
   Loader2,
   Check,
+  CheckCircle2,
+  AlertCircle,
   ArrowRight,
   Mic,
   MicOff,
   PenTool,
+  AlertTriangle,
+  Shield,
+  FileText,
+  Clock,
 } from "lucide-react";
-import { planAssistDraft } from "../api";
+import {
+  planAssistDraft,
+  planAssistStream,
+  type PlannerAgentStep,
+  type PlannerAgentResult,
+  type PlannerAgentDone,
+} from "../api";
 import type { PlanProjectDetail } from "../types";
 
 interface AIPlannerOverlayProps {
@@ -27,7 +39,55 @@ interface AIPlannerOverlayProps {
   projectContext?: PlanProjectDetail | null;
 }
 
-type Phase = "input" | "thinking" | "review" | "manual";
+type Phase = "input" | "executing" | "review" | "manual";
+
+interface AgentStepEntry {
+  name: string;
+  label: string;
+  status: "running" | "done" | "error";
+  result?: Record<string, unknown>;
+}
+
+const STEP_LABELS: Record<string, string> = {
+  plan_generate_draft: "Generating draft",
+  plan_create_project: "Creating project",
+  plan_update_project: "Updating project",
+  plan_create_task: "Adding task",
+  plan_create_milestone: "Adding milestone",
+  plan_detect_conflicts: "Detecting conflicts",
+  plan_risk_assessment: "Assessing risk",
+  plan_sync_wiki: "Syncing to wiki",
+  plan_check_overdue: "Checking overdue",
+};
+
+function getStepLabel(name: string, args?: string): string {
+  const base = STEP_LABELS[name] || name.replace(/_/g, " ");
+  if (name === "plan_create_task" && args) {
+    try {
+      const parsed = JSON.parse(args);
+      if (parsed.index && parsed.total) return `Adding task ${parsed.index}/${parsed.total}`;
+    } catch { /* ignore */ }
+  }
+  if (name === "plan_create_milestone" && args) {
+    try {
+      const parsed = JSON.parse(args);
+      if (parsed.index && parsed.total) return `Adding milestone ${parsed.index}/${parsed.total}`;
+    } catch { /* ignore */ }
+  }
+  return base;
+}
+
+function riskColor(score: number): string {
+  if (score <= 30) return "text-[var(--success)]";
+  if (score <= 60) return "text-[var(--warning)]";
+  return "text-[var(--danger)]";
+}
+
+function riskBg(score: number): string {
+  if (score <= 30) return "bg-[var(--success-bg)]";
+  if (score <= 60) return "bg-[var(--warning)]/10";
+  return "bg-[var(--danger-bg)]";
+}
 
 export function AIPlannerOverlay({
   teamId,
@@ -42,9 +102,13 @@ export function AIPlannerOverlay({
   const [isListening, setIsListening] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
+
+  // Agent execution state
+  const [agentSteps, setAgentSteps] = useState<AgentStepEntry[]>([]);
+  const [statusText, setStatusText] = useState("");
+  const [agentDoneData, setAgentDoneData] = useState<PlannerAgentDone | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [generatedPlan, setGeneratedPlan] = useState<{ projectName: string; description: string; tasks: any[]; milestones: any[] } | null>(null);
-  const [thoughts, setThoughts] = useState<string[]>([]);
 
   // Manual fields
   const [manualName, setManualName] = useState("");
@@ -92,37 +156,63 @@ export function AIPlannerOverlay({
     recognitionRef.current = recognition;
   };
 
+  const resetExecutionState = useCallback(() => {
+    setAgentSteps([]);
+    setStatusText("");
+    setAgentDoneData(null);
+  }, []);
+
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
     setLoading(true);
-    setPhase("thinking");
-
-    const thinkingThoughts =
-      mode === "manage"
-        ? [
-            "Analyzing existing roadmap...",
-            "Identifying bottlenecks...",
-            "Optimizing resource allocation...",
-            "Re-aligning dependencies...",
-          ]
-        : [
-            "Analyzing project scope...",
-            "Identifying key milestones...",
-            "Estimating task durations...",
-            "Evaluating dependencies...",
-          ];
-
-    setThoughts(thinkingThoughts);
+    resetExecutionState();
+    setPhase("executing");
 
     try {
-      const res = await planAssistDraft(teamId, {
-        prompt,
-        mode,
-        project_id: projectContext?.id,
-      });
-      // api.post already unwrapped the 'data' field. res IS the plan draft.
-      setGeneratedPlan(res);
-      setPhase("review");
+      await planAssistStream(
+        teamId,
+        {
+          prompt,
+          mode,
+          project_id: projectContext?.id,
+        },
+        {
+          onStep: (step: PlannerAgentStep) => {
+            const label = getStepLabel(step.name, step.arguments);
+            setAgentSteps((prev) => [...prev, { name: step.name, label, status: "running" }]);
+          },
+          onResult: (result: PlannerAgentResult) => {
+            setAgentSteps((prev) => {
+              const next = [...prev];
+              for (let i = next.length - 1; i >= 0; i--) {
+                if (next[i].name === result.name && next[i].status === "running") {
+                  next[i] = { ...next[i], status: result.ok ? "done" : "error", result: result.result };
+                  break;
+                }
+              }
+              return next;
+            });
+          },
+          onStatus: (status: string) => {
+            setStatusText(status);
+          },
+          onDone: (data: PlannerAgentDone) => {
+            setAgentDoneData(data);
+            setGeneratedPlan({
+              projectName: data.project_name,
+              description: data.description,
+              tasks: [],
+              milestones: [],
+            });
+            setPhase("review");
+          },
+          onError: (detail: string) => {
+            console.error(detail);
+            alert(detail);
+            setPhase("input");
+          },
+        },
+      );
     } catch (error: unknown) {
       console.error(error);
       alert(error instanceof Error ? error.message : "Failed to process request. Please try again.");
@@ -327,134 +417,244 @@ export function AIPlannerOverlay({
               </motion.div>
             )}
 
-            {phase === "thinking" && (
+            {phase === "executing" && (
               <motion.div
-                key="thinking"
+                key="executing"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="py-16 flex flex-col items-center justify-center space-y-10"
+                className="py-12 flex flex-col items-center justify-center space-y-8"
               >
+                {/* Progress bar */}
+                <div className="w-full max-w-md">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                      {statusText || "Initializing agent..."}
+                    </span>
+                    <span className="text-[10px] font-mono text-[var(--text-dim)]">
+                      {agentSteps.filter((s) => s.status === "done").length}/{agentSteps.length} steps
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-[var(--bg-700)] rounded-full overflow-hidden">
+                    <motion.div
+                      className="h-full bg-[var(--accent)] rounded-full"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${agentSteps.length > 0 ? (agentSteps.filter((s) => s.status === "done").length / agentSteps.length) * 100 : 0}%` }}
+                      transition={{ duration: 0.3 }}
+                    />
+                  </div>
+                </div>
+
+                {/* Step list */}
+                <div className="w-full max-w-md space-y-2">
+                  {agentSteps.map((step, idx) => (
+                    <motion.div
+                      key={idx}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                      className="flex items-center gap-3 text-sm"
+                    >
+                      <div className={`
+                        w-5 h-5 rounded-full flex items-center justify-center shrink-0 border transition-all
+                        ${step.status === "done" ? "bg-[var(--success-bg)] border-[var(--success)]/30 text-[var(--success)]" :
+                          step.status === "error" ? "bg-[var(--danger-bg)] border-[var(--danger)]/30 text-[var(--danger)]" :
+                          "bg-[var(--surface-1)] border-[var(--border-subtle)] text-[var(--text-muted)]"}
+                      `}>
+                        {step.status === "done" && <CheckCircle2 className="w-3 h-3" />}
+                        {step.status === "error" && <AlertCircle className="w-3 h-3" />}
+                        {step.status === "running" && <Loader2 className="w-3 h-3 animate-spin" />}
+                      </div>
+                      <span className={`${
+                        step.status === "done" ? "text-[var(--text-secondary)]" :
+                        step.status === "error" ? "text-[var(--danger)]" :
+                        "text-[var(--text-primary)] font-medium"
+                      }`}>
+                        {step.label}
+                      </span>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* Spinner */}
                 <div className="relative">
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-                    className="w-24 h-24 rounded-[32px] border-4 border-dashed border-[var(--accent-subtle)] flex items-center justify-center"
+                    className="w-16 h-16 rounded-2xl border-2 border-dashed border-[var(--accent-subtle)] flex items-center justify-center"
                   />
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-16 h-16 rounded-2xl bg-[var(--surface-1)] shadow-xl flex items-center justify-center border border-[var(--border-subtle)]">
-                      <Loader2 className="w-8 h-8 text-[var(--accent)] animate-spin" />
-                    </div>
-                  </div>
-                </div>
-                <div className="text-center space-y-3">
-                  <h3 className="text-2xl font-medium text-[var(--text-primary)]">
-                    {mode === "manage" ? "Architecting Changes" : "Processing Requirements"}
-                  </h3>
-                  <div className="flex flex-col gap-3 mt-6 max-w-sm mx-auto">
-                    {thoughts.map((t, idx) => (
-                      <motion.div
-                        key={idx}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: idx * 0.4 }}
-                        className="flex items-center gap-3 text-sm font-medium text-[var(--text-muted)]"
-                      >
-                        <div className="w-5 h-5 rounded-full bg-[var(--success-bg)] flex items-center justify-center">
-                          <Check className="w-3 h-3 text-[var(--success)]" />
-                        </div>
-                        {t}
-                      </motion.div>
-                    ))}
+                    <Loader2 className="w-6 h-6 text-[var(--accent)] animate-spin" />
                   </div>
                 </div>
               </motion.div>
             )}
 
-            {phase === "review" && generatedPlan && (
+            {phase === "review" && agentDoneData && (
               <motion.div
                 key="review"
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="space-y-8"
+                className="space-y-6"
               >
-                <div className="bg-[var(--bg-900)] border-2 border-[var(--accent-subtle)] rounded-2xl p-8 shadow-sm">
+                {/* Project header */}
+                <div className="bg-[var(--bg-900)] border-2 border-[var(--accent-subtle)] rounded-2xl p-6 shadow-sm">
                   <h3 className="text-2xl font-bold mb-2 text-[var(--text-primary)]">
-                    {generatedPlan.projectName}
+                    {agentDoneData.project_name}
                   </h3>
-                  <div className="prose prose-invert prose-sm max-w-none">
-                    <ReactMarkdown>
-                      {generatedPlan.description}
-                    </ReactMarkdown>
+                  {agentDoneData.description && (
+                    <div className="prose prose-invert prose-sm max-w-none">
+                      <ReactMarkdown>
+                        {agentDoneData.description}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-4 mt-4 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                    <span className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3 h-3 text-[var(--success)]" />
+                      {agentDoneData.task_count} tasks
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-3 h-3 text-[var(--accent)]" />
+                      {agentDoneData.milestone_count} milestones
+                    </span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] flex items-center justify-between">
-                      <span>Agentic Roadmap ({generatedPlan.tasks?.length || 0})</span>
-                      {mode === "manage" && (
-                        <span className="bg-[var(--accent-subtle)] text-[var(--accent)] px-2 py-0.5 rounded">
-                          Modified
+                {/* Risk & Conflicts row */}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Risk card */}
+                  <div className={`p-4 rounded-xl border ${riskBg(agentDoneData.risk.score)} border-[var(--border-subtle)]`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Shield className={`w-4 h-4 ${riskColor(agentDoneData.risk.score)}`} />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">Risk Score</span>
+                    </div>
+                    <div className={`text-3xl font-black ${riskColor(agentDoneData.risk.score)}`}>
+                      {agentDoneData.risk.score}<span className="text-sm font-medium text-[var(--text-dim)]">/100</span>
+                    </div>
+                    {agentDoneData.risk.factors.length > 0 && (
+                      <ul className="mt-2 space-y-1">
+                        {agentDoneData.risk.factors.slice(0, 3).map((f, i) => (
+                          <li key={i} className="text-[11px] text-[var(--text-secondary)] flex items-start gap-1.5">
+                            <AlertTriangle className="w-3 h-3 text-[var(--warning)] shrink-0 mt-0.5" />
+                            {f}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  {/* Conflicts card */}
+                  <div className={`p-4 rounded-xl border ${agentDoneData.conflict_count > 0 ? "bg-[var(--danger-bg)]" : "bg-[var(--success-bg)]"} border-[var(--border-subtle)]`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <AlertTriangle className={`w-4 h-4 ${agentDoneData.conflict_count > 0 ? "text-[var(--danger)]" : "text-[var(--success)]"}`} />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">Conflicts</span>
+                    </div>
+                    <div className={`text-3xl font-black ${agentDoneData.conflict_count > 0 ? "text-[var(--danger)]" : "text-[var(--success)]"}`}>
+                      {agentDoneData.conflict_count}
+                    </div>
+                    {agentDoneData.conflict_count > 0 && (
+                      <p className="mt-1 text-[11px] text-[var(--text-secondary)]">
+                        Scheduling overlaps detected — review recommended
+                      </p>
+                    )}
+                    {agentDoneData.conflict_count === 0 && (
+                      <p className="mt-1 text-[11px] text-[var(--text-secondary)]">No scheduling conflicts</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Suggestions */}
+                {agentDoneData.risk.suggestions.length > 0 && (
+                  <div className="bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4">
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-2 flex items-center gap-2">
+                      <Sparkles className="w-3 h-3 text-[var(--accent)]" />
+                      AI Suggestions
+                    </h4>
+                    <ul className="space-y-1.5">
+                      {agentDoneData.risk.suggestions.map((s, i) => (
+                        <li key={i} className="text-[12px] text-[var(--text-secondary)] flex items-start gap-2">
+                          <ArrowRight className="w-3 h-3 text-[var(--accent)] shrink-0 mt-0.5" />
+                          {s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Wiki sync status */}
+                {agentDoneData.wiki_page_url && (
+                  <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)] bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl px-4 py-3">
+                    <FileText className="w-3.5 h-3.5 text-[var(--accent)]" />
+                    Project synced to wiki
+                    <a href={agentDoneData.wiki_page_url} className="text-[var(--accent)] hover:underline ml-1">View page →</a>
+                  </div>
+                )}
+
+                {/* Overdue warning */}
+                {agentDoneData.overdue_count > 0 && (
+                  <div className="flex items-center gap-2 text-[11px] text-[var(--warning)] bg-[var(--warning)]/5 border border-[var(--warning)]/20 rounded-xl px-4 py-3">
+                    <Clock className="w-3.5 h-3.5" />
+                    {agentDoneData.overdue_count} overdue task{agentDoneData.overdue_count > 1 ? "s" : ""} detected across team projects
+                  </div>
+                )}
+
+                {/* Knowledge gaps */}
+                {agentDoneData.knowledge_gaps.length > 0 && (
+                  <div className="bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4">
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-2">
+                      Knowledge Gaps
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {agentDoneData.knowledge_gaps.map((gap, i) => (
+                        <span key={i} className="text-[10px] px-2 py-1 rounded-md bg-[var(--warning)]/10 text-[var(--warning)] border border-[var(--warning)]/20">
+                          {gap}
                         </span>
-                      )}
-                    </h4>
-                    <div className="space-y-2">
-                      {(generatedPlan.tasks || []).slice(0, 4).map((t: { title: string; priority: string }, i: number) => (
-                        <div
-                          key={i}
-                          className="bg-[var(--surface-1)] p-4 rounded-xl text-[13px] font-medium flex items-center justify-between border border-[var(--border-subtle)] shadow-sm"
-                        >
-                          <span className="truncate flex-1 pr-3 text-[var(--text-secondary)]">
-                            {t.title}
-                          </span>
-                          <span
-                            className={`text-[9px] px-2 py-0.5 rounded font-black uppercase ${
-                              t.priority === "high"
-                                ? "bg-[var(--danger-bg)] text-[var(--danger)]"
-                                : "bg-[var(--surface-2)] text-[var(--text-muted)]"
-                            }`}
-                          >
-                            {t.priority}
-                          </span>
-                        </div>
                       ))}
                     </div>
                   </div>
-                  <div className="space-y-4">
-                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                      Milestones ({generatedPlan.milestones?.length || 0})
-                    </h4>
-                    <div className="space-y-2">
-                      {(generatedPlan.milestones || []).slice(0, 4).map((m: { title: string; date: string }, i: number) => (
-                        <div
-                          key={i}
-                          className="bg-[var(--surface-1)] p-4 rounded-xl text-[13px] font-medium flex items-center justify-between border-l-4 border-[var(--accent)] shadow-sm"
-                        >
-                          <span className="truncate flex-1 pr-3 text-[var(--text-secondary)]">
-                            {m.title}
-                          </span>
-                          <span className="text-[10px] font-mono font-bold text-[var(--text-muted)]">
-                            {m.date}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                )}
 
+                {/* Agent execution log (collapsible) */}
+                <details className="group">
+                  <summary className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] cursor-pointer hover:text-[var(--text-muted)] transition-colors">
+                    Agent Execution Log ({agentSteps.length} steps)
+                  </summary>
+                  <div className="mt-2 space-y-1">
+                    {agentSteps.map((step, idx) => (
+                      <div key={idx} className="flex items-center gap-2 text-[11px]">
+                        {step.status === "done" && <Check className="w-3 h-3 text-[var(--success)]" />}
+                        {step.status === "error" && <AlertCircle className="w-3 h-3 text-[var(--danger)]" />}
+                        {step.status === "running" && <Loader2 className="w-3 h-3 animate-spin text-[var(--accent)]" />}
+                        <span className="text-[var(--text-muted)] font-mono">{step.name}</span>
+                        <span className="text-[var(--text-dim)]">— {step.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+
+                {/* Action buttons */}
                 <div className="flex gap-4 pt-4 sticky bottom-0 bg-[var(--surface-1)] py-4 border-t border-[var(--border-subtle)]">
                   <button
-                    onClick={() => setPhase("input")}
+                    onClick={() => { resetExecutionState(); setPhase("input"); }}
                     className="flex-1 h-14 rounded-2xl bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-secondary)] font-bold transition-all border border-[var(--border-subtle)] shadow-sm"
                   >
                     Modify Prompt
                   </button>
                   <button
-                    onClick={() => onPlanGenerated(generatedPlan)}
+                    onClick={() => {
+                      if (agentDoneData.project_id) {
+                        onPlanGenerated({
+                          projectName: agentDoneData.project_name,
+                          description: agentDoneData.description,
+                          tasks: [],
+                          milestones: [],
+                        });
+                      }
+                    }}
                     className="flex-[2] h-14 rounded-2xl bg-[var(--accent)] text-white font-bold flex items-center justify-center gap-2 hover:opacity-95 transition-all shadow-xl shadow-[var(--accent-glow)]"
                   >
-                    {mode === "manage" ? "Apply Architect Changes" : "Confirm & Initialize"}
+                    {mode === "manage" ? "Apply Architect Changes" : "Confirm & Open Project"}
                     <ArrowRight className="w-5 h-5" />
                   </button>
                 </div>

@@ -9,7 +9,13 @@ from .views import (
     PlanningTaskDetailView,
     PlanningTaskListView,
     PlanningAssistView,
+    PlanningAssistStreamView,
     PlanningActivityView,
+    PlanningConflictView,
+    PlanningRiskView,
+    PlanningOverdueView,
+    PlanningSnapshotListView,
+    PlanningSnapshotRestoreView,
 )
 
 urlpatterns = [
@@ -29,5 +35,12 @@ urlpatterns = [
     ),
     path("<uuid:team_id>/calendar/feed/", PlanningCalendarFeedView.as_view()),
     path("<uuid:team_id>/assist/", PlanningAssistView.as_view()),
+    path("<uuid:team_id>/assist/stream/", PlanningAssistStreamView.as_view()),
     path("<uuid:team_id>/activity/", PlanningActivityView.as_view()),
+    path("<uuid:team_id>/conflicts/", PlanningConflictView.as_view()),
+    path("<uuid:team_id>/projects/<uuid:project_id>/conflicts/", PlanningConflictView.as_view()),
+    path("<uuid:team_id>/projects/<uuid:project_id>/risk/", PlanningRiskView.as_view()),
+    path("<uuid:team_id>/projects/<uuid:project_id>/snapshots/", PlanningSnapshotListView.as_view()),
+    path("<uuid:team_id>/projects/<uuid:project_id>/snapshots/<uuid:snapshot_id>/restore/", PlanningSnapshotRestoreView.as_view()),
+    path("<uuid:team_id>/overdue/", PlanningOverdueView.as_view()),
 ]

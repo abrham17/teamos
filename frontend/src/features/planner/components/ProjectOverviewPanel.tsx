@@ -19,8 +19,11 @@ import {
   Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { updatePlanTask, updatePlanMilestone } from "../api";
+import { updatePlanTask, updatePlanMilestone, getTeamOverdue } from "../api";
 import { useWikiStore } from "@/stores/useWikiStore";
+import { ConflictPanel } from "./ConflictPanel";
+import { RiskCard } from "./RiskCard";
+import { useEffect } from "react";
 
 
 interface ProjectOverviewPanelProps {
@@ -50,6 +53,14 @@ export function ProjectOverviewPanel({
 }: ProjectOverviewPanelProps) {
   const { currentTeamId } = useWikiStore();
   const [taskSearch, setTaskSearch] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [overdue, setOverdue] = useState<{ overdue_tasks: any[]; missed_milestones: any[] } | null>(null);
+
+  useEffect(() => {
+    if (currentTeamId) {
+      getTeamOverdue(currentTeamId).then(setOverdue).catch(console.error);
+    }
+  }, [currentTeamId]);
 
   if (loadingDetail) {
     return (
@@ -317,6 +328,27 @@ export function ProjectOverviewPanel({
           </div>
         </div>
 
+        {/* Overdue Banner */}
+        {overdue && (overdue.overdue_tasks.length > 0 || overdue.missed_milestones.length > 0) && (
+          <div className="bg-[var(--warning)]/10 border border-[var(--warning)]/20 rounded-2xl p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Clock className="w-5 h-5 text-[var(--warning)]" />
+              <div>
+                <h4 className="text-sm font-bold text-[var(--warning)]">Overdue Items Detected</h4>
+                <p className="text-xs text-[var(--warning)]/80">
+                  {overdue.overdue_tasks.length} overdue tasks, {overdue.missed_milestones.length} missed milestones across your team.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => onAskAI()}
+              className="px-4 py-2 bg-[var(--warning)]/20 text-[var(--warning)] hover:bg-[var(--warning)]/30 rounded-lg text-xs font-bold transition-all"
+            >
+              Ask AI to Reschedule
+            </button>
+          </div>
+        )}
+
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <StatBox label="Total Progress" value={`${progress}%`} subValue={`${completedTasks}/${activeProject.tasks.length} Tasks`} trend="up" />
@@ -329,6 +361,11 @@ export function ProjectOverviewPanel({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-12">
           {/* Tasks Column */}
           <div className="lg:col-span-2 space-y-6">
+            
+            {activeProject && currentTeamId && (
+              <ConflictPanel teamId={currentTeamId} projectId={activeProject.id} />
+            )}
+
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <LayoutGrid className="w-5 h-5 text-[var(--accent)]" />
@@ -432,6 +469,10 @@ export function ProjectOverviewPanel({
                 )}
               </div>
             </div>
+
+            {currentTeamId && activeProject && (
+              <RiskCard teamId={currentTeamId} projectId={activeProject.id} />
+            )}
 
             <div className="p-6 bg-[var(--accent)]/5 border border-[var(--accent)]/10 rounded-[32px] space-y-4">
               <h4 className="font-bold text-[var(--text-primary)] flex items-center gap-2">

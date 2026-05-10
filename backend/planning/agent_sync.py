@@ -309,6 +309,29 @@ def generate_plan_with_wiki_context(
 
     context_text = "\n\n".join(context_parts)
 
+    # Phase 3.5: Build Semantic Expertise Profiles
+    from accounts.models import TeamMember
+    from wiki.models import WikiPage
+    from django.db.models import Count
+
+    team_members = TeamMember.objects.filter(team=team).select_related("user")
+    expertise_profiles = []
+    
+    for tm in team_members:
+        # Get pages this user has created or edited significantly
+        user_pages = WikiPage.objects.filter(
+            team=team, created_by=tm.user, is_deleted=False
+        ).values_list("title", flat=True)[:5]
+        
+        expertise = list(user_pages)
+        expertise_str = ", ".join(expertise) if expertise else "General"
+        expertise_profiles.append(
+            f"User ID: {tm.user.id} | Name: {tm.user.first_name or tm.user.email} | "
+            f"Known Expertise (Wiki Authored): {expertise_str}"
+        )
+
+    expertise_context = "\n".join(expertise_profiles)
+
     # Phase 4: Generate plan with rich context
     system_prompt = (
         "You are the TeamOS Plan Architect with deep wiki knowledge access. "
@@ -318,13 +341,14 @@ def generate_plan_with_wiki_context(
         "and a 'wiki_references' array listing which wiki pages informed each task. "
         "Tasks: title, description, status (todo/in-progress/completed/blocked), "
         "priority (low/medium/high), startDate (YYYY-MM-DD), endDate (YYYY-MM-DD), "
+        "assignee_id (UUID of the best team member based on Expertise), "
         "wikiReferences (list of page titles this task relates to). "
         "Milestones: title, date (YYYY-MM-DD), description, status (pending/reached/missed). "
         "Members: list of suggested roles {userId, role}. "
         "Return ONLY valid JSON."
     )
 
-    user_content = f"Team Knowledge Context:\n{context_text}\n\nMission: {prompt}"
+    user_content = f"Team Knowledge Context:\n{context_text}\n\nTeam Expertise Profiles:\n{expertise_context}\n\nMission: {prompt}"
     if mode == "manage" and project_context:
         user_content += f"\n\nExisting Project: {json.dumps(project_context)}"
 

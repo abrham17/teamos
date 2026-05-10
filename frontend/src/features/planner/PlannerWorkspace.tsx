@@ -10,6 +10,9 @@ import { ActivityPanel } from "./components/ActivityPanel";
 import { BoardPanel } from "./components/BoardPanel";
 import { TimelinePanel } from "./components/TimelinePanel";
 import { TeamPanel } from "./components/TeamPanel";
+import { PlanHistoryPanel } from "./components/PlanHistoryPanel";
+import { DependencyGraph } from "./components/DependencyGraph";
+import { WorkloadPanel } from "./components/WorkloadPanel";
 import { AIPlannerOverlay } from "./components/AIPlannerOverlay";
 import { usePlannerData } from "./hooks/usePlannerData";
 import { usePlannerCalendar } from "./hooks/usePlannerCalendar";
@@ -20,7 +23,7 @@ import { AddTaskModal } from "./components/AddTaskModal";
 import { AddMilestoneModal } from "./components/AddMilestoneModal";
 import { AddMemberModal } from "./components/AddMemberModal";
 
-type PlannerView = "overview" | "calendar" | "activity" | "board" | "timeline" | "team";
+type PlannerView = "overview" | "calendar" | "activity" | "board" | "timeline" | "team" | "history" | "graph" | "workload";
 
 export function PlannerWorkspace() {
   const { currentTeamId } = useWikiStore();
@@ -84,25 +87,10 @@ export function PlannerWorkspace() {
   const handlePlanGenerated = async (plan: { projectName: string; description: string; tasks: any[]; milestones: any[] }) => {
     if (!currentTeamId) return;
     try {
-      if (aiMode === "manage" && activeProjectId) {
-        await updatePlanProject(currentTeamId, activeProjectId, {
-          name: plan.projectName,
-          description: plan.description,
-          tasks: plan.tasks,
-          milestones: plan.milestones,
-        });
-        refreshProjectDetail();
-      } else {
-        const res = await createPlanProject(currentTeamId, {
-          name: plan.projectName,
-          description: plan.description,
-          status: "active",
-          tasks: plan.tasks,
-          milestones: plan.milestones,
-        });
-        refreshProjects();
-        setActiveProjectId(res.id);
-      }
+      // In the new streaming agent flow, the project is already created by the backend.
+      // We just need to refresh the project list and close the overlay.
+      refreshProjects();
+      refreshProjectDetail();
       setIsAIOverlayOpen(false);
     } catch (e) {
       console.error("Failed to apply plan changes", e);
@@ -211,6 +199,9 @@ export function PlannerWorkspace() {
             <ViewTab active={activeView === "calendar"} onClick={() => setActiveView("calendar")} icon={<Calendar className="w-3.5 h-3.5" />} label="Calendar" />
             <ViewTab active={activeView === "timeline"} onClick={() => setActiveView("timeline")} icon={<BarChartHorizontal className="w-3.5 h-3.5" />} label="Timeline" />
             <ViewTab active={activeView === "team"} onClick={() => setActiveView("team")} icon={<Users className="w-3.5 h-3.5" />} label="Team" />
+            <ViewTab active={activeView === "workload"} onClick={() => setActiveView("workload")} icon={<Users className="w-3.5 h-3.5" />} label="Workload" />
+            <ViewTab active={activeView === "graph"} onClick={() => setActiveView("graph")} icon={<LayoutGrid className="w-3.5 h-3.5" />} label="Graph" />
+            <ViewTab active={activeView === "history"} onClick={() => setActiveView("history")} icon={<History className="w-3.5 h-3.5" />} label="History" />
             <ViewTab active={activeView === "activity"} onClick={() => setActiveView("activity")} icon={<History className="w-3.5 h-3.5" />} label="Activity" />
           </div>
         </div>
@@ -284,6 +275,20 @@ export function PlannerWorkspace() {
                 setIsAddMemberOpen(true);
               }}
             />
+          ) : activeView === "history" && activeProject ? (
+            <PlanHistoryPanel
+              teamId={currentTeamId}
+              projectId={activeProject.id}
+              onRestore={refreshProjectDetail}
+            />
+          ) : activeView === "graph" && activeProject ? (
+            <div className="p-8 h-full">
+              <DependencyGraph project={activeProject} onRefresh={refreshProjectDetail} />
+            </div>
+          ) : activeView === "workload" && activeProject ? (
+            <div className="p-8 flex-1 overflow-y-auto">
+              <WorkloadPanel project={activeProject} teamMembers={teamMembers} />
+            </div>
           ) : (
             <ActivityPanel activity={activity} loading={loadingActivity} />
           )}

@@ -1,6 +1,7 @@
 import logging
 import uuid
 
+from django.http import StreamingHttpResponse
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
@@ -406,3 +407,177 @@ class PlanningActivityView(APIView):
 
         activity.sort(key=lambda x: x["updated_at"], reverse=True)
         return ok(activity[:20])
+
+
+class PlanningAssistStreamView(APIView):
+    """Streaming SSE endpoint for agent-driven plan generation."""
+
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def post(self, request, team_id):
+        import json as _json
+
+        prompt = request.data.get("prompt")
+        mode = request.data.get("mode", "create")
+        project_id = request.data.get("project_id")
+
+        if not prompt:
+            return fail("Prompt is required.", status_code=400, code="prompt_required")
+
+        def event_stream():
+            from .agent_executor import run_planner_agent
+
+            try:
+                for sse_line in run_planner_agent(
+                    team_id=str(team_id),
+                    prompt=prompt,
+                    mode=mode,
+                    project_id=project_id,
+                    user=request.user,
+                ):
+                    yield sse_line
+            except Exception as e:
+                logger.exception("Planner agent stream failed")
+                yield f"event: agent_error\ndata: {_json.dumps({'detail': str(e)})}\n\n"
+
+        response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
+
+class PlanningConflictView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def get(self, request, team_id, project_id=None):
+        from .agent_sync import detect_date_conflicts
+        try:
+            conflicts = detect_date_conflicts(str(team_id), project_id=str(project_id) if project_id else None)
+            return ok(conflicts)
+        except Exception as e:
+            logger.exception("Conflict detection failed")
+            return fail(str(e), status_code=500)
+
+class PlanningRiskView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def get(self, request, team_id, project_id):
+        from .agent_executor import _assess_plan_risk
+        from .agent_sync import detect_date_conflicts
+        from accounts.models import Team
+
+        project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
+        if project is None:
+            return fail("Project not found.", status_code=404)
+            
+        try:
+            team = Team.objects.get(id=team_id)
+            draft = ProjectDetailSerializer(project).data
+            conflicts = detect_date_conflicts(str(team_id), project_id=str(project_id))
+            risk = _assess_plan_risk(team, draft, conflicts)
+            return ok(risk)
+        except Exception as e:
+            logger.exception("Risk assessment failed")
+            return fail(str(e), status_code=500)
+
+class PlanningOverdueView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def get(self, request, team_id):
+        from .agent_sync import check_overdue_items
+        try:
+            overdue = check_overdue_items(str(team_id))
+            return ok(overdue)
+        except Exception as e:
+            logger.exception("Overdue check failed")
+            return fail(str(e), status_code=500)
+
+class PlanningSnapshotListView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def get(self, request, team_id, project_id):
+        from .models import PlanSnapshot
+        snapshots = PlanSnapshot.objects.filter(project_id=project_id, project__team_id=team_id)
+        data = [
+            {
+                "id": str(s.id),
+                "snapshot_type": s.snapshot_type,
+                "created_at": s.created_at.isoformat(),
+                "created_by": s.created_by.email if s.created_by else "System",
+            } for s in snapshots
+        ]
+        return ok(data)
+
+    def post(self, request, team_id, project_id):
+        from .models import PlanSnapshot
+        from .services import get_project_or_none
+        from .serializers import ProjectDetailSerializer
+
+        project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
+        if not project:
+            return fail("Project not found", status_code=404)
+
+        data = ProjectDetailSerializer(project).data
+        snapshot_type = request.data.get("snapshot_type", "manual")
+        snapshot = PlanSnapshot.objects.create(
+            project=project,
+            snapshot_type=snapshot_type,
+            data=data,
+            created_by=request.user
+        )
+        return ok({"id": str(snapshot.id), "created_at": snapshot.created_at.isoformat()})
+
+class PlanningSnapshotRestoreView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def post(self, request, team_id, project_id, snapshot_id):
+        from .models import PlanSnapshot
+        from .services import get_project_or_none, update_project, create_task, create_milestone
+        from .reindex import reindex_project
+
+        project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
+        if not project:
+            return fail("Project not found", status_code=404)
+        
+        try:
+            snapshot = PlanSnapshot.objects.get(id=snapshot_id, project=project)
+        except PlanSnapshot.DoesNotExist:
+            return fail("Snapshot not found", status_code=404)
+
+        # Basic restore: replace tasks/milestones
+        # In a real deep implementation we'd gracefully diff, but for now wipe and restore
+        project.tasks.all().delete()
+        project.milestones.all().delete()
+
+        data = snapshot.data
+        update_project(project, {"name": data.get("name"), "description": data.get("description"), "status": data.get("status")})
+
+        for t_data in data.get("tasks", []):
+            create_task(
+                project=project,
+                user=request.user,
+                payload={
+                    "title": t_data.get("title", "Untitled Task"),
+                    "description": t_data.get("description", ""),
+                    "status": t_data.get("status", "todo"),
+                    "priority": t_data.get("priority", "medium"),
+                    "start_date": t_data.get("start_date"),
+                    "end_date": t_data.get("end_date"),
+                    "order_index": t_data.get("order_index", 0),
+                }
+            )
+
+        for m_data in data.get("milestones", []):
+            create_milestone(
+                project=project,
+                user=request.user,
+                payload={
+                    "title": m_data.get("title", "Untitled Milestone"),
+                    "description": m_data.get("description", ""),
+                    "status": m_data.get("status", "pending"),
+                    "target_date": m_data.get("target_date"),
+                    "order_index": m_data.get("order_index", 0),
+                }
+            )
+
+        reindex_project(project)
+        return ok({"restored": True})
