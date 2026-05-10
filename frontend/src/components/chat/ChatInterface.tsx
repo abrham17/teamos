@@ -334,7 +334,7 @@ export function ChatInterface() {
       <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-[radial-gradient(circle,rgba(var(--accent-rgb),0.08)_0%,transparent_70%)] blur-[100px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-5%] w-[35%] h-[35%] bg-[radial-gradient(circle,rgba(168,85,247,0.06)_0%,transparent_70%)] blur-[80px] pointer-events-none" />
 
-      <div className="flex w-[320px] shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-950)]/50 backdrop-blur-xl z-20">
+      <div className="hidden md:flex w-[320px] shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-950)]/50 backdrop-blur-xl z-20">
         <div className="flex items-center justify-between border-b border-[var(--border-subtle)] p-4">
           <h2 className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">Intelligence</h2>
         </div>
