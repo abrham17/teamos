@@ -145,11 +145,11 @@ export function FloatingAIChat() {
     <div className={cn(
       "fixed z-[1000] transition-all duration-300 ease-in-out",
       isOpen 
-        ? "bottom-2 left-1/2 -translate-x-1/2 w-[95vw] max-w-[1200px]" 
+        ? "bottom-2 left-1/2 -translate-x-1/2 w-[98vw] max-w-[1100px] px-2" 
         : "bottom-6 right-6"
     )}>
       {isOpen && !isMinimized && (
-        <div className="w-full h-[50vh] max-h-[80vh] bg-[var(--surface-1)] border border-white/10 rounded-t-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 duration-300 backdrop-blur-xl">
+        <div className="w-full h-[50vh] max-h-[85vh] bg-[var(--surface-1)] border border-white/10 rounded-t-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 duration-300 backdrop-blur-xl">
           {/* Header */}
           <div className="p-3 border-b border-white/5 bg-[var(--bg-950)]/50 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -177,11 +177,11 @@ export function FloatingAIChat() {
           <div className="flex flex-1 overflow-hidden">
             {/* Sidebar (Sessions) */}
             {showSidebar && (
-              <div className="w-64 border-r border-white/5 flex flex-col bg-black/20">
+              <div className="w-48 sm:w-56 border-r border-white/5 flex flex-col bg-black/20 shrink-0">
                 <div className="p-3">
                   <button 
                     onClick={handleCreateSession}
-                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-white/10 bg-white/5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-primary)] hover:bg-white/10 hover:border-[var(--accent)] transition-all shrink-0"
+                    className="w-full flex items-center justify-center gap-2 py-1.5 rounded-lg border border-white/10 bg-white/5 text-[9px] font-bold uppercase tracking-wider text-[var(--text-primary)] hover:bg-white/10 hover:border-[var(--accent)] transition-all shrink-0"
                   >
                     <Plus size={14} /> New Chat
                   </button>
