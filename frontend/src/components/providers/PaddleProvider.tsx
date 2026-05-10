@@ -4,13 +4,17 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import Script from 'next/script';
 
 interface PaddleInstance {
-  Initialize: (config: { token: string; eventCallback?: (data: any) => void }) => void;
+  Initialize: (config: { token: string; eventCallback?: (data: unknown) => void }) => void;
   Environment: {
     set: (env: 'sandbox' | 'production') => void;
   };
   Checkout: {
-    open: (config: any) => void;
+    open: (config: unknown) => void;
   };
+}
+
+interface WindowWithPaddle extends Window {
+  Paddle?: PaddleInstance;
 }
 
 interface PaddleContextType {
@@ -31,22 +35,26 @@ export function PaddleProvider({ children }: { children: React.ReactNode }) {
   const isSandbox = process.env.NEXT_PUBLIC_PADDLE_SANDBOX === "true";
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && (window as any).Paddle && !paddle) {
-      const p = (window as any).Paddle as PaddleInstance;
-      p.Initialize({ 
-        token: clientToken,
-        eventCallback: (data: any) => {
-          console.log("Paddle Event:", data);
-        }
-      });
-      setPaddle(p);
-      setIsReady(true);
+    if (typeof window !== 'undefined') {
+      const win = window as WindowWithPaddle;
+      if (win.Paddle && !paddle) {
+        const p = win.Paddle;
+        p.Initialize({ 
+          token: clientToken,
+          eventCallback: (data: unknown) => {
+            console.log("Paddle Event:", data);
+          }
+        });
+        setPaddle(p);
+        setIsReady(true);
+      }
     }
   }, [clientToken, paddle]);
 
   const handleLoad = () => {
-    if ((window as any).Paddle) {
-      const p = (window as any).Paddle as PaddleInstance;
+    const win = window as WindowWithPaddle;
+    if (win.Paddle) {
+      const p = win.Paddle;
       p.Environment.set(isSandbox ? 'sandbox' : 'production');
       p.Initialize({ 
         token: clientToken,
