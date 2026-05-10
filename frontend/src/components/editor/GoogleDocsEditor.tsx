@@ -1,6 +1,6 @@
 "use client";
 
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, Extension } from "@tiptap/react";
 import { StarterKit } from "@tiptap/starter-kit";
 import { Table } from "@tiptap/extension-table";
 import { TableRow } from "@tiptap/extension-table-row";
@@ -47,16 +47,12 @@ type MarkdownStorage = {
 
 function setEditorMarkdownContent(editor: NonNullable<ReturnType<typeof useEditor>>, markdown: string) {
   const value = markdown || "";
-  const setContent = (editor.commands as unknown as { setContent: (...args: unknown[]) => boolean }).setContent;
-  const applied = setContent(
-    value,
-    false,
-    { preserveWhitespace: "full" },
-    { contentType: "markdown", errorOnInvalidContent: false },
-  );
-  if (!applied) {
-    editor.commands.setContent(value || "<p></p>");
-  }
+  // Ensure the editor treats this as markdown.
+  // With @tiptap/markdown, setContent is overridden.
+  editor.commands.setContent(value, {
+    emitUpdate: false,
+    parseOptions: { preserveWhitespace: "full" },
+  });
 }
 
 export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(function GoogleDocsEditor(
