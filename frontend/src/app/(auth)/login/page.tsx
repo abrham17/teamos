@@ -6,7 +6,7 @@ export default function LoginPage() {
       <SignIn
         path="/login"
         signUpUrl="/register"
-        forceRedirectUrl="/wiki"
+        fallbackRedirectUrl="/wiki"
       />
     </div>
   );

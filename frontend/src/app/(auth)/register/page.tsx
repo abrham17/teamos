@@ -6,7 +6,7 @@ export default function RegisterPage() {
       <SignUp
         path="/register"
         signInUrl="/login"
-        forceRedirectUrl="/onboarding"
+        fallbackRedirectUrl="/onboarding"
       />
     </div>
   );
