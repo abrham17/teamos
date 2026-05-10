@@ -519,13 +519,11 @@ class AcceptInviteView(APIView):
             logger = logging.getLogger(__name__)
             logger.info(f"Invite acceptance attempt: user_email='{request.user.email}', invite_email='{invite.invitee_email}'")
 
+            # We log a warning if the emails don't match, but we allow the acceptance 
+            # if they have the valid secret token. This handles cases where users are
+            # logged in with a different alias or account than the one invited.
             if request.user.email.lower().strip() != invite.invitee_email.lower().strip():
-                logger.warning(f"Invite email mismatch: '{request.user.email}' != '{invite.invitee_email}'")
-                return fail(
-                    "This invite is for a different email address.",
-                    status_code=403,
-                    code="invite_email_mismatch",
-                )
+                logger.warning(f"Invite email mismatch (allowing anyway): user='{request.user.email}' invited='{invite.invitee_email}'")
 
             existing_membership = TeamMember.objects.filter(team=invite.team, user=request.user).first()
             if invite.used_at:

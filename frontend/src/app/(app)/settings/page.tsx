@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useWikiStore } from "@/stores/useWikiStore";
+import { useAuth } from "@clerk/nextjs";
 import { api } from "@/lib/api";
 import { fetchBillingQuote, startTeamCheckout } from "@/lib/billingCheckout";
 import {
@@ -100,8 +101,10 @@ export default function SettingsPage() {
     if (usage === "low" || usage === "standard" || usage === "high") setBillingCheckoutPrefs((prev) => ({ ...prev, usage_tier: usage }));
   }, []);
 
+  const { isLoaded, isSignedIn } = useAuth();
+
   useEffect(() => {
-    if (!currentTeamId) return;
+    if (!currentTeamId || !isLoaded || !isSignedIn) return;
     api
       .get<MeResponse & { first_name?: string; last_name?: string; avatar_url?: string }>("/auth/me/")
       .then((me) => {
@@ -115,7 +118,7 @@ export default function SettingsPage() {
     api.get<TeamData>(`/auth/teams/${currentTeamId}/`).then(setTeam).catch(console.error);
     api.get<TeamMemberRow[]>(`/auth/teams/${currentTeamId}/members/`).then(setMembers).catch(console.error);
     api.get<TeamInviteRow[]>(`/auth/teams/${currentTeamId}/invites/`).then(setInvites).catch(console.error);
-  }, [currentTeamId]);
+  }, [currentTeamId, isLoaded, isSignedIn]);
 
   const handleSaveProfile = async () => {
     if (!profileFirstName.trim() || !profileLastName.trim()) {

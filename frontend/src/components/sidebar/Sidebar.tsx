@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { useWikiStore } from "@/stores/useWikiStore";
 import { useTheme } from "@/components/ui/ThemeProvider";
 import { api } from "@/lib/api";
@@ -72,6 +73,8 @@ export function Sidebar() {
   const teamDropRef = useRef<HTMLDivElement>(null);
   const currentTeam = teams.find(t => t.id === currentTeamId);
 
+  const { isLoaded, isSignedIn } = useAuth();
+
   /* ── Restore collapse state ── */
   useEffect(() => {
     setCollapsed(localStorage.getItem("teamos-sidebar-collapsed") === "true");
@@ -79,6 +82,8 @@ export function Sidebar() {
 
   /* ── Fetch teams & User ── */
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+
     api.get<User>("/auth/me/").then(setUser).catch(console.error);
     api
       .get<Team[]>("/auth/teams/")
@@ -93,7 +98,7 @@ export function Sidebar() {
         console.error(err);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isLoaded, isSignedIn]);
 
   /* ── Close team dropdown on outside click ── */
   useEffect(() => {
