@@ -47,12 +47,12 @@ REDIS_URL = os.environ.get("REDIS_URL", "")
 
 # Heroku Redis SSL compatibility
 import ssl
-redis_ssl_options = {}
-if REDIS_URL.startswith("rediss://"):
-    redis_ssl_options = {
+redis_ssl_options = {
+    "connection_pool_kwargs": {
         "ssl_cert_reqs": ssl.CERT_NONE,
         "ssl_check_hostname": False,
     }
+}
 
 CACHES = {
     "default": {
