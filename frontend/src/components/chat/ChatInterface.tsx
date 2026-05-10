@@ -335,7 +335,7 @@ export function ChatInterface() {
       <div className="absolute bottom-[-10%] right-[-5%] w-[35%] h-[35%] bg-[radial-gradient(circle,rgba(168,85,247,0.06)_0%,transparent_70%)] blur-[80px] pointer-events-none" />
 
 
-      <div className="flex w-[280px] md:w-[320px] shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-950)]/50 backdrop-blur-xl z-20">
+      <div className="flex w-[280px] md:w-[320px] shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-900)] z-20">
         <div className="flex items-center justify-between border-b border-[var(--border-subtle)] p-4">
           <h2 className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">Intelligence</h2>
         </div>
@@ -355,7 +355,7 @@ export function ChatInterface() {
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col relative z-10 overflow-hidden w-full h-full">
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 sm:px-6 pt-6 pb-40 min-h-0 custom-scrollbar w-full">
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 sm:px-6 py-6 min-h-0 custom-scrollbar w-full">
           {messages.length === 0 && (
             <div className="flex flex-1 flex-col items-center justify-center px-4 text-center animate-fade-in my-auto">
               <div className="mb-8 relative">
@@ -434,8 +434,8 @@ export function ChatInterface() {
           <div ref={messagesEndRef} className="h-4" />
         </div>
 
-        <div className="absolute bottom-[5px] left-1/2 -translate-x-1/2 w-full max-w-3xl px-4 z-20">
-          <div className="relative mx-auto flex flex-col gap-2 bg-[var(--bg-950)]/90 backdrop-blur-xl p-3 rounded-3xl border border-[var(--border-subtle)] shadow-[0_0_40px_rgba(0,0,0,0.5)]">
+        <div className="shrink-0 bg-[var(--bg-950)] px-4 py-4 w-full z-20">
+          <div className="relative mx-auto flex w-full max-w-4xl flex-col gap-2">
             <div className="flex items-center justify-between px-2">
                 <ChatModeSegmentedControl value={chatMode} onChange={setChatMode} capabilities={chatCaps} />
             </div>
