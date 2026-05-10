@@ -44,8 +44,14 @@ def extract_plain_text(job: "IngestJob", source_text: str = "") -> str:
     if st in ("pdf", "docx", "image", "code_zip"):
         if not getattr(job, "staging_file", None) or not job.staging_file:
             raise ValueError(f"Missing staging file for source_type={st}.")
-        with job.staging_file.open("rb") as fh:
-            data = fh.read()
+        
+        try:
+            with job.staging_file.open("rb") as fh:
+                if fh is None:
+                    raise ValueError(f"Staging file could not be opened for source_type={st}.")
+                data = fh.read()
+        except (AttributeError, FileNotFoundError) as exc:
+            raise ValueError(f"Staging file is missing or inaccessible on this worker: {exc}") from exc
         if st == "pdf":
             return pdf_text.extract_pdf_text(data)
         if st == "docx":
