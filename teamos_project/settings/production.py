@@ -47,11 +47,14 @@ REDIS_URL = os.environ.get("REDIS_URL", "")
 
 # Heroku Redis SSL compatibility
 import ssl
+
+if REDIS_URL.startswith("rediss://") and "ssl_cert_reqs" not in REDIS_URL:
+    sep = "&" if "?" in REDIS_URL else "?"
+    REDIS_URL += f"{sep}ssl_cert_reqs=none"
+
 redis_ssl_options = {
-    "connection_pool_kwargs": {
-        "ssl_cert_reqs": ssl.CERT_NONE,
-        "ssl_check_hostname": False,
-    }
+    "ssl_cert_reqs": "none",
+    "ssl_check_hostname": False,
 }
 
 CACHES = {
@@ -68,7 +71,7 @@ CHANNEL_LAYERS = {
         "CONFIG": {
             "hosts": [{
                 "address": REDIS_URL,
-                "ssl_cert_reqs": ssl.CERT_NONE if REDIS_URL.startswith("rediss://") else "required",
+                "ssl_cert_reqs": "none",
                 "ssl_check_hostname": False,
             }],
         },
@@ -79,13 +82,12 @@ CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 
 if REDIS_URL.startswith("rediss://"):
-    import ssl
     CELERY_REDIS_BACKEND_USE_SSL = {
-        "ssl_cert_reqs": ssl.CERT_NONE,
+        "ssl_cert_reqs": "none",
         "ssl_check_hostname": False,
     }
     CELERY_BROKER_USE_SSL = {
-        "ssl_cert_reqs": ssl.CERT_NONE,
+        "ssl_cert_reqs": "none",
         "ssl_check_hostname": False,
     }
 
