@@ -62,6 +62,7 @@ export interface CytoscapeRef {
 interface Props {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  layoutName?: string;
   onNodeClick?: (id: string) => void;
   onNodeDoubleClick?: (id: string) => void;
   /** Hover previews; cleared on background tap and debounced on mouseout. */
@@ -154,7 +155,7 @@ const EDGE_COLORS: Record<string, string> = {
 const HOVER_CLEAR_MS = 160;
 
 export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
-  function CytoscapeViewer({ nodes, edges, onNodeClick, onNodeDoubleClick, onHoverChange }, ref) {
+  function CytoscapeViewer({ nodes, edges, layoutName, onNodeClick, onNodeDoubleClick, onHoverChange }, ref) {
     const containerRef     = useRef<HTMLDivElement>(null);
     const cyRef            = useRef<cytoscape.Core | null>(null);
     const onClickRef       = useRef(onNodeClick);
@@ -231,6 +232,12 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
         });
       },
     }));
+
+    /* ── Layout reactivity ── */
+    useEffect(() => {
+      if (!cyRef.current) return;
+      cyRef.current.layout(getLayoutOptions(layoutName || "circle")).run();
+    }, [layoutName]);
 
     /* ── Cytoscape initialisation ── */
     useEffect(() => {
@@ -374,7 +381,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
           },
         ],
 
-        layout: getLayoutOptions("grid"),
+        layout: getLayoutOptions(layoutName || "circle"),
 
         minZoom: 0.15,
         maxZoom: 5,

@@ -383,6 +383,7 @@ export default function GraphPage() {
               ref={cyRef}
               nodes={filteredData.nodes}
               edges={filteredData.edges}
+              layoutName={layout}
               onNodeClick={handleNodeClick}
               onNodeDoubleClick={setSelectedNodeId}
               onHoverChange={handleHoverChange}
