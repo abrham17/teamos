@@ -313,6 +313,58 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_detect_conflicts",
+                "description": "Detect scheduling conflicts (overlapping tasks, milestone clashes, same-assignee overlaps) within a team or project.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {"type": "string", "description": "Optional project ID to scope conflict detection."},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_sync_wiki",
+                "description": "Sync a project's current state to its associated wiki page, creating one if it doesn't exist.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {"type": "string"},
+                    },
+                    "required": ["project_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_risk_assessment",
+                "description": "Assess timeline risk for a project plan. Returns a risk score (0-100), risk factors, and mitigation suggestions.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {"type": "string"},
+                    },
+                    "required": ["project_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_check_overdue",
+                "description": "Check for overdue tasks and missed milestones in the team's projects.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                },
+            },
+        },
     ]
 
 
@@ -525,6 +577,14 @@ def execute_plan_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, 
             return _plan_delete_task(ctx, args)
         if name == "plan_delete_project":
             return _plan_delete_project(ctx, args)
+        if name == "plan_detect_conflicts":
+            return _plan_detect_conflicts(ctx, args)
+        if name == "plan_sync_wiki":
+            return _plan_sync_wiki(ctx, args)
+        if name == "plan_risk_assessment":
+            return _plan_risk_assessment(ctx, args)
+        if name == "plan_check_overdue":
+            return _plan_check_overdue(ctx, args)
         return {"ok": False, "error": f"unknown_tool:{name}"}
     except Exception as e:
         logger.exception("Plan tool %s failed", name)
@@ -905,6 +965,77 @@ def _plan_generate_draft(ctx: ToolContext, args: dict) -> dict:
             project_context=project_context
         )
         return {"ok": True, "draft": draft}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _plan_detect_conflicts(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from planning.agent_sync import detect_date_conflicts
+
+    project_id = args.get("project_id")
+    try:
+        conflicts = detect_date_conflicts(ctx.team_id, project_id=project_id)
+        return {"ok": True, "conflict_count": len(conflicts), "conflicts": conflicts[:10]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _plan_sync_wiki(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from planning.agent_sync import sync_project_to_wiki
+    from planning.services import get_project_or_none
+
+    project_id = (args.get("project_id") or "").strip()
+    if not project_id:
+        return {"ok": False, "error": "project_id_required"}
+    project = get_project_or_none(ctx.team_id, project_id)
+    if not project:
+        return {"ok": False, "error": "project_not_found"}
+    try:
+        page = sync_project_to_wiki(project)
+        return {"ok": True, "wiki_slug": page.slug if page else None}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _plan_risk_assessment(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from planning.agent_executor import _assess_plan_risk
+    from planning.services import get_project_or_none
+    from planning.serializers import ProjectDetailSerializer
+    from accounts.models import Team
+
+    project_id = (args.get("project_id") or "").strip()
+    if not project_id:
+        return {"ok": False, "error": "project_id_required"}
+    project = get_project_or_none(ctx.team_id, project_id)
+    if not project:
+        return {"ok": False, "error": "project_not_found"}
+    try:
+        team = Team.objects.get(id=ctx.team_id)
+        draft = ProjectDetailSerializer(project).data
+        conflicts = []
+        try:
+            from planning.agent_sync import detect_date_conflicts
+            conflicts = detect_date_conflicts(ctx.team_id, project_id=project_id)
+        except Exception:
+            pass
+        risk = _assess_plan_risk(team, draft, conflicts)
+        return {"ok": True, "risk": risk}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _plan_check_overdue(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from planning.agent_sync import check_overdue_items
+
+    try:
+        result = check_overdue_items(ctx.team_id)
+        return {
+            "ok": True,
+            "overdue_task_count": len(result.get("overdue_tasks", [])),
+            "missed_milestone_count": len(result.get("missed_milestones", [])),
+            "overdue_tasks": result.get("overdue_tasks", [])[:5],
+            "missed_milestones": result.get("missed_milestones", [])[:5],
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
