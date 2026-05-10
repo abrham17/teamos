@@ -451,7 +451,7 @@ export function ChatInterface() {
         {showScrollBtn && (
           <button
             onClick={scrollToBottom}
-            className="absolute bottom-20 right-6 z-30 p-2.5 rounded-full bg-[var(--surface-1)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-2)] shadow-lg transition-all"
+            className="absolute right-6 z-30 p-2.5 rounded-full bg-[var(--surface-1)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-2)] shadow-lg transition-all"
             title="Scroll to bottom"
           >
             <ArrowDown className="w-4 h-4" />
