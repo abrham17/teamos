@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MessageCircle, X, Send, Bot, User, Maximize2, Minimize2, Loader2, Plus, LayoutSidebar } from "lucide-react";
+import { MessageCircle, X, Send, Bot, User, Maximize2, Minimize2, Loader2, Plus, Layout } from "lucide-react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
 import { ChatMessageContent } from "./ChatMessageContent";
@@ -157,7 +157,7 @@ export function FloatingAIChat() {
                 onClick={() => setShowSidebar(!showSidebar)}
                 className="p-1.5 hover:bg-white/5 rounded-lg text-[var(--text-muted)] transition-colors"
               >
-                <LayoutSidebar size={18} />
+                <Layout size={18} />
               </button>
               <div className="flex items-center gap-2 font-bold text-sm text-[var(--text-primary)]">
                 <Bot size={18} className="text-[var(--accent)]" />
