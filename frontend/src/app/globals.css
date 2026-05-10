@@ -429,6 +429,35 @@
   color: var(--accent);
 }
 
+.prose h4,
+.tiptap h4 {
+  font-size: 1.05rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.prose h5,
+.tiptap h5 {
+  font-size: 0.95rem;
+  margin-top: 1.2rem;
+  margin-bottom: 0.45rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.prose h6,
+.tiptap h6 {
+  font-size: 0.85rem;
+  margin-top: 1rem;
+  margin-bottom: 0.4rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .prose p {
   line-height: 1.8;
   margin-bottom: 1.5rem;
@@ -460,10 +489,30 @@
   border-bottom-color: var(--accent);
 }
 
+.prose a:focus-visible,
+.tiptap a:focus-visible,
+.chat-md a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.prose a,
+.tiptap a,
+.chat-md a {
+  overflow-wrap: anywhere;
+}
+
 /* ─── TipTap Editor Overrides ───────────────────────────────────────── */
 .tiptap {
   outline: none !important;
   min-height: 600px;
+}
+
+.prose > * + *,
+.tiptap > * + *,
+.chat-md > * + * {
+  margin-top: 0.95rem;
 }
 
 .tiptap ul {
@@ -486,6 +535,34 @@
   margin: 0.25em 0 !important;
 }
 
+.prose ul,
+.prose ol {
+  margin: 1rem 0 1.25rem;
+  padding-left: 1.4rem;
+}
+
+.prose li,
+.tiptap li {
+  line-height: 1.7;
+}
+
+.prose li > p,
+.tiptap li > p {
+  margin: 0.25rem 0;
+}
+
+.tiptap ul ul,
+.tiptap ul ol,
+.tiptap ol ul,
+.tiptap ol ol,
+.prose ul ul,
+.prose ul ol,
+.prose ol ul,
+.prose ol ol {
+  margin-top: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
 .tiptap blockquote {
   border-left: 4px solid var(--accent) !important;
   padding: 1rem 1.5rem !important;
@@ -495,6 +572,16 @@
   background: rgba(var(--accent-rgb), 0.05) !important;
   border-radius: 0 1rem 1rem 0 !important;
   font-size: 1.1rem;
+}
+
+.prose blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 0.85rem 1rem;
+  margin: 1.4rem 0;
+  font-style: italic;
+  color: var(--text-primary);
+  background: rgba(var(--accent-rgb), 0.05);
+  border-radius: 0 0.8rem 0.8rem 0;
 }
 
 .tiptap table {
@@ -543,8 +630,42 @@
   pointer-events: none;
 }
 
+.prose code,
+.tiptap code,
+.chat-md code {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.45rem;
+  padding: 0.1rem 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--text-primary);
+}
+
+.prose pre,
+.tiptap pre,
+.chat-md pre {
+  overflow-x: auto;
+  background: var(--bg-950);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.85rem;
+  padding: 0.9rem 1rem;
+  margin: 1rem 0 1.2rem;
+}
+
+.prose pre code,
+.tiptap pre code,
+.chat-md pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
 /* Wikilinks */
-.wikilink {
+.wikilink,
+.wikilink-chip {
   color: var(--accent);
   font-weight: 700;
   text-decoration: none;
@@ -556,7 +677,17 @@
   transition: all 0.2s ease;
 }
 
-.wikilink:hover {
+.wikilink:hover,
+.wikilink-chip:hover {
   background: var(--accent);
   color: var(--bg-950);
 }
+
+.callout-block[data-type="info"] { border-left-color: var(--info); }
+.callout-block[data-type="info"]::before { content: 'Info'; color: var(--info); }
+
+.callout-block[data-type="success"] { border-left-color: var(--success); }
+.callout-block[data-type="success"]::before { content: 'Success'; color: var(--success); }
+
+.callout-block[data-type="tip"] { border-left-color: var(--accent); }
+.callout-block[data-type="tip"]::before { content: 'Tip'; color: var(--accent-light); }

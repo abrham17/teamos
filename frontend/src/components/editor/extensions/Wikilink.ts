@@ -45,7 +45,7 @@ export default Node.create({
   renderHTML({ node }) {
     return [
       'span',
-      mergeAttributes({ 'data-wikilink': '', class: 'wikilink-chip' }, node.attrs),
+      mergeAttributes({ 'data-wikilink': '', class: 'wikilink wikilink-chip' }, node.attrs),
       `[[${node.attrs.title}]]`,
     ];
   },

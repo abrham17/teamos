@@ -71,6 +71,66 @@ interface Props {
 type NodeLike = cytoscape.NodeSingular;
 type EdgeLike = cytoscape.EdgeSingular;
 
+function getLayoutOptions(name: string): cytoscape.LayoutOptions {
+  if (name === "grid") {
+    return {
+      name,
+      animate: true,
+      animationDuration: 920,
+      fit: true,
+      padding: 80,
+      spacingFactor: 1.85,
+    } as unknown as cytoscape.LayoutOptions;
+  }
+  if (name === "circle") {
+    return {
+      name,
+      animate: true,
+      animationDuration: 920,
+      fit: true,
+      padding: 90,
+      spacingFactor: 1.65,
+    } as unknown as cytoscape.LayoutOptions;
+  }
+  if (name === "breadthfirst") {
+    return {
+      name,
+      animate: true,
+      animationDuration: 920,
+      fit: true,
+      padding: 90,
+      spacingFactor: 1.6,
+      directed: true,
+      avoidOverlap: true,
+    } as unknown as cytoscape.LayoutOptions;
+  }
+  if (name === "concentric") {
+    return {
+      name,
+      animate: true,
+      animationDuration: 920,
+      fit: true,
+      padding: 90,
+      spacingFactor: 1.65,
+      avoidOverlap: true,
+      concentric: (node: NodeLike) => node.degree(false),
+      levelWidth: () => 2,
+    } as unknown as cytoscape.LayoutOptions;
+  }
+  return {
+    name: "cose",
+    animate: true,
+    animationDuration: 1050,
+    padding: 90,
+    nodeRepulsion: () => 26000,
+    idealEdgeLength: () => 245,
+    edgeElasticity: () => 130,
+    numIter: 1400,
+    gravity: 24,
+    fit: true,
+  } as unknown as cytoscape.LayoutOptions;
+}
+
 /* ── Color maps (dark-theme primary, theme-agnostic hex) ──────────── */
 const NODE_COLORS: Record<string, string> = {
   standard:  "#00d4e8",  // cyan
@@ -135,9 +195,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
       },
       setLayout(name: string) {
         if (!cyRef.current) return;
-        cyRef.current
-          .layout(({ name, animate: true, animationDuration: 920, padding: 60, fit: true } as unknown) as cytoscape.LayoutOptions)
-          .run();
+        cyRef.current.layout(getLayoutOptions(name)).run();
       },
       highlightSearch(query: string) {
         if (!cyRef.current) return;
@@ -214,7 +272,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
                 NODE_COLORS[ele.data("type") as string] ?? NODE_COLORS.default,
               "label":           "data(label)",
               "color":           "rgba(255,255,255,0.92)",
-              "font-size":       "5px",
+              "font-size":       "7px",
               "font-family":     "Inter, system-ui, sans-serif",
               "font-weight":     500,
               "text-valign":     "bottom",
@@ -223,20 +281,20 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
               "text-background-opacity": 0,
               "text-wrap":       "ellipsis",
               "text-max-width":  "64px",
-              /* Size scales with degree — compact nodes */
+              /* Size scales with degree — smaller nodes for less clutter */
               "width": (ele: NodeLike) => {
                 const d = ele.connectedEdges().length;
-                if (d >= 8) return 16;
-                if (d >= 5) return 14;
-                if (d >= 3) return 12;
-                return 10;
+                if (d >= 8) return 13;
+                if (d >= 5) return 11;
+                if (d >= 3) return 9;
+                return 8;
               },
               "height": (ele: NodeLike) => {
                 const d = ele.connectedEdges().length;
-                if (d >= 8) return 16;
-                if (d >= 5) return 14;
-                if (d >= 3) return 12;
-                return 10;
+                if (d >= 8) return 13;
+                if (d >= 5) return 11;
+                if (d >= 3) return 9;
+                return 8;
               },
               "border-width":   1,
               "border-color": (ele: NodeLike) =>
@@ -289,7 +347,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
             style: {
               "width": (ele: EdgeLike) => {
                 const conf = (ele.data("confidence") as number) ?? 1;
-                return 0.6 + conf * 1.2;
+                return 0.3 + conf * 0.75;
               },
               "line-color": (ele: EdgeLike) =>
                 EDGE_COLORS[ele.data("type") as string] ?? EDGE_COLORS.default,
@@ -300,12 +358,13 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
               "target-arrow-color": (ele: EdgeLike) =>
                 EDGE_COLORS[ele.data("type") as string] ?? EDGE_COLORS.default,
               "target-arrow-shape": "triangle",
-              "arrow-scale":        0.72,
+              "arrow-scale":        0.56,
               "curve-style":        "unbundled-bezier",
               "control-point-step-size": 72,
               "control-point-distance": 36,
               "line-cap":           "round",
               "overlay-opacity":    0,
+              "overlay-padding":    7,
               "transition-property": "opacity, line-opacity, width",
               "transition-duration": 280,
               "transition-timing-function": "ease-in-out-cubic",
@@ -317,24 +376,13 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
             style: {
               "line-opacity": 1,
               "width": (ele: EdgeLike) =>
-                (0.6 + ((ele.data("confidence") as number) ?? 1) * 1.2) * 1.35,
+                (0.3 + ((ele.data("confidence") as number) ?? 1) * 0.75) * 1.22,
               "overlay-opacity": 0,
             },
           },
         ],
 
-        layout: {
-          name: "cose",
-          animate: true,
-          animationDuration: 1050,
-          padding: 60,
-          nodeRepulsion: () => 13000,
-          idealEdgeLength: () => 165,
-          edgeElasticity: () => 180,
-          numIter: 1200,
-          gravity: 72,
-          fit: true,
-        },
+        layout: getLayoutOptions("cose"),
 
         minZoom: 0.15,
         maxZoom: 5,

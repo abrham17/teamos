@@ -45,6 +45,20 @@ type MarkdownStorage = {
   };
 };
 
+function setEditorMarkdownContent(editor: NonNullable<ReturnType<typeof useEditor>>, markdown: string) {
+  const value = markdown || "";
+  const setContent = (editor.commands as unknown as { setContent: (...args: unknown[]) => boolean }).setContent;
+  const applied = setContent(
+    value,
+    false,
+    { preserveWhitespace: "full" },
+    { contentType: "markdown", errorOnInvalidContent: false },
+  );
+  if (!applied) {
+    editor.commands.setContent(value || "<p></p>");
+  }
+}
+
 export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(function GoogleDocsEditor(
   { initialText, onChange, teamId, ydoc, provider },
   ref,
@@ -103,11 +117,16 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
   const editor = useEditor({
     immediatelyRender: false,
     extensions,
-    content: initialText,
+    content: "",
     editorProps: {
       attributes: {
         class: "prose prose-invert max-w-none focus:outline-none min-h-[500px] pb-32 tiptap",
       },
+    },
+    onCreate: ({ editor }) => {
+      if (!ydoc) {
+        setEditorMarkdownContent(editor, initialText);
+      }
     },
     onUpdate: ({ editor }) => {
       const markdown = ((editor.storage as unknown) as MarkdownStorage).markdown?.getMarkdown?.() || "";
@@ -127,10 +146,10 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
   );
 
   useEffect(() => {
-    if (editor && initialText && !ydoc) {
+    if (editor && !ydoc) {
       const current = ((editor.storage as unknown) as MarkdownStorage).markdown?.getMarkdown?.() || "";
       if (initialText !== current) {
-        editor.commands.setContent(initialText);
+        setEditorMarkdownContent(editor, initialText);
       }
     }
   }, [initialText, editor, ydoc]);

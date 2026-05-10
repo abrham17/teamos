@@ -168,7 +168,7 @@ export default function RawSourceViewer({
             <ul>
               {detail.citing_pages.map((c, i) => (
                 <li key={i}>
-                  <a href={`/wiki/${c.page_slug}`}>
+                  <a href={`/wiki?page=${encodeURIComponent(c.page_slug)}`}>
                     {c.page_title}
                   </a>
                   {c.wiki_section && (

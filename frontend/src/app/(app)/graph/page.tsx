@@ -49,6 +49,9 @@ interface GraphAnalytics {
   available_modes?: Array<"simple" | "advanced">;
 }
 
+const ALL_NODE_TYPES = ["standard", "meeting", "decision", "incident", "template"] as const;
+const ALL_EDGE_TYPES = ["wikilink", "semantic", "ai_inferred", "manual", "citation"] as const;
+
 export default function GraphPage() {
   const router          = useRouter();
   const { currentTeamId } = useWikiStore();
@@ -63,6 +66,9 @@ export default function GraphPage() {
   const [hoverPayload, setHoverPayload] = useState<GraphHoverPayload | null>(null);
   const [nodeHoverDetail, setNodeHoverDetail] = useState<GraphNodeHoverDetail | null>(null);
   const [nodeHoverDetailLoading, setNodeHoverDetailLoading] = useState(false);
+  const [activeNodeTypes, setActiveNodeTypes] = useState<string[]>([...ALL_NODE_TYPES]);
+  const [activeEdgeTypes, setActiveEdgeTypes] = useState<string[]>([...ALL_EDGE_TYPES]);
+  const [isolateSelection, setIsolateSelection] = useState(false);
 
   const cyRef = useRef<CytoscapeRef>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -170,6 +176,33 @@ export default function GraphPage() {
     ? data?.nodes.find(n => n.id === selectedNodeId) ?? null
     : null;
 
+  const filteredData = useMemo(() => {
+    if (!data) return null;
+    const nodeTypeSet = new Set(activeNodeTypes);
+    const edgeTypeSet = new Set(activeEdgeTypes);
+    let nodes = data.nodes.filter((n) => nodeTypeSet.has(n.type ?? "standard"));
+    let nodeIds = new Set(nodes.map((n) => n.id));
+    let edges = data.edges.filter(
+      (e) =>
+        edgeTypeSet.has(e.type ?? "wikilink") &&
+        nodeIds.has(e.from) &&
+        nodeIds.has(e.to),
+    );
+
+    if (isolateSelection && selectedNodeId && nodeIds.has(selectedNodeId)) {
+      const keep = new Set<string>([selectedNodeId]);
+      edges.forEach((e) => {
+        if (e.from === selectedNodeId) keep.add(e.to);
+        if (e.to === selectedNodeId) keep.add(e.from);
+      });
+      nodes = nodes.filter((n) => keep.has(n.id));
+      nodeIds = new Set(nodes.map((n) => n.id));
+      edges = edges.filter((e) => nodeIds.has(e.from) && nodeIds.has(e.to));
+    }
+
+    return { nodes, edges };
+  }, [data, activeNodeTypes, activeEdgeTypes, isolateSelection, selectedNodeId]);
+
   const hoverResolved = useMemo((): GraphHoverPreviewResolved | null => {
     if (!hoverPayload || !data) return null;
     if (hoverPayload.kind === "node") {
@@ -192,7 +225,7 @@ export default function GraphPage() {
   }, [hoverPayload, data]);
 
   const linkedNodes: LinkedNode[] = selectedNode && data
-    ? data.edges
+    ? (filteredData?.edges ?? data.edges)
         .filter(e => e.from === selectedNode.id || e.to === selectedNode.id)
         .map(e => {
           const otherId = e.from === selectedNode.id ? e.to : e.from;
@@ -233,6 +266,26 @@ export default function GraphPage() {
     setHoverPayload(payload);
   }, []);
 
+  const handleToggleNodeType = useCallback((type: string) => {
+    setActiveNodeTypes((prev) => {
+      if (prev.includes(type)) return prev.filter((t) => t !== type);
+      return [...prev, type];
+    });
+  }, []);
+
+  const handleToggleEdgeType = useCallback((type: string) => {
+    setActiveEdgeTypes((prev) => {
+      if (prev.includes(type)) return prev.filter((t) => t !== type);
+      return [...prev, type];
+    });
+  }, []);
+
+  const handleResetFilters = useCallback(() => {
+    setActiveNodeTypes([...ALL_NODE_TYPES]);
+    setActiveEdgeTypes([...ALL_EDGE_TYPES]);
+    setIsolateSelection(false);
+  }, []);
+
   const handleSelectLinkedNode = useCallback((id: string) => {
     setSelectedNodeId(id);
     cyRef.current?.focusNode(id);
@@ -252,8 +305,8 @@ export default function GraphPage() {
       {/* Toolbar */}
       <div ref={toolbarRef} className="shrink-0">
         <GraphToolbar
-          nodeCount={data?.nodes.length ?? 0}
-          edgeCount={data?.edges.length ?? 0}
+          nodeCount={filteredData?.nodes.length ?? 0}
+          edgeCount={filteredData?.edges.length ?? 0}
           loading={loading}
           searchQuery={searchQuery}
           layout={layout}
@@ -263,6 +316,8 @@ export default function GraphPage() {
           onZoomOut={() => cyRef.current?.zoomOut()}
           onFit={() => cyRef.current?.fit()}
           onExportPng={() => cyRef.current?.exportPng()}
+          isolateSelection={isolateSelection}
+          onToggleIsolateSelection={() => setIsolateSelection((v) => !v)}
         />
       </div>
 
@@ -300,12 +355,12 @@ export default function GraphPage() {
         )}
 
         {/* Graph */}
-        {data && data.nodes.length > 0 && (
+        {filteredData && filteredData.nodes.length > 0 && (
           <div ref={canvasWrapRef} className="absolute inset-0">
             <CytoscapeViewer
               ref={cyRef}
-              nodes={data.nodes}
-              edges={data.edges}
+              nodes={filteredData.nodes}
+              edges={filteredData.edges}
               onNodeClick={handleNodeClick}
               onNodeDoubleClick={setSelectedNodeId}
               onHoverChange={handleHoverChange}
@@ -389,12 +444,20 @@ export default function GraphPage() {
         />
 
         {/* Legend (bottom-left overlay) */}
-        {data && data.nodes.length > 0 && (
+        {filteredData && filteredData.nodes.length > 0 && (
           <div
             ref={legendWrapRef}
             className="absolute bottom-4 left-4 z-10"
           >
-            <GraphLegend />
+            <GraphLegend
+              activeNodeTypes={activeNodeTypes}
+              activeEdgeTypes={activeEdgeTypes}
+              isolateSelection={isolateSelection}
+              onToggleNodeType={handleToggleNodeType}
+              onToggleEdgeType={handleToggleEdgeType}
+              onToggleIsolateSelection={() => setIsolateSelection((v) => !v)}
+              onResetFilters={handleResetFilters}
+            />
           </div>
         )}
       </div>

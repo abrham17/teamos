@@ -4,22 +4,40 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 
 const NODE_TYPES = [
-  { color: "#00d4e8", label: "Standard"  },
-  { color: "#a855f7", label: "Meeting"   },
-  { color: "#f97316", label: "Decision"  },
-  { color: "#ef4444", label: "Incident"  },
-  { color: "#22c55e", label: "Template"  },
+  { color: "#00d4e8", label: "Standard", value: "standard" },
+  { color: "#a855f7", label: "Meeting", value: "meeting" },
+  { color: "#f97316", label: "Decision", value: "decision" },
+  { color: "#ef4444", label: "Incident", value: "incident" },
+  { color: "#22c55e", label: "Template", value: "template" },
 ];
 
 const EDGE_TYPES = [
-  { color: "#00d4e8", label: "Wiki [[link]]", hint: "from page text" },
-  { color: "#c084fc", label: "Related (ingest)", hint: "vector similarity" },
-  { color: "#a855f7", label: "AI inferred", hint: "legacy" },
-  { color: "#22c55e", label: "Manual" },
-  { color: "#fbbf24", label: "Citation" },
+  { color: "#00d4e8", label: "Wiki [[link]]", hint: "from page text", value: "wikilink" },
+  { color: "#c084fc", label: "Related (ingest)", hint: "vector similarity", value: "semantic" },
+  { color: "#a855f7", label: "AI inferred", hint: "legacy", value: "ai_inferred" },
+  { color: "#22c55e", label: "Manual", value: "manual" },
+  { color: "#fbbf24", label: "Citation", value: "citation" },
 ];
 
-export function GraphLegend() {
+interface Props {
+  activeNodeTypes: string[];
+  activeEdgeTypes: string[];
+  isolateSelection: boolean;
+  onToggleNodeType: (type: string) => void;
+  onToggleEdgeType: (type: string) => void;
+  onToggleIsolateSelection: () => void;
+  onResetFilters: () => void;
+}
+
+export function GraphLegend({
+  activeNodeTypes,
+  activeEdgeTypes,
+  isolateSelection,
+  onToggleNodeType,
+  onToggleEdgeType,
+  onToggleIsolateSelection,
+  onResetFilters,
+}: Props) {
   const [expanded, setExpanded] = useState(true);
 
   return (
@@ -47,11 +65,18 @@ export function GraphLegend() {
                 Nodes
               </p>
               <div className="flex flex-col gap-1">
-                {NODE_TYPES.map(({ color, label }) => (
-                  <div key={label} className="flex items-center gap-2">
+                {NODE_TYPES.map(({ color, label, value }) => (
+                  <button
+                    key={label}
+                    onClick={() => onToggleNodeType(value)}
+                    className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-[var(--surface-2)] transition-colors"
+                  >
                     <div className="w-3 h-3 rounded-full shrink-0" style={{ background: color }} />
                     <span className="text-xs text-[var(--text-secondary)]">{label}</span>
-                  </div>
+                    <span className="ml-auto text-[10px] text-[var(--text-dim)]">
+                      {activeNodeTypes.includes(value) ? "on" : "off"}
+                    </span>
+                  </button>
                 ))}
               </div>
             </div>
@@ -62,8 +87,12 @@ export function GraphLegend() {
                 Edges
               </p>
               <div className="flex flex-col gap-1">
-                {EDGE_TYPES.map(({ color, label, hint }) => (
-                  <div key={label} className="flex items-center gap-2">
+                {EDGE_TYPES.map(({ color, label, hint, value }) => (
+                  <button
+                    key={label}
+                    onClick={() => onToggleEdgeType(value)}
+                    className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-[var(--surface-2)] transition-colors"
+                  >
                     <div className="w-5 h-0.5 rounded-full shrink-0" style={{ background: color }} />
                     <span className="text-xs text-[var(--text-secondary)]">
                       {label}
@@ -71,9 +100,27 @@ export function GraphLegend() {
                         <span className="text-[var(--text-dim)] font-normal"> — {hint}</span>
                       ) : null}
                     </span>
-                  </div>
+                    <span className="ml-auto text-[10px] text-[var(--text-dim)]">
+                      {activeEdgeTypes.includes(value) ? "on" : "off"}
+                    </span>
+                  </button>
                 ))}
               </div>
+            </div>
+
+            <div className="border-t border-[var(--border-subtle)] pt-2">
+              <button
+                onClick={onToggleIsolateSelection}
+                className="w-full text-left text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1 py-1 hover:bg-[var(--surface-2)] transition-colors"
+              >
+                Isolate selected node: {isolateSelection ? "on" : "off"}
+              </button>
+              <button
+                onClick={onResetFilters}
+                className="w-full text-left text-xs text-[var(--text-dim)] hover:text-[var(--text-primary)] rounded px-1 py-1 hover:bg-[var(--surface-2)] transition-colors"
+              >
+                Reset filters
+              </button>
             </div>
           </div>
         )}

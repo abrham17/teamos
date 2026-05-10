@@ -22,6 +22,8 @@ interface Props {
   onZoomOut:      () => void;
   onFit:          () => void;
   onExportPng:    () => void;
+  isolateSelection: boolean;
+  onToggleIsolateSelection: () => void;
 }
 
 export function GraphToolbar({
@@ -29,6 +31,7 @@ export function GraphToolbar({
   searchQuery, layout,
   onSearch, onLayoutChange,
   onZoomIn, onZoomOut, onFit, onExportPng,
+  isolateSelection, onToggleIsolateSelection,
 }: Props) {
   return (
     <div className="flex items-center h-[var(--header-h)] border-b border-[var(--border-subtle)] bg-[var(--surface-1)] px-4 gap-2 shrink-0">
@@ -82,6 +85,18 @@ export function GraphToolbar({
 
       {/* Spacer */}
       <div className="flex-1" />
+
+      <button
+        onClick={onToggleIsolateSelection}
+        title="Isolate selected node neighborhood"
+        className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
+          isolateSelection
+            ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-subtle)]"
+            : "border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-2)]"
+        }`}
+      >
+        Isolate
+      </button>
 
       {/* Stats */}
       <div className="text-xs text-[var(--text-muted)] tabular-nums">
