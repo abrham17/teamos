@@ -28,7 +28,10 @@ class AppwriteMediaStorage(Storage):
             file_id = self._get_file_id(name)
             result = self.storage_service.get_file_download(self.bucket_id, file_id)
             return ContentFile(result)
-        except Exception:
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Appwrite storage error: Failed to download file {name} (ID: {file_id}) from bucket {self.bucket_id}: {e}")
             return None
 
     def _save(self, name, content):
