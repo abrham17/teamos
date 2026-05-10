@@ -48,18 +48,17 @@ REDIS_URL = os.environ.get("REDIS_URL", "")
 # Heroku Redis SSL compatibility
 import ssl
 
-if REDIS_URL.startswith("rediss://") and "ssl_cert_reqs" not in REDIS_URL:
-    sep = "&" if "?" in REDIS_URL else "?"
-    REDIS_URL += f"{sep}ssl_cert_reqs=none"
-
 redis_ssl_options = {
-    "ssl_cert_reqs": "none",
-    "ssl_check_hostname": False,
+    "CLIENT_CLASS": "django_redis.client.DefaultClient",
+    "CONNECTION_POOL_KWARGS": {
+        "ssl_cert_reqs": ssl.CERT_NONE,
+        "ssl_check_hostname": False,
+    }
 }
 
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "BACKEND": "django_redis.cache.RedisCache",
         "LOCATION": REDIS_URL,
         "OPTIONS": redis_ssl_options,
     }
