@@ -69,8 +69,8 @@ export function DependencyGraph({ project, onRefresh }: DependencyGraphProps) {
             "font-family": "Inter, sans-serif",
             "text-wrap": "wrap",
             "text-max-width": "120px",
-            width: (ele) => (ele.data("priority") === "high" ? 40 : 30),
-            height: (ele) => (ele.data("priority") === "high" ? 40 : 30),
+            width: (ele: any) => (ele.data("priority") === "high" ? 40 : 30),
+            height: (ele: any) => (ele.data("priority") === "high" ? 40 : 30),
           },
         },
         {

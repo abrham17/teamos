@@ -17,14 +17,27 @@ import { Blockquote } from "@tiptap/extension-blockquote";
 import { Markdown } from "@tiptap/markdown";
 import { Link } from "@tiptap/extension-link";
 import Collaboration from "@tiptap/extension-collaboration";
-import { useEffect, useImperativeHandle, useMemo, forwardRef } from "react";
+import { MathExtension } from '@aarkue/tiptap-math-extension';
+import "katex/dist/katex.min.css";
+import Youtube from '@tiptap/extension-youtube';
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import { createLowlight, common } from 'lowlight';
+import TaskList from '@tiptap/extension-task-list';
+import TaskItem from '@tiptap/extension-task-item';
+import 'highlight.js/styles/atom-one-dark.css';
+import { useEffect, useImperativeHandle, useMemo, forwardRef, useRef } from "react";
+
+const lowlight = createLowlight(common);
 
 import SlashCommand from "./extensions/SlashCommand";
 import suggestion from "./extensions/suggestions";
 import Wikilink from "./extensions/Wikilink";
 import getWikilinkSuggestion from "./extensions/WikilinkSuggestion";
 import { Callout } from "./extensions/Callout";
+import { ImageUpload } from "./extensions/ImageUpload";
+import { MermaidBlock } from "./extensions/MermaidBlock";
 import EditorToolbar from "./EditorToolbar";
+import { FloatingBubbleMenu } from "./FloatingBubbleMenu";
 
 export type GoogleDocsEditorHandle = {
   /** Latest markdown from the editor (TipTap storage), even if React state is stale. */
@@ -64,6 +77,8 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
   { initialText, onChange, teamId, ydoc, provider },
   ref,
 ) {
+  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const extensions = useMemo(() => {
     const base = [
       StarterKit.configure({
@@ -71,6 +86,7 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
         orderedList: false,
         listItem: false,
         blockquote: false,
+        codeBlock: false,
       }),
       Underline,
       TextAlign.configure({
@@ -89,7 +105,7 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
       TableHeader,
       TableCell,
       Markdown.configure({
-        // Default options are fine
+        // use default options
       }),
       Link.configure({
         autolink: true,
@@ -98,11 +114,28 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
           class: "text-[var(--accent)] underline cursor-pointer",
         },
       }),
-      SlashCommand.configure({ suggestion }),
+      SlashCommand.configure({ suggestion: suggestion(teamId) }),
       Wikilink.configure({
         suggestion: getWikilinkSuggestion(teamId),
       }),
       Callout,
+      MathExtension.configure({
+        evaluation: false, // We just want rendering, not evaluation
+      }),
+      Youtube.configure({
+        controls: false,
+      }),
+      CodeBlockLowlight.configure({
+        lowlight,
+      }),
+      TaskList,
+      TaskItem.configure({
+        nested: true,
+      }),
+      ImageUpload.configure({
+        teamId,
+      }),
+      MermaidBlock,
     ];
 
     if (ydoc && provider) {
@@ -131,8 +164,11 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
       }
     },
     onUpdate: ({ editor }) => {
-      const markdown = ((editor.storage as unknown) as MarkdownStorage).markdown?.getMarkdown?.() || "";
-      onChange(markdown);
+      if (updateTimeoutRef.current) clearTimeout(updateTimeoutRef.current);
+      updateTimeoutRef.current = setTimeout(() => {
+        const markdown = ((editor.storage as unknown) as MarkdownStorage).markdown?.getMarkdown?.() || "";
+        onChange(markdown);
+      }, 500);
     },
   });
 
@@ -160,8 +196,9 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
 
   return (
     <div className="w-full bg-transparent">
-      <EditorToolbar editor={editor} teamId={teamId} />
-      <div className="mt-8">
+      {editor && <EditorToolbar editor={editor} teamId={teamId} />}
+      {editor && <FloatingBubbleMenu editor={editor} />}
+      <div className="flex-1 mt-4 relative">
         <EditorContent editor={editor} />
       </div>
     </div>

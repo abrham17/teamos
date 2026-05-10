@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useAuth } from "@clerk/clerk-react";
+import { useUser } from "@clerk/clerk-react";
 
 export interface CursorPosition {
   x: number;
@@ -11,8 +11,8 @@ export interface CursorPosition {
 
 const COLORS = ["#f43f5e", "#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ec4899"];
 
-export function useMultiplayer(teamId: string, projectId: string | null, onStateChange?: () => void) {
-  const { user } = useAuth();
+export function useMultiplayer(teamId: string | null, projectId: string | null, onStateChange?: () => void) {
+  const { user } = useUser();
   const [cursors, setCursors] = useState<Record<string, CursorPosition>>({});
   const wsRef = useRef<WebSocket | null>(null);
   const colorRef = useRef<string>(COLORS[Math.floor(Math.random() * COLORS.length)]);

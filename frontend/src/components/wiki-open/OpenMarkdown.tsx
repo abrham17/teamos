@@ -17,7 +17,7 @@ interface OpenMarkdownProps {
   teamId: string;
   onOpen: (pageId: string) => void;
   onClose: () => void;
-  onNewMarkdown?: () => void;
+  onNewMarkdown?: (title: string) => void;
 }
 
 export function OpenMarkdown({ teamId, onOpen, onClose, onNewMarkdown }: OpenMarkdownProps) {
@@ -25,35 +25,57 @@ export function OpenMarkdown({ teamId, onOpen, onClose, onNewMarkdown }: OpenMar
   const [pages, setPages] = useState<Page[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewHint, setShowNewHint] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
   useEffect(() => {
-    const fetchPages = async () => {
-      setLoading(true);
+    setLoading(true);
+    const timeout = setTimeout(async () => {
       try {
-        const data = await api.get<Page[]>(`/wiki/${teamId}/pages/`);
-        setPages(data);
+        const query = search.trim();
+        if (query) {
+          const data = await api.get<Page[]>(`/wiki/${teamId}/search/?q=${encodeURIComponent(query)}`);
+          setPages(data);
+        } else {
+          const data = await api.get<Page[]>(`/wiki/${teamId}/recent/`);
+          setPages(data);
+        }
       } catch (e) {
         console.error(e);
       } finally {
         setLoading(false);
       }
-    };
-    if (teamId) fetchPages();
-  }, [teamId]);
-
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    if (!q) return pages;
-    return pages.filter(p => p.title.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q));
-  }, [pages, search]);
+    }, 300); // 300ms debounce
+    return () => clearTimeout(timeout);
+  }, [teamId, search]);
 
   useEffect(() => {
+    setSelectedIndex(0);
     if (!search.trim()) {
       setShowNewHint(false);
       return;
     }
-    setShowNewHint(filtered.length === 0 && !!onNewMarkdown);
-  }, [search, filtered.length, onNewMarkdown]);
+    setShowNewHint(pages.length === 0 && !!onNewMarkdown);
+  }, [search, pages.length, onNewMarkdown]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev < pages.length - 1 ? prev + 1 : prev));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : prev));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (pages.length > 0) {
+        onOpen(pages[selectedIndex].slug);
+      } else if (showNewHint && onNewMarkdown) {
+        onClose();
+        onNewMarkdown(search);
+      }
+    } else if (e.key === "Escape") {
+      onClose();
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[10vh] px-3 bg-black/50 backdrop-blur-sm"
@@ -69,6 +91,7 @@ export function OpenMarkdown({ teamId, onOpen, onClose, onNewMarkdown }: OpenMar
             className="w-full bg-transparent border-none outline-none p-4 text-[var(--text-primary)] placeholder-[var(--text-muted)]"
             value={search}
             onChange={e => setSearch(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="Search team pages (⌘K)..."
             autoFocus
           />
@@ -76,11 +99,16 @@ export function OpenMarkdown({ teamId, onOpen, onClose, onNewMarkdown }: OpenMar
         </div>
 
         <div className="flex-1 max-h-[60vh] overflow-y-auto py-2 bg-[var(--surface-1)]">
-          {filtered.map((page) => (
+          {pages.map((page, index) => (
             <div
               key={page.id}
               onClick={() => onOpen(page.slug)}
-              className="group flex justify-between items-center px-5 py-3 cursor-pointer hover:bg-[var(--bg-800)] border-l-2 border-transparent hover:border-[var(--accent)]"
+              onMouseEnter={() => setSelectedIndex(index)}
+              className={`group flex justify-between items-center px-5 py-3 cursor-pointer border-l-2 ${
+                selectedIndex === index
+                  ? "bg-[var(--bg-800)] border-[var(--accent)]"
+                  : "border-transparent hover:bg-[var(--bg-800)] hover:border-[var(--accent)]"
+              }`}
             >
               <div className="flex items-center gap-4">
                 <FileText className="w-5 h-5 text-[var(--text-muted)] group-hover:text-[var(--accent)]" />
@@ -102,7 +130,7 @@ export function OpenMarkdown({ teamId, onOpen, onClose, onNewMarkdown }: OpenMar
             </div>
           ))}
 
-          {!loading && filtered.length === 0 && (
+          {!loading && pages.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-[var(--text-muted)]">
               <FileText className="w-8 h-8 mb-3 opacity-20" />
               <p>No pages found.</p>
@@ -116,7 +144,7 @@ export function OpenMarkdown({ teamId, onOpen, onClose, onNewMarkdown }: OpenMar
             <button
               onClick={() => {
                 onClose();
-                onNewMarkdown?.();
+                onNewMarkdown?.(search);
               }}
               className="text-[var(--accent)] font-medium hover:underline"
             >

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useWikiStore } from "@/stores/useWikiStore";
 import { api } from "@/lib/api";
@@ -11,6 +11,7 @@ import FrontmatterPanel from "@/components/wiki/FrontmatterPanel";
 import { useToast } from "@/components/ui/Toast";
 import { WikiPublishReviewModal, type WikiChangeSetPayload } from "@/components/wiki-v2/WikiPublishReviewModal";
 import RawSourceViewer from "@/components/wiki/RawSourceViewer";
+import { BacklinksPanel } from "./BacklinksPanel";
 
 interface Citation {
   id: string;
@@ -57,6 +58,32 @@ export function MarkdownWorkspace() {
   const citationChunk = searchParams.get("chunk");
   const citationAnchorHint = searchParams.get("anchor_hint");
   const citationSource = searchParams.get("source");
+  const newTitleParam = searchParams.get("title");
+
+  const toc = useMemo(() => {
+    if (!content) return [];
+    const lines = content.split('\n');
+    const headings = [];
+    for (const line of lines) {
+      const match = line.match(/^(#{1,3})\s+(.*)/);
+      if (match) {
+        headings.push({ level: match[1].length, text: match[2] });
+      }
+    }
+    return headings;
+  }, [content]);
+
+  // Global Cmd+K listener
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setWikiSidebarOpen(true);
+      }
+    };
+    document.addEventListener("keydown", down);
+    return () => document.removeEventListener("keydown", down);
+  }, [setWikiSidebarOpen]);
 
   useEffect(() => {
     if (!currentTeamId) return;
@@ -64,7 +91,7 @@ export function MarkdownWorkspace() {
     if (action === "new") {
       setIsNew(true);
       setPage(null);
-      setTitle("");
+      setTitle(newTitleParam || "");
       setContent("");
       setFrontmatter({});
       setSaveStatus("idle");
@@ -279,7 +306,7 @@ export function MarkdownWorkspace() {
             teamId={currentTeamId}
             onOpen={(s) => { setWikiSidebarOpen(false); router.push(`/wiki?page=${s}`); }}
             onClose={() => setWikiSidebarOpen(false)}
-            onNewMarkdown={() => router.push("/wiki?action=new")}
+            onNewMarkdown={(t) => router.push(`/wiki?action=new${t ? `&title=${encodeURIComponent(t)}` : ''}`)}
           />
         )}
       </div>
@@ -415,9 +442,41 @@ export function MarkdownWorkspace() {
                   teamId={currentTeamId}
                 />
               </div>
+
+              {!isNew && page?.slug && currentTeamId && (
+                <BacklinksPanel teamId={currentTeamId} slug={page.slug} />
+              )}
             </div>
           </div>
         </div>
+
+        {/* Dynamic Table of Contents Sidebar */}
+        {!showCitations && toc.length > 0 && (
+          <div className="w-64 border-l border-white/5 bg-[var(--bg-950)]/30 backdrop-blur-md flex flex-col shrink-0 animate-in fade-in duration-500 overflow-y-auto">
+            <div className="p-6">
+              <h3 className="font-bold text-xs uppercase tracking-widest text-[var(--text-muted)] mb-4">On this page</h3>
+              <div className="flex flex-col gap-2">
+                {toc.map((heading, idx) => (
+                  <div
+                    key={idx}
+                    className={`text-sm cursor-pointer hover:text-[var(--accent)] transition-colors ${
+                      heading.level === 1 ? "font-medium text-[var(--text-primary)]" :
+                      heading.level === 2 ? "pl-3 text-[var(--text-secondary)]" :
+                      "pl-6 text-[var(--text-muted)]"
+                    }`}
+                    onClick={() => {
+                      // simple scroll to implementation could go here
+                      // since TipTap doesn't give easy ID mapping without custom nodes, 
+                      // we can rely on standard browser find for now or expand this later.
+                    }}
+                  >
+                    {heading.text}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Citations Sidebar */}
         {showCitations && page?.citations && page.citations.length > 0 && (
@@ -489,7 +548,7 @@ export function MarkdownWorkspace() {
           teamId={currentTeamId}
           onOpen={(s) => { setWikiSidebarOpen(false); router.push(`/wiki?page=${s}`); }}
           onClose={() => setWikiSidebarOpen(false)}
-          onNewMarkdown={() => router.push("/wiki?action=new")}
+          onNewMarkdown={(t) => router.push(`/wiki?action=new${t ? `&title=${encodeURIComponent(t)}` : ''}`)}
         />
       )}
 
