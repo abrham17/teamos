@@ -176,6 +176,15 @@ export function MarkdownWorkspace() {
     setSaveStatus("saving");
     const t = setTimeout(() => {
       const bodyMarkdown = editorRef.current?.getMarkdown() ?? content;
+      
+      // CRITICAL: If the editor returns empty but we have content in state, 
+      // it might mean the editor hasn't finished loading. DON'T SAVE.
+      if (!bodyMarkdown.trim() && (content.trim() || page?.content?.trim())) {
+        console.warn("Blocking empty save - editor might not be ready");
+        setSaveStatus("idle");
+        return;
+      }
+
       if (isNew) {
         if (!title.trim() && !bodyMarkdown.trim()) {
           setSaveStatus("idle");

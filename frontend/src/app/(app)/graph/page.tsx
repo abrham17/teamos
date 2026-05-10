@@ -62,7 +62,7 @@ export default function GraphPage() {
   const [error, setError]               = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery]   = useState("");
-  const [layout, setLayout]             = useState("grid");
+  const [layout, setLayout]             = useState("circle");
   const [analyticsMode, setAnalyticsMode] = useState<"simple" | "advanced">("simple");
   const [hoverPayload, setHoverPayload] = useState<GraphHoverPayload | null>(null);
   const [nodeHoverDetail, setNodeHoverDetail] = useState<GraphNodeHoverDetail | null>(null);

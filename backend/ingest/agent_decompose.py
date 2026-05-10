@@ -219,6 +219,7 @@ def run_agent_decomposition(
 
     Returns list of created/updated WikiPages.
     """
+    from concurrent.futures import ThreadPoolExecutor
     from ingest.contradiction_resolver import create_contradiction_changeset
     from wiki.services.reindex import reindex_wiki_page
 
@@ -227,37 +228,41 @@ def run_agent_decomposition(
     # Step 1: Decompose
     logger.info("Agent decomposing document for job %s", job.id)
     page_proposals = decompose_document(team, raw_text)
+    
+    if not page_proposals:
+        logger.warning("No page proposals generated for job %s", job.id)
+        return []
 
     created_pages: list[WikiPage] = []
     all_contradictions: list[dict] = []
 
-    for proposal in page_proposals:
+    def process_proposal_ai(proposal):
+        """Heavy AI lifting for a single proposal (Vector Search + LLM Relation Classify)"""
         title = proposal.get("title", "Untitled")
         content = proposal.get("content", "")
-        page_type = proposal.get("page_type", "standard")
+        if not content.strip() and raw_text.strip():
+             # Safety fallback: don't allow empty content if source wasn't empty
+             content = f"# {title}\n\n[Content generation failed, using fallback]\n\n{raw_text[:2000]}"
+        
         internal_links = proposal.get("internal_links", [])
-        citations = proposal.get("citations", [])
-
+        
         # Inject [[wikilinks]] for internal links
         for link_title in internal_links:
             if link_title in content:
-                continue  # Already present
-            # Find natural insertion points (mentions of the title without brackets)
+                continue
             pattern = re.compile(re.escape(link_title), re.IGNORECASE)
             content = pattern.sub(f"[[{link_title}]]", content, count=1)
 
-        # Step 2: Find related existing pages via vector search
+        # Vector Search
         try:
             search_results = vector_store.search_similar_pages(team.id, content[:1000], limit=10)
         except Exception:
-            logger.exception("Vector search failed during agent decomposition")
             search_results = []
 
         existing_pages_for_relation = []
         for res in search_results:
             pid = res.payload.get("page_id")
-            if not pid:
-                continue
+            if not pid: continue
             try:
                 ep = WikiPage.objects.get(id=pid, is_deleted=False)
                 existing_pages_for_relation.append({
@@ -268,17 +273,38 @@ def run_agent_decomposition(
             except WikiPage.DoesNotExist:
                 continue
 
-        # Step 3: Classify relations
+        # Classify Relations (LLM CALL)
         relation_result = classify_relations(team, content, title, existing_pages_for_relation)
-        relations = relation_result.get("relations", [])
-        suggested_links = relation_result.get("suggested_wikilinks_in_existing", [])
+        
+        return {
+            "proposal": proposal,
+            "content": content,
+            "title": title,
+            "relations": relation_result.get("relations", []),
+            "suggested_links": relation_result.get("suggested_wikilinks_in_existing", []),
+        }
+
+    # Run AI processing in parallel (Speed up ingestion from hours to minutes)
+    logger.info("Processing %s proposals in parallel for job %s", len(page_proposals), job.id)
+    with ThreadPoolExecutor(max_workers=min(len(page_proposals), 8)) as executor:
+        ai_results = list(executor.map(process_proposal_ai, page_proposals))
+
+    # Step 4-8: Sequential DB operations (Save results)
+    for res in ai_results:
+        proposal = res["proposal"]
+        content = res["content"]
+        title = res["title"]
+        relations = res["relations"]
+        suggested_links = res["suggested_links"]
+        page_type = proposal.get("page_type", "standard")
+        citations = proposal.get("citations", [])
 
         # Check for contradictions
         contradictions = [r for r in relations if r.get("relation_type") == "contradicts"]
         if contradictions and not job.auto_approve:
             all_contradictions.extend(contradictions)
 
-        # Step 4: Create the wiki page
+        # Create/Update wiki page
         slug = _slug_for_page(team, title)
         page, created = WikiPage.objects.get_or_create(
             team=team,
@@ -299,14 +325,12 @@ def run_agent_decomposition(
 
         created_pages.append(page)
 
-        # Step 5: Create typed graph edges
+        # Graph Edges
         for rel in relations:
             rel_type = rel.get("relation_type", "unrelated")
-            if rel_type == "unrelated":
-                continue
+            if rel_type == "unrelated": continue
             existing_page_id = rel.get("existing_page_id")
-            if not existing_page_id:
-                continue
+            if not existing_page_id: continue
             try:
                 target_page = WikiPage.objects.get(id=existing_page_id)
                 GraphEdge.objects.update_or_create(
@@ -316,14 +340,11 @@ def run_agent_decomposition(
                     defaults={
                         "confidence": float(rel.get("confidence", 0.8)),
                         "reason": rel.get("reason", ""),
-                        "metadata": {"contradiction_details": rel.get("contradiction_details")}
-                        if rel.get("contradiction_details")
-                        else {},
+                        "metadata": {"contradiction_details": rel.get("contradiction_details")} if rel.get("contradiction_details") else {},
                         "created_by": "agent",
                     },
                 )
-            except WikiPage.DoesNotExist:
-                continue
+            except WikiPage.DoesNotExist: continue
 
         # Step 6: Inject [[wikilinks]] into existing pages
         for link_suggestion in suggested_links:

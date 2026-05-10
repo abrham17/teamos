@@ -3,7 +3,6 @@
 import { ZoomIn, ZoomOut, Maximize2, Download, Search, Network, X } from "lucide-react";
 
 const LAYOUTS = [
-  { value: "cose",          label: "Force-directed" },
   { value: "grid",          label: "Grid"           },
   { value: "circle",        label: "Circle"         },
   { value: "breadthfirst",  label: "Hierarchical"   },

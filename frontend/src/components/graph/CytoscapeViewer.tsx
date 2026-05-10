@@ -272,7 +272,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
                 NODE_COLORS[ele.data("type") as string] ?? NODE_COLORS.default,
               "label":           "data(label)",
               "color":           "rgba(255,255,255,0.92)",
-              "font-size":       "7px",
+              "font-size":       "10px",
               "font-family":     "Inter, system-ui, sans-serif",
               "font-weight":     500,
               "text-valign":     "bottom",
@@ -281,20 +281,20 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
               "text-background-opacity": 0,
               "text-wrap":       "ellipsis",
               "text-max-width":  "64px",
-              /* Size scales with degree — smaller nodes for less clutter */
+              /* Size scales with degree — larger nodes for better visibility */
               "width": (ele: NodeLike) => {
                 const d = ele.connectedEdges().length;
-                if (d >= 8) return 13;
-                if (d >= 5) return 11;
-                if (d >= 3) return 9;
-                return 8;
+                if (d >= 8) return 32;
+                if (d >= 5) return 28;
+                if (d >= 3) return 24;
+                return 20;
               },
               "height": (ele: NodeLike) => {
                 const d = ele.connectedEdges().length;
-                if (d >= 8) return 13;
-                if (d >= 5) return 11;
-                if (d >= 3) return 9;
-                return 8;
+                if (d >= 8) return 32;
+                if (d >= 5) return 28;
+                if (d >= 3) return 24;
+                return 20;
               },
               "border-width":   1,
               "border-color": (ele: NodeLike) =>
@@ -358,16 +358,8 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
               "target-arrow-color": (ele: EdgeLike) =>
                 EDGE_COLORS[ele.data("type") as string] ?? EDGE_COLORS.default,
               "target-arrow-shape": "triangle",
-              "arrow-scale":        0.56,
-              "curve-style":        "unbundled-bezier",
-              "control-point-step-size": 72,
-              "control-point-distance": 36,
-              "line-cap":           "round",
-              "overlay-opacity":    0,
-              "overlay-padding":    7,
-              "transition-property": "opacity, line-opacity, width",
-              "transition-duration": 280,
-              "transition-timing-function": "ease-in-out-cubic",
+              "curve-style": "bezier",
+              opacity: 0.5,
             },
           },
           /* ── Edge: hovered ── */
