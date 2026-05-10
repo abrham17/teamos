@@ -48,14 +48,9 @@ REDIS_URL = os.environ.get("REDIS_URL", "")
 # Heroku Redis SSL compatibility (Gevent/Daphne friendly)
 import ssl
 
-# Some environments prefer redis:// + ssl=True instead of rediss://
-# especially when gevent monkey-patching is involved.
-REDIS_URL_FOR_STDLIB = REDIS_URL.replace("rediss://", "redis://", 1) if REDIS_URL.startswith("rediss://") else REDIS_URL
-
 redis_ssl_options = {
     "CLIENT_CLASS": "django_redis.client.DefaultClient",
     "CONNECTION_POOL_KWARGS": {
-        "ssl": REDIS_URL.startswith("rediss://"),
         "ssl_cert_reqs": ssl.CERT_NONE,
         "ssl_check_hostname": False,
     }
@@ -64,7 +59,7 @@ redis_ssl_options = {
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": REDIS_URL_FOR_STDLIB,
+        "LOCATION": REDIS_URL,
         "OPTIONS": redis_ssl_options,
     }
 }
@@ -74,8 +69,7 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
             "hosts": [{
-                "address": REDIS_URL_FOR_STDLIB,
-                "ssl": REDIS_URL.startswith("rediss://"),
+                "address": REDIS_URL,
                 "ssl_cert_reqs": "none",
                 "ssl_check_hostname": False,
             }],
@@ -83,8 +77,8 @@ CHANNEL_LAYERS = {
     },
 }
 
-CELERY_BROKER_URL = REDIS_URL_FOR_STDLIB
-CELERY_RESULT_BACKEND = REDIS_URL_FOR_STDLIB
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = REDIS_URL
 
 if REDIS_URL.startswith("rediss://"):
     CELERY_REDIS_BACKEND_USE_SSL = {
