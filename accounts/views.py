@@ -20,6 +20,7 @@ from .serializers import (
 )
 from .team_access import get_team_membership
 from .tasks import purge_soft_deleted_team, send_team_invite_email
+from billing.models import TeamSubscription
 
 
 def require_invite_manager(team_id, user):
@@ -128,6 +129,14 @@ class FinalizeOnboardingView(APIView):
             
             team = Team.objects.create(name=team_name, slug=slug, created_by=user)
             membership = TeamMember.objects.create(team=team, user=user, role="owner")
+            
+            # Grant 60-day free trial
+            TeamSubscription.objects.create(
+                team=team,
+                plan_key="free",
+                status="trialing",
+                trial_expires_at=timezone.now() + timedelta(days=getattr(settings, "FREE_TRIAL_DAYS", 60)),
+            )
         else:
             team = membership.team
             
@@ -234,6 +243,14 @@ class TeamListCreateView(APIView):
             slug = f"{base_slug}-{n}"; n += 1
         team = Team.objects.create(name=name, slug=slug, created_by=request.user)
         TeamMember.objects.create(team=team, user=request.user, role="owner")
+        
+        # Grant 60-day free trial
+        TeamSubscription.objects.create(
+            team=team,
+            plan_key="free",
+            status="trialing",
+            trial_expires_at=timezone.now() + timedelta(days=getattr(settings, "FREE_TRIAL_DAYS", 60)),
+        )
         record_first_once(
             event_name="workspace_created",
             team=team,
