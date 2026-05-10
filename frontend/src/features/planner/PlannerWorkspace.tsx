@@ -16,6 +16,7 @@ import { WorkloadPanel } from "./components/WorkloadPanel";
 import { AIPlannerOverlay } from "./components/AIPlannerOverlay";
 import { usePlannerData } from "./hooks/usePlannerData";
 import { usePlannerCalendar } from "./hooks/usePlannerCalendar";
+import { useMultiplayer } from "./hooks/useMultiplayer";
 import { createPlanProject, updatePlanProject, getTeamMembers, updatePlanTask, createPlanTask, createPlanMilestone, createProjectMember, deletePlanProject, deletePlanTask, deleteProjectMember } from "./api";
 import { LayoutGrid, Calendar, History, Columns, BarChartHorizontal, Users } from "lucide-react";
 import { TeamMember, PlanTask } from "./types";
@@ -58,6 +59,12 @@ export function PlannerWorkspace() {
     refreshProjects,
     refreshProjectDetail,
   } = usePlannerData(currentTeamId, query, preferredProjectId);
+
+  const { cursors, sendCursorMove } = useMultiplayer(
+    currentTeamId, 
+    activeProjectId || null, 
+    refreshProjectDetail
+  );
 
   const { events, loadingCalendar } = usePlannerCalendar(currentTeamId);
 
@@ -174,7 +181,31 @@ export function PlannerWorkspace() {
   };
 
   return (
-    <div className="flex h-full min-h-0 bg-[var(--bg-900)]">
+    <div 
+      className="flex h-full min-h-0 bg-[var(--bg-900)] relative"
+      onMouseMove={sendCursorMove}
+    >
+      {/* Remote Cursors Overlay */}
+      {Object.values(cursors).map((cursor) => (
+        <div
+          key={cursor.userId}
+          className="pointer-events-none fixed z-[100] transition-transform duration-75 ease-linear"
+          style={{
+            transform: `translate(${cursor.x * window.innerWidth}px, ${cursor.y * window.innerHeight}px)`,
+          }}
+        >
+          <svg width="24" height="36" viewBox="0 0 24 36" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-md">
+            <path d="M5.65376 2.15376C5.40058 1.90058 5 2.08003 5 2.43807V28.3283C5 28.7523 5.51877 28.9566 5.80336 28.6416L12.4431 21.2917L18.1729 32.8449C18.3533 33.2088 18.7831 33.3562 19.1326 33.1741L21.5036 31.9392C21.8532 31.757 22.0006 31.3273 21.8202 30.9633L16.2947 19.8159L23.3619 19.429C23.7844 19.4059 23.9749 18.8837 23.6548 18.6293L5.65376 2.15376Z" fill={cursor.color} stroke="white" strokeWidth="2"/>
+          </svg>
+          <div 
+            className="absolute left-6 top-6 px-2 py-0.5 rounded text-[10px] font-bold text-white whitespace-nowrap shadow-sm"
+            style={{ backgroundColor: cursor.color }}
+          >
+            {cursor.name}
+          </div>
+        </div>
+      ))}
+
       <ProjectListPanel
         projects={projects}
         activeProjectId={activeProjectId}

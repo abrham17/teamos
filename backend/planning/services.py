@@ -9,6 +9,21 @@ from wiki.models import WikiPage
 from wiki.views import unique_slug
 from wiki.services.reindex import reindex_wiki_page
 from llm_orchestrator.orchestrator import llm_json_call
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
+def broadcast_project_update(project: Project, action: str):
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f"planner_{project.team_id}_{project.id}",
+        {
+            "type": "planner_message",
+            "message": {
+                "type": "state_change",
+                "action": action
+            }
+        }
+    )
 
 
 def list_projects(team_id: str, query: str = "") -> QuerySet[Project]:
@@ -84,6 +99,7 @@ def create_task(*, project: Project, user: User, payload: dict) -> Task:
     task = Task.objects.create(project=project, created_by=user, **payload)
     if deps:
         task.dependencies.set(deps)
+    broadcast_project_update(project, "task_created")
     return task
 
 
@@ -94,11 +110,14 @@ def update_task(task: Task, payload: dict) -> Task:
     task.save(update_fields=[*payload.keys(), "updated_at"])
     if deps is not None:
         task.dependencies.set(deps)
+    broadcast_project_update(task.project, "task_updated")
     return task
 
 
 def delete_task(task: Task) -> None:
+    project = task.project
     task.delete()
+    broadcast_project_update(project, "task_deleted")
 
 
 def list_milestones(team_id: str, project_id: str) -> QuerySet[Milestone]:
