@@ -501,6 +501,7 @@ export function MarkdownWorkspace() {
         onApplied={() => {
           reloadPageAfterReview();
         }}
+      />
     </div>
   );
 }
