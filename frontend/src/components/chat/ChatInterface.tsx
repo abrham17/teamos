@@ -349,7 +349,6 @@ export function ChatInterface() {
   return (
     <div className="flex h-full w-full flex-1 bg-[var(--bg-950)] relative overflow-hidden font-sans">
       <div className="absolute top-[-10%] left-[5%] w-[40%] h-[40%] bg-[radial-gradient(circle,rgba(var(--accent-rgb),0.08)_0%,transparent_70%)] blur-[100px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[5%] w-[35%] h-[35%] bg-[radial-gradient(circle,rgba(168,85,247,0.06)_0%,transparent_70%)] blur-[80px] pointer-events-none" />
 
 
       <ChatSidebar
