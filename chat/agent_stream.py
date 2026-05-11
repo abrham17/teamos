@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import concurrent.futures
 from typing import Any, Callable, Iterator
 
 from chat.models import ChatSession
@@ -177,7 +178,18 @@ def _iter_tool_agent_sse_events(
                 name = tc.function.name
                 arguments = tc.function.arguments or "{}"
                 yield f"event: tool_call\ndata: {json.dumps({'name': name, 'arguments': arguments})}\n\n"
-                result = execute(name, arguments, ctx)
+                
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(execute, name, arguments, ctx)
+                    try:
+                        result = future.result(timeout=15.0)
+                    except concurrent.futures.TimeoutError:
+                        logger.error(f"Tool {name} timed out after 15 seconds")
+                        result = {"ok": False, "error": f"Tool {name} execution timed out."}
+                    except Exception as e:
+                        logger.exception(f"Tool {name} failed with exception")
+                        result = {"ok": False, "error": str(e)}
+                        
                 tool_trace.append({"name": name, "arguments": arguments, "result": result})
                 yield f"event: tool_result\ndata: {json.dumps({'name': name, 'ok': result.get('ok'), 'result': result})}\n\n"
                 messages.append(
@@ -189,22 +201,35 @@ def _iter_tool_agent_sse_events(
                 )
             continue
 
-        final_text = (msg.content or "").strip()
-        if not final_text:
-            final_text = "_No summary was returned._"
+        # True streaming for final pass
+        try:
+            # We discard the non-streamed final message and do a true streaming call
+            stream_resp, stream_model_used, _ = llm_call(
+                team=session.team,
+                operation="chat_agent",
+                messages=messages,
+                user=session.created_by,
+                stream=True,
+            )
+            final_text = ""
+            for chunk in stream_resp:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    piece = chunk.choices[0].delta.content
+                    final_text += piece
+                    yield f"event: chunk\ndata: {json.dumps({'token': piece})}\n\n"
             
-        # For the final response, we could potentially do a second streamed call if we want perfect streaming
-        # But for now, we'll use a faster chunked emission with a smaller delay to feel smoother
-        import time
-        for i in range(0, len(final_text), 12):
-            piece = final_text[i : i + 12]
-            yield f"event: chunk\ndata: {json.dumps({'token': piece})}\n\n"
-            time.sleep(0.01)
-
-        state["tool_trace"] = tool_trace
-        state["full_text"] = final_text
-        state["model_used"] = model_used
-        state["ok"] = True
-        return
+            if not final_text.strip():
+                final_text = "_No summary was returned._"
+                yield f"event: chunk\ndata: {json.dumps({'token': final_text})}\n\n"
+                
+            state["tool_trace"] = tool_trace
+            state["full_text"] = final_text
+            state["model_used"] = stream_model_used
+            state["ok"] = True
+            return
+        except Exception as e:
+            logger.exception("Agent streaming failed")
+            yield f"event: error\ndata: {json.dumps({'detail': str(e)})}\n\n"
+            return
 
     yield f"event: error\ndata: {json.dumps({'detail': 'Agent stopped: tool round limit exceeded.'})}\n\n"

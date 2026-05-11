@@ -76,6 +76,9 @@ class Task(models.Model):
     )
     start_date = models.DateField(null=True, blank=True)
     end_date = models.DateField(null=True, blank=True)
+    parent_task = models.ForeignKey(
+        "self", on_delete=models.CASCADE, null=True, blank=True, related_name="subtasks"
+    )
     dependencies = models.ManyToManyField("self", symmetrical=False, blank=True, related_name="dependents")
     order_index = models.PositiveIntegerField(default=0)
     created_by = models.ForeignKey(
@@ -169,3 +172,43 @@ class PlanSnapshot(models.Model):
 
     def __str__(self):
         return f"Snapshot of {self.project.name} at {self.created_at}"
+
+
+class TaskComment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="task_comments")
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"Comment by {self.author.email} on {self.task.title}"
+
+
+class Notification(models.Model):
+    NOTIFICATION_TYPES = [
+        ("task_overdue", "Task Overdue"),
+        ("milestone_missed", "Milestone Missed"),
+        ("conflict_detected", "Conflict Detected"),
+        ("mention", "Mention"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="notifications")
+    notification_type = models.CharField(max_length=50, choices=NOTIFICATION_TYPES)
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    link = models.CharField(max_length=500, blank=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"[{self.user.email}] {self.title}"

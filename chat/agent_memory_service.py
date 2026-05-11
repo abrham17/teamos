@@ -74,12 +74,32 @@ def get_agent_context_block(team_id: str) -> str:
     Build a context block from all agent memories for injection into
     the agent system prompt. Gives the agent persistent awareness.
     """
-    memories = AgentMemory.objects.filter(team_id=team_id).order_by("-updated_at")[:10]
-    if not memories:
+    from django.utils import timezone
+    from datetime import timedelta
+
+    now = timezone.now()
+    memories = AgentMemory.objects.filter(team_id=team_id).order_by("-updated_at")
+    
+    valid_memories = []
+    category_counts = {}
+    
+    for m in memories:
+        # Check TTL
+        if m.ttl_days and (now - m.updated_at).days > m.ttl_days:
+            continue
+            
+        # Limit to top 5 per category
+        category_counts[m.category] = category_counts.get(m.category, 0) + 1
+        if category_counts[m.category] > 5:
+            continue
+            
+        valid_memories.append(m)
+
+    if not valid_memories:
         return ""
 
     lines = ["--- AGENT PERSISTENT MEMORY ---"]
-    for m in memories:
+    for m in valid_memories:
         summary = m.summary or json.dumps(m.value)[:200]
         lines.append(f"[{m.category}] {m.key}: {summary}")
     lines.append("--- END MEMORY ---")

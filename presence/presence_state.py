@@ -11,11 +11,12 @@ class TeamPresenceManager:
     TTL = 60 # 1 minute
 
     @classmethod
-    def update_presence(cls, team_id: str, user_email: str, page_slug: str = None):
+    def update_presence(cls, team_id: str, user_email: str, page_slug: str = None, is_typing: bool = False):
         key = cls.CACHE_KEY_PREFIX.format(team_id=team_id)
         current = cache.get(key) or {}
         current[user_email] = {
             "page": page_slug,
+            "is_typing": is_typing,
             "last_active": True, # For now just a boolean, can be timestamp
         }
         cache.set(key, current, cls.TTL)

@@ -78,6 +78,7 @@ class AgentMemory(models.Model):
     category = models.CharField(max_length=30, choices=MEMORY_CATEGORIES, default="context")
     value = models.JSONField(default=dict)
     summary = models.TextField(blank=True, help_text="Human-readable summary of this memory entry.")
+    ttl_days = models.PositiveIntegerField(default=30, help_text="Days until this memory expires")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

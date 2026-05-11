@@ -5,6 +5,7 @@ from .views import (
     ChatSessionDetailView,
     ChatQueryStreamView,
     ChatTTSView,
+    AdminUsageStatsView,
 )
 
 urlpatterns = [
@@ -13,4 +14,5 @@ urlpatterns = [
     path("<uuid:team_id>/sessions/", ChatSessionListView.as_view()),
     path("<uuid:team_id>/sessions/<uuid:session_id>/", ChatSessionDetailView.as_view()),
     path("<uuid:team_id>/sessions/<uuid:session_id>/query/", ChatQueryStreamView.as_view()),
+    path("<uuid:team_id>/usage-stats/", AdminUsageStatsView.as_view()),
 ]

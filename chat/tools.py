@@ -117,6 +117,25 @@ def openai_tool_schemas() -> list[dict[str, Any]]:
         {
             "type": "function",
             "function": {
+                "name": "graph_remove_edge",
+                "description": "Remove a directed edge between two wiki pages to resolve stale or incorrect contradictions/relations.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "from_page_id": {"type": "string"},
+                        "to_page_id": {"type": "string"},
+                        "edge_type": {
+                            "type": "string",
+                            "description": "Optional edge type. If omitted, all edges between the two pages are removed.",
+                        },
+                    },
+                    "required": ["from_page_id", "to_page_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "ingest_markdown",
                 "description": "Queue full ingest pipeline for markdown (governance, chunks, vectors, graph).",
                 "parameters": {
@@ -528,6 +547,8 @@ def execute_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, Any]:
             return _wiki_read_full_page(ctx, args)
         if name == "graph_add_edge":
             return _graph_add_edge(ctx, args)
+        if name == "graph_remove_edge":
+            return _graph_remove_edge(ctx, args)
         if name == "graph_add_typed_relation":
             return _graph_add_typed_relation(ctx, args)
         if name == "graph_traverse_neighbors":
@@ -721,6 +742,24 @@ def _graph_add_edge(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "edge_id": str(edge.id), "created": created}
 
 
+def _graph_remove_edge(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from_id = args.get("from_page_id")
+    to_id = args.get("to_page_id")
+    edge_type = args.get("edge_type")
+
+    edges = GraphEdge.objects.filter(
+        from_page__id=from_id,
+        to_page__id=to_id,
+        from_page__team_id=ctx.team_id
+    )
+    if edge_type:
+        edges = edges.filter(edge_type=edge_type)
+        
+    deleted, _ = edges.delete()
+    if deleted > 0:
+        invalidate_team_graph_analytics_cache(ctx.team_id)
+        
+    return {"ok": True, "deleted_count": deleted}
 def _ingest_markdown(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     text = (args.get("markdown") or "").strip()
     if not text:

@@ -37,10 +37,12 @@ def _chat_json_completion(
     )
 
 
-def _set_job_stage(job: IngestJob, stage: str, detail: str = "") -> None:
+def _set_job_stage(job: IngestJob, stage: str, detail: str = "", progress: int = 0) -> None:
     job.ingest_stage = stage
     job.ingest_stage_detail = detail
-    job.save(update_fields=["ingest_stage", "ingest_stage_detail", "updated_at"])
+    if progress > job.progress_pct:
+        job.progress_pct = progress
+    job.save(update_fields=["ingest_stage", "ingest_stage_detail", "progress_pct", "updated_at"])
 
 
 def _derive_chunk_config(team_plan: str) -> tuple[int, int]:
@@ -293,7 +295,7 @@ def _clear_staging_file(job: IngestJob) -> None:
 
 
 def run_pipeline(job: IngestJob, source_text: str = "", trace_id: str | None = None):
-    _set_job_stage(job, "extracting", "Extracting source content")
+    _set_job_stage(job, "extracting", "Extracting source content", 10)
 
     # Preserve staging file reference for raw source before clearing
     staging_file_copy = None
@@ -308,15 +310,25 @@ def run_pipeline(job: IngestJob, source_text: str = "", trace_id: str | None = N
     if not parsed_text:
         raise ValueError("No extractable text content found.")
 
+    # ── Deduplication Check ──────────────────────────────────────
+    content_hash = hashlib.sha256(parsed_text.encode()).hexdigest()
+    # We store the hash in source_metadata for future checks
+    job.source_metadata["content_hash"] = content_hash
+    if RawSource.objects.filter(team=job.team, source_metadata__content_hash=content_hash).exists():
+        _set_job_stage(job, "completed", "Duplicate content detected, ingestion skipped", 100)
+        job.status = "done"
+        job.save(update_fields=["status", "source_metadata"])
+        return
+
     job.raw_data = parsed_text
-    job.save(update_fields=["raw_data"])
+    job.save(update_fields=["raw_data", "source_metadata"])
 
     # ── Save raw source permanently ──────────────────────────────
-    _set_job_stage(job, "governance", "Saving raw source and classifying content")
+    _set_job_stage(job, "governance", "Saving raw source and classifying content", 25)
     raw_source = _save_raw_source(job, parsed_text, staging_file_copy)
 
     # ── Agent decomposition pipeline ─────────────────────────────
-    _set_job_stage(job, "governance", "Agent analyzing and decomposing document")
+    _set_job_stage(job, "governance", "Agent analyzing and decomposing document", 50)
     try:
         from ingest.agent_decompose import run_agent_decomposition
 
