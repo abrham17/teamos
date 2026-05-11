@@ -32,6 +32,13 @@ interface WikiPageDetail {
   citations?: Citation[];
 }
 
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+}
+
 export function MarkdownWorkspace() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -144,11 +151,16 @@ export function MarkdownWorkspace() {
     if (!currentTeamId || !page?.slug) return;
     setPublishBusy(true);
     try {
+      const bodyMarkdown = editorRef.current?.getMarkdown() ?? content;
       const data = await api.post<{
         mode: string;
         changeset?: WikiChangeSetPayload | null;
         job?: unknown;
-      }>(`/wiki/${currentTeamId}/pages/${page.slug}/publish/`, { auto_approve: autoApproveWiki });
+      }>(`/wiki/${currentTeamId}/pages/${page.slug}/publish/`, { 
+        auto_approve: autoApproveWiki,
+        content: bodyMarkdown,
+        title: title
+      });
       if (data.mode === "review_required" && data.changeset) {
         setReviewChangeset(data.changeset);
       } else {
@@ -161,8 +173,8 @@ export function MarkdownWorkspace() {
         setContent(refreshed.content);
         setFrontmatter((refreshed.frontmatter || {}) as Record<string, string>);
       }
-    } catch {
-      toastError("Publish failed.");
+    } catch (error) {
+      toastError(getErrorMessage(error, "Publish failed."));
     } finally {
       setPublishBusy(false);
     }
@@ -231,9 +243,9 @@ export function MarkdownWorkspace() {
             router.replace(`/wiki?page=${data.slug}`);
             setTimeout(() => setSaveStatus("idle"), 2000);
           })
-          .catch(() => {
+          .catch((error) => {
             setSaveStatus("idle");
-            toastError("Failed to create page.");
+            toastError(getErrorMessage(error, "Failed to create page."));
           });
       } else {
         if (!page) {
@@ -241,22 +253,26 @@ export function MarkdownWorkspace() {
           return;
         }
         api
-          .put(`/wiki/${currentTeamId}/pages/${page.slug}/`, {
+          .put<WikiPageDetail>(`/wiki/${currentTeamId}/pages/${page.slug}/`, {
             title: title || "Untitled",
             content: bodyMarkdown,
             frontmatter,
           })
-          .then(() => {
-            setPage((prev) =>
-              prev ? { ...prev, title: title || "Untitled", content: bodyMarkdown, frontmatter } : prev,
-            );
-            setContent(bodyMarkdown);
+          .then((updatedPage) => {
+            const prevSlug = page.slug;
+            setPage(updatedPage);
+            setTitle(updatedPage.title);
+            setContent(updatedPage.content ?? bodyMarkdown);
+            setFrontmatter((updatedPage.frontmatter || {}) as Record<string, string>);
+            if (updatedPage.slug && updatedPage.slug !== prevSlug) {
+              router.replace(`/wiki?page=${updatedPage.slug}`);
+            }
             setSaveStatus("saved");
             setTimeout(() => setSaveStatus("idle"), 2000);
           })
-          .catch(() => {
+          .catch((error) => {
             setSaveStatus("idle");
-            toastError("Failed to save changes.");
+            toastError(getErrorMessage(error, "Failed to save changes."));
           });
       }
     }, 1500);
