@@ -42,6 +42,7 @@ class IngestJob(models.Model):
         null=True,
         help_text="Temporary binary upload (PDF, DOCX, image, zip); deleted after extract.",
     )
+    staging_data = models.BinaryField(null=True, blank=True, help_text="Used for Heroku ephemeral storage workaround.")
     source_metadata = models.JSONField(default=dict, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     ingest_stage = models.CharField(max_length=30, choices=STAGE_CHOICES, default="queued")
@@ -163,6 +164,9 @@ class RawSource(models.Model):
     # For YouTube: {"segments": [{"timestamp": "00:02:15", "char_start": 0, "char_end": 500}, ...]}
     # For DOCX:    {"sections": [{"heading": "Intro", "char_start": 0, "char_end": 1000}, ...]}
     structure_map = models.JSONField(default=dict, blank=True)
+
+    # General metadata for deduplication and provenance
+    source_metadata = models.JSONField(default=dict, blank=True)
 
     ingest_job = models.OneToOneField(
         IngestJob, on_delete=models.SET_NULL, null=True, blank=True, related_name="raw_source"

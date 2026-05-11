@@ -302,10 +302,7 @@ def run_pipeline(job: IngestJob, source_text: str = "", trace_id: str | None = N
     if getattr(job, "staging_file", None) and job.staging_file:
         staging_file_copy = job.staging_file.name
 
-    try:
-        parsed_text = extract_plain_text(job, source_text=source_text or "").strip()
-    finally:
-        _clear_staging_file(job)
+    parsed_text = extract_plain_text(job, source_text=source_text or "").strip()
 
     if not parsed_text:
         raise ValueError("No extractable text content found.")

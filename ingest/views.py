@@ -125,77 +125,40 @@ class FileIngestView(APIView):
                 code="file_too_large",
             )
 
+        # Determine source_type based on extension
         if extension in ("pdf", "docx"):
             source_type = extension
-            job = IngestJob.objects.create(
-                team=team,
-                created_by=request.user,
-                source_type=source_type,
-                source_filename=filename,
-                status="pending",
-                ingest_stage="queued",
-                ingest_stage_detail="Queued for processing",
-                auto_approve=auto_approve,
-            )
-            job.staging_file.save(filename, ContentFile(raw_bytes), save=True)
-            trace_id = get_request_trace_id(request)
-            run_ingest_job.delay(str(job.id), "", trace_id=trace_id)
-            return ok(IngestJobSerializer(job).data, status_code=status.HTTP_201_CREATED)
-
-        if extension == "zip":
-            job = IngestJob.objects.create(
-                team=team,
-                created_by=request.user,
-                source_type="code_zip",
-                source_filename=filename,
-                status="pending",
-                ingest_stage="queued",
-                ingest_stage_detail="Queued for processing",
-                auto_approve=auto_approve,
-            )
-            job.staging_file.save(filename, ContentFile(raw_bytes), save=True)
-            trace_id = get_request_trace_id(request)
-            run_ingest_job.delay(str(job.id), "", trace_id=trace_id)
-            return ok(IngestJobSerializer(job).data, status_code=status.HTTP_201_CREATED)
-
-        if extension in _IMAGE_EXTENSIONS:
-            job = IngestJob.objects.create(
-                team=team,
-                created_by=request.user,
-                source_type="image",
-                source_filename=filename,
-                status="pending",
-                ingest_stage="queued",
-                ingest_stage_detail="Queued for processing",
-                auto_approve=auto_approve,
-            )
-            job.staging_file.save(filename, ContentFile(raw_bytes), save=True)
-            trace_id = get_request_trace_id(request)
-            run_ingest_job.delay(str(job.id), "", trace_id=trace_id)
-            return ok(IngestJobSerializer(job).data, status_code=status.HTTP_201_CREATED)
-
-        if extension in _TEXT_EXTENSIONS or extension == "":
-            source_text = raw_bytes.decode("utf-8", errors="ignore").strip()
-            if not source_text:
-                return fail(
-                    "Could not extract text from uploaded file.",
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    code="file_text_extraction_failed",
-                )
+        elif extension == "zip":
+            source_type = "code_zip"
+        elif extension in _IMAGE_EXTENSIONS:
+            source_type = "image"
+        elif extension in _TEXT_EXTENSIONS or extension == "":
             source_type = "markdown"
-            job = IngestJob.objects.create(
-                team=team,
-                created_by=request.user,
-                source_type=source_type,
-                source_filename=filename,
-                status="pending",
-                ingest_stage="queued",
-                ingest_stage_detail="Queued for processing",
-                auto_approve=auto_approve,
+        else:
+            return fail(
+                "Unsupported file type for ingest. Use pdf, docx, zip (code), images (png/jpg/…), or markdown/text.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                code="unsupported_file_type",
             )
-            trace_id = get_request_trace_id(request)
-            run_ingest_job.delay(str(job.id), source_text, trace_id=trace_id)
-            return ok(IngestJobSerializer(job).data, status_code=status.HTTP_201_CREATED)
+
+        job = IngestJob.objects.create(
+            team=team,
+            created_by=request.user,
+            source_type=source_type,
+            source_filename=filename,
+            status="pending",
+            ingest_stage="queued",
+            ingest_stage_detail="Queued for processing",
+            auto_approve=auto_approve,
+            staging_data=raw_bytes,
+        )
+        job.staging_file.save(filename, ContentFile(raw_bytes), save=True)
+        
+        trace_id = get_request_trace_id(request)
+        # We always read from staging_file in the worker now
+        run_ingest_job.delay(str(job.id), "", trace_id=trace_id)
+        
+        return ok(IngestJobSerializer(job).data, status_code=status.HTTP_201_CREATED)
 
         return fail(
             "Unsupported file type for ingest. Use pdf, docx, zip (code), images (png/jpg/…), or markdown/text.",
