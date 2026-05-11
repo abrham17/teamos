@@ -262,6 +262,12 @@ class WikiPagePublishView(APIView):
         else:
             auto_approve = bool(raw_auto)
 
+        # Allow passing content directly in the publish request (for unsaved changes)
+        content = request.data.get("content")
+        if content is not None:
+            page.content = content
+            page.save(update_fields=["content", "updated_at"])
+        
         if not (page.content or "").strip():
             return fail(
                 "Cannot publish an empty page. Please add some content first.",
