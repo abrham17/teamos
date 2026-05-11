@@ -290,12 +290,12 @@ class WikiCitationAssemblyTests(APITestCase):
 
     def test_build_ask_prompt_empty_context_is_general_mode(self):
         p = _build_ask_system_prompt("")
-        self.assertIn("No team knowledge excerpts", p)
-        self.assertNotIn("Answer based ONLY on the provided team knowledge context", p)
+        self.assertIn("No relevant team knowledge was found", p)
+        self.assertNotIn("Answer based ONLY and EXCLUSIVELY on the provided team knowledge context", p)
 
     def test_build_ask_prompt_with_context_is_rag_mode(self):
         p = _build_ask_system_prompt("SOURCE: Foo\nCONTENT: bar")
-        self.assertIn("Answer based ONLY on the provided team knowledge context", p)
+        self.assertIn("Answer based ONLY and EXCLUSIVELY on the provided team knowledge context", p)
         self.assertIn("Foo", p)
 
 

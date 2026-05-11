@@ -11,7 +11,7 @@ from rest_framework.test import APITestCase
 
 from accounts.models import Team, TeamMember, User
 from billing.models import BillingWebhookEvent, TeamSubscription
-from billing.pricing import PRO_USD_MAX, PRO_USD_MIN, compute_quote, public_plan_catalog
+from billing.pricing import TEAM_PER_USER_USD, PRO_PER_USER_USD, compute_quote, public_plan_catalog
 from billing.tasks import reconcile_pending_billing_webhooks
 from product_analytics.models import ProductEvent
 
@@ -19,12 +19,10 @@ from product_analytics.models import ProductEvent
 class PricingModuleTests(TestCase):
     """Unit tests for billing.pricing."""
 
-    def test_pro_clamped_to_band(self):
+    def test_pro_pricing_is_correct(self):
         for seats in (5, 12, 40, 100):
-            for usage in ("low", "standard", "high"):
-                q = compute_quote(plan_key="pro", seat_count=seats, usage_tier=usage)
-                self.assertGreaterEqual(q.monthly_total_usd, PRO_USD_MIN)
-                self.assertLessEqual(q.monthly_total_usd, PRO_USD_MAX)
+            q = compute_quote(plan_key="pro", seat_count=seats, usage_tier="standard")
+            self.assertEqual(q.monthly_total_usd, seats * PRO_PER_USER_USD)
 
     def test_pro_monotonic_in_seats_low_usage(self):
         prev = 0.0
@@ -33,13 +31,15 @@ class PricingModuleTests(TestCase):
             self.assertGreaterEqual(q.monthly_total_usd, prev - 0.01)
             prev = q.monthly_total_usd
 
-    def test_enterprise_above_pro_cap(self):
+    def test_enterprise_fallback_to_team(self):
+        # We fallback to team if they try to quote enterprise (which is removed)
         q = compute_quote(plan_key="enterprise", seat_count=15, usage_tier="standard")
-        self.assertGreater(q.monthly_total_usd, PRO_USD_MAX)
+        self.assertEqual(q.plan_key, "team")
+        self.assertEqual(q.monthly_total_usd, 15 * TEAM_PER_USER_USD)
 
-    def test_team_below_pro_min(self):
-        q = compute_quote(plan_key="team", seat_count=25, usage_tier="high")
-        self.assertLess(q.monthly_total_usd, PRO_USD_MIN)
+    def test_team_pricing_is_correct(self):
+        q = compute_quote(plan_key="team", seat_count=25, usage_tier="standard")
+        self.assertEqual(q.monthly_total_usd, 25 * TEAM_PER_USER_USD)
 
     def test_variant_key_stable(self):
         a = compute_quote(plan_key="pro", seat_count=10, usage_tier="standard")
@@ -47,10 +47,10 @@ class PricingModuleTests(TestCase):
         self.assertEqual(a.variant_key, b.variant_key)
         self.assertEqual(a.monthly_total_cents, b.monthly_total_cents)
 
-    def test_catalog_has_four_plans(self):
+    def test_catalog_has_three_plans(self):
         cat = public_plan_catalog()
         keys = {p["key"] for p in cat["plans"]}
-        self.assertEqual(keys, {"free", "team", "pro", "enterprise"})
+        self.assertEqual(keys, {"free", "team", "pro"})
 
 
 @override_settings(
@@ -297,7 +297,7 @@ class BillingReconcileTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertTrue(res.data["success"])
         keys = {p["key"] for p in res.data["data"]["plans"]}
-        self.assertEqual(keys, {"free", "team", "pro", "enterprise"})
+        self.assertEqual(keys, {"free", "team", "pro"})
 
     def test_quote_endpoint(self):
         res = self.client.post(
@@ -307,8 +307,7 @@ class BillingReconcileTests(APITestCase):
         )
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertTrue(res.data["success"])
-        self.assertGreaterEqual(res.data["data"]["monthly_total_usd"], 100)
-        self.assertLessEqual(res.data["data"]["monthly_total_usd"], 300)
+        self.assertEqual(res.data["data"]["monthly_total_usd"], 40 * PRO_PER_USER_USD)
 
     def test_staff_can_queue_reconcile_job(self):
         self.client.force_authenticate(user=self.admin)
