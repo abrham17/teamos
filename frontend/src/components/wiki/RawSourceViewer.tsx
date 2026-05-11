@@ -74,11 +74,31 @@ export default function RawSourceViewer({
   const [selectedId, setSelectedId] = useState<string | null>(sourceId || null);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [showRealDoc, setShowRealDoc] = useState(false);
+  const [loadingList, setLoadingList] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedHighlight, setCopiedHighlight] = useState(false);
   const [copiedFull, setCopiedFull] = useState(false);
   const markRef = useRef<HTMLElement>(null);
+
+  const normalizeFileUrl = (url: string | null) => {
+    if (!url) return null;
+    if (url.startsWith("http://") || url.startsWith("https://")) return url;
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+    try {
+      const origin = new URL(apiBase).origin;
+      return `${origin}${url}`;
+    } catch {
+      return url;
+    }
+  };
+
+  useEffect(() => {
+    setSelectedId(sourceId || null);
+    setDetailError(null);
+  }, [sourceId]);
 
   // Auto-scroll to highlight
   useEffect(() => {
@@ -92,10 +112,13 @@ export default function RawSourceViewer({
   // Fetch source list
   useEffect(() => {
     if (!teamId) return;
+    setLoadingList(true);
+    setListError(null);
     api
       .get<RawSourceSummary[]>(`/wiki/${teamId}/raw-sources/`)
       .then(setSources)
-      .catch(console.error);
+      .catch((err) => setListError(err instanceof Error ? err.message : "Failed to load raw sources."))
+      .finally(() => setLoadingList(false));
   }, [teamId]);
 
   // Fetch detail when selected
@@ -105,10 +128,13 @@ export default function RawSourceViewer({
       return;
     }
     setLoadingDetail(true);
+    setDetailError(null);
     api
       .get<RawSourceDetail>(`/wiki/${teamId}/raw-sources/${selectedId}/`)
-      .then(setDetail)
-      .catch(console.error)
+      .then((data) => {
+        setDetail({ ...data, file_url: normalizeFileUrl(data.file_url) });
+      })
+      .catch((err) => setDetailError(err instanceof Error ? err.message : "Failed to load source detail."))
       .finally(() => setLoadingDetail(false));
   }, [selectedId, teamId]);
 
@@ -236,7 +262,7 @@ export default function RawSourceViewer({
                   {c.wiki_section && (
                     <span className="citation-section"> § {c.wiki_section}</span>
                   )}
-                  {c.source_page_number && (
+                  {c.source_page_number !== null && (
                     <span className="citation-page">
                       {" "}
                       (p. {c.source_page_number})
@@ -301,6 +327,11 @@ export default function RawSourceViewer({
         ) : (
           <div className="raw-source-content">
             <h4>Extracted Text</h4>
+            {detailError && (
+              <div className="mb-3 text-xs text-[var(--danger)]">
+                {detailError}
+              </div>
+            )}
             {renderHighlightedText(detail.extracted_text)}
           </div>
         )}
@@ -495,7 +526,53 @@ export default function RawSourceViewer({
         />
       </div>
 
-      {sources.length === 0 ? (
+      {detailError && selectedId && (
+        <div className="mb-3 p-3 rounded-lg border border-[var(--danger)]/40 bg-[var(--danger-bg)] text-xs text-[var(--danger)]">
+          <div>{detailError}</div>
+          <button
+            className="raw-source-close mt-2"
+            onClick={() => {
+              setLoadingDetail(true);
+              setDetailError(null);
+              api
+                .get<RawSourceDetail>(`/wiki/${teamId}/raw-sources/${selectedId}/`)
+                .then((data) => setDetail({ ...data, file_url: normalizeFileUrl(data.file_url) }))
+                .catch((err) =>
+                  setDetailError(err instanceof Error ? err.message : "Failed to load source detail."),
+                )
+                .finally(() => setLoadingDetail(false));
+            }}
+          >
+            Retry detail
+          </button>
+        </div>
+      )}
+
+      {loadingList ? (
+        <div className="flex items-center justify-center py-10">
+          <Loader2 className="w-6 h-6 text-[var(--accent)] animate-spin" />
+        </div>
+      ) : listError ? (
+        <div className="raw-source-empty">
+          <p>{listError}</p>
+          <button
+            className="raw-source-close mt-3"
+            onClick={() => {
+              setListError(null);
+              setLoadingList(true);
+              api
+                .get<RawSourceSummary[]>(`/wiki/${teamId}/raw-sources/`)
+                .then(setSources)
+                .catch((err) =>
+                  setListError(err instanceof Error ? err.message : "Failed to load raw sources."),
+                )
+                .finally(() => setLoadingList(false));
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      ) : sources.length === 0 ? (
         <p className="raw-source-empty">No raw sources yet. Ingest a document to get started.</p>
       ) : filteredSources.length === 0 ? (
         <p className="raw-source-empty">No sources match your search.</p>

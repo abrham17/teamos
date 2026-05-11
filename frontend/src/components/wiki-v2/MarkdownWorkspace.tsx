@@ -19,6 +19,8 @@ interface Citation {
   source_type: string;
   original_filename: string;
   wiki_section: string;
+  source_char_start: number;
+  source_char_end: number;
   source_page_number: number | null;
   source_timestamp: string;
 }
@@ -58,6 +60,7 @@ export function MarkdownWorkspace() {
   const [reviewChangeset, setReviewChangeset] = useState<WikiChangeSetPayload | null>(null);
   const [showCitations, setShowCitations] = useState(false);
   const [viewingRawSourceId, setViewingRawSourceId] = useState<string | null>(null);
+  const [selectedCitation, setSelectedCitation] = useState<Citation | null>(null);
 
   const slug = searchParams.get("page");
   const action = searchParams.get("action");
@@ -534,7 +537,10 @@ export function MarkdownWorkspace() {
                     )}
                   </div>
                   <button 
-                    onClick={() => setViewingRawSourceId(c.raw_source_id)}
+                    onClick={() => {
+                      setSelectedCitation(c);
+                      setViewingRawSourceId(c.raw_source_id);
+                    }}
                     className="mt-4 w-full py-2 bg-white/5 hover:bg-[var(--accent)] hover:text-[var(--bg-950)] text-xs font-bold rounded-xl transition-all border border-white/5"
                   >
                     Explore Raw Source
@@ -552,7 +558,12 @@ export function MarkdownWorkspace() {
             <RawSourceViewer 
               teamId={currentTeamId} 
               sourceId={viewingRawSourceId} 
-              onClose={() => setViewingRawSourceId(null)} 
+              highlightStart={selectedCitation?.source_char_start}
+              highlightEnd={selectedCitation?.source_char_end}
+              onClose={() => {
+                setViewingRawSourceId(null);
+                setSelectedCitation(null);
+              }} 
               fullHeight
             />
           </div>
