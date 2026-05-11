@@ -20,7 +20,7 @@ def _build_graph(team_id):
     page_ids = [p.id for p in pages]
     edges = list(
         GraphEdge.objects.filter(from_page_id__in=page_ids, to_page_id__in=page_ids).only(
-            "from_page_id", "to_page_id", "edge_type", "confidence"
+            "from_page_id", "to_page_id", "edge_type", "confidence", "created_at"
         )
     )
     return pages, edges
@@ -58,48 +58,70 @@ def _compute_pagerank(page_ids, edges, iterations: int = 20, damping: float = 0.
 
 
 def _compute_clusters(page_ids, edges):
+    import random
+    
     adjacency = {pid: set() for pid in page_ids}
     for e in edges:
         adjacency[e.from_page_id].add(e.to_page_id)
         adjacency[e.to_page_id].add(e.from_page_id)
 
-    cluster_map = {}
-    cluster_sizes = {}
-    seen = set()
-    cluster_idx = 0
-
-    for pid in page_ids:
-        if pid in seen:
-            continue
-        cluster_idx += 1
-        cid = f"cluster-{cluster_idx}"
-        q = deque([pid])
-        size = 0
-        while q:
-            cur = q.popleft()
-            if cur in seen:
+    # Label Propagation Algorithm (LPA) for Community Detection
+    labels = {pid: f"cluster-{i}" for i, pid in enumerate(page_ids)}
+    
+    for _ in range(10): # max 10 iterations
+        changed = False
+        nodes = list(page_ids)
+        random.shuffle(nodes)
+        
+        for pid in nodes:
+            neighbors = adjacency[pid]
+            if not neighbors:
                 continue
-            seen.add(cur)
-            cluster_map[cur] = cid
-            size += 1
-            for nxt in adjacency.get(cur, []):
-                if nxt not in seen:
-                    q.append(nxt)
-        cluster_sizes[cid] = size
+            
+            # Find most frequent label among neighbors
+            label_counts = defaultdict(int)
+            for nxt in neighbors:
+                label_counts[labels[nxt]] += 1
+                
+            max_count = max(label_counts.values())
+            best_labels = [lbl for lbl, count in label_counts.items() if count == max_count]
+            
+            new_label = random.choice(best_labels)
+            if labels[pid] != new_label:
+                labels[pid] = new_label
+                changed = True
+                
+        if not changed:
+            break
 
-    return cluster_map, cluster_sizes
+    cluster_map = labels
+    cluster_sizes = defaultdict(int)
+    for pid, cid in cluster_map.items():
+        cluster_sizes[cid] += 1
+
+    return cluster_map, dict(cluster_sizes)
 
 
 def _apply_mode_edges(edges, mode: str):
-    if mode == "advanced":
-        filtered = []
-        for e in edges:
+    from django.utils import timezone
+    now = timezone.now()
+    
+    filtered = []
+    for e in edges:
+        # Calculate time decay
+        age_days = (now - e.created_at).days if e.created_at else 0
+        decay = max(0.3, 1.0 - (age_days / 365.0) * 0.5)
+        e.confidence = float(e.confidence or 1.0) * decay
+        
+        if mode == "advanced":
             if e.edge_type in ("wikilink", "manual"):
                 filtered.append(e)
-            elif e.edge_type in ("semantic", "ai_inferred") and float(e.confidence or 0) >= 0.55:
+            elif e.edge_type in ("semantic", "ai_inferred") and e.confidence >= 0.55:
                 filtered.append(e)
-        return filtered
-    return edges
+        else:
+            filtered.append(e)
+            
+    return filtered
 
 
 def compute_team_graph_analytics(team_id, mode: str = "simple") -> dict[str, Any]:

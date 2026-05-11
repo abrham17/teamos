@@ -11,6 +11,9 @@ from .telemetry import log_api_usage
 from billing.models import TeamSubscription
 from ingest.vectors import vector_store
 
+import hashlib
+from django.core.cache import cache
+
 logger = logging.getLogger(__name__)
 
 def llm_call(
@@ -90,7 +93,31 @@ def llm_call(
             call_kwargs["tool_choice"] = tool_choice
 
 
-        response = client.chat.completions.create(**call_kwargs)
+        # Semantic Caching
+        cache_key = None
+        if not stream and temperature < 0.5: # Only cache deterministic calls
+            last_msg = messages[-1]["content"] if messages else ""
+            msg_hash = hashlib.sha256(f"{operation}:{last_msg}".encode()).hexdigest()
+            cache_key = f"llm_cache:{msg_hash}"
+            cached = cache.get(cache_key)
+            if cached:
+                logger.info(f"LLM cache hit for {operation}")
+                return cached, model_name, "cache"
+
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                response = client.chat.completions.create(**call_kwargs)
+                break
+            except Exception as e:
+                if attempt < max_retries:
+                    logger.warning(f"LLM call failed, retrying ({attempt+1}/{max_retries}): {e}")
+                    time.sleep(1.5 ** attempt)
+                    # Fallback to a cheaper model if the big one fails
+                    if "gpt-4" in call_kwargs["model"] or "claude-3-opus" in call_kwargs["model"]:
+                        call_kwargs["model"] = "gpt-4o-mini" # or claude-3-haiku
+                else:
+                    raise e
         
         # 4. Telemetry
         latency_ms = int((time.time() - start_time) * 1000)
@@ -104,14 +131,17 @@ def llm_call(
                 team=team,
                 user=user,
                 operation=operation,
-                model_used=model_name,
+                model_used=call_kwargs["model"],
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 latency_ms=latency_ms,
                 routed_by=routed_by
             )
             
-        return response, model_name, routed_by
+            if cache_key:
+                cache.set(cache_key, response, timeout=900) # Cache for 15 mins
+            
+        return response, call_kwargs["model"], routed_by
 
     except Exception as e:
         logger.error(f"LLM Call failed: {str(e)}", extra={

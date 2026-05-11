@@ -94,6 +94,12 @@ const getSuggestions = (teamId: string) => ({
         },
       },
       {
+        title: 'Knowledge Graph Map',
+        command: ({ editor, range }: CommandContext) => {
+          editor.chain().focus().deleteRange(range).insertContent({ type: 'graphEmbed', attrs: { teamId } }).run()
+        },
+      },
+      {
         title: '✨ Ask AI',
         command: async ({ editor, range }: CommandContext) => {
           const promptText = prompt('What would you like the AI to write?')

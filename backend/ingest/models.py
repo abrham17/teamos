@@ -46,6 +46,7 @@ class IngestJob(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     ingest_stage = models.CharField(max_length=30, choices=STAGE_CHOICES, default="queued")
     ingest_stage_detail = models.CharField(max_length=200, blank=True)
+    progress_pct = models.PositiveIntegerField(default=0)
     auto_approve = models.BooleanField(default=True)
     raw_data = models.TextField(blank=True)  # Full raw text extracted
     chunk_count = models.PositiveIntegerField(default=0)

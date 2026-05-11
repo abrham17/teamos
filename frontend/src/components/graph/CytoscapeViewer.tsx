@@ -65,6 +65,7 @@ interface Props {
   layoutName?: string;
   onNodeClick?: (id: string) => void;
   onNodeDoubleClick?: (id: string) => void;
+  onNodeRightClick?: (id: string, event: MouseEvent) => void;
   /** Hover previews; cleared on background tap and debounced on mouseout. */
   onHoverChange?: (payload: GraphHoverPayload | null) => void;
 }
@@ -155,16 +156,18 @@ const EDGE_COLORS: Record<string, string> = {
 const HOVER_CLEAR_MS = 160;
 
 export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
-  function CytoscapeViewer({ nodes, edges, layoutName, onNodeClick, onNodeDoubleClick, onHoverChange }, ref) {
+  function CytoscapeViewer({ nodes, edges, layoutName, onNodeClick, onNodeDoubleClick, onNodeRightClick, onHoverChange }, ref) {
     const containerRef     = useRef<HTMLDivElement>(null);
     const cyRef            = useRef<cytoscape.Core | null>(null);
     const onClickRef       = useRef(onNodeClick);
     const onDblClickRef    = useRef(onNodeDoubleClick);
+    const onRightClickRef  = useRef(onNodeRightClick);
     const onHoverChangeRef = useRef(onHoverChange);
 
     // Keep callback refs fresh without re-initialising Cytoscape
     useEffect(() => { onClickRef.current    = onNodeClick;       }, [onNodeClick]);
     useEffect(() => { onDblClickRef.current = onNodeDoubleClick; }, [onNodeDoubleClick]);
+    useEffect(() => { onRightClickRef.current = onNodeRightClick; }, [onNodeRightClick]);
     useEffect(() => { onHoverChangeRef.current = onHoverChange; }, [onHoverChange]);
 
     /* ── Imperative handle ── */
@@ -280,6 +283,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
               "label":           "data(label)",
               "color":           "rgba(255,255,255,0.92)",
               "font-size":       "10px",
+              "min-zoomed-font-size": 8,
               "font-family":     "Inter, system-ui, sans-serif",
               "font-weight":     500,
               "text-valign":     "bottom",
@@ -333,9 +337,9 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
                 NODE_COLORS[ele.data("type") as string] ?? NODE_COLORS.default,
             },
           },
-          /* ── Faded (search) ── */
+          /* ── Faded (search or hover neighborhood) ── */
           {
-            selector: ".faded",
+            selector: ".faded, .faded-hover",
             style: { opacity: 0.1 },
           },
           /* ── Highlighted (search match) ── */
@@ -442,16 +446,25 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
         }, HOVER_CLEAR_MS);
       };
 
-      /* ── Hover (preview + cytoscape styling) ── */
+      /* ── Hover (preview + cytoscape styling + neighborhood highlight) ── */
       cy.on("mouseover", "node", evt => {
         cancelClearHover();
-        evt.target.addClass("hovered");
+        const node = evt.target;
+        node.addClass("hovered");
+
+        // Neighborhood highlight logic
+        cy.elements().addClass("faded-hover");
+        node.removeClass("faded-hover");
+        node.connectedEdges().removeClass("faded-hover");
+        node.connectedEdges().connectedNodes().removeClass("faded-hover");
+
         hoverTargetRef.kind = "node";
-        hoverTargetRef.id = evt.target.id();
+        hoverTargetRef.id = node.id();
         emitHover();
       });
       cy.on("mouseout", "node", evt => {
         evt.target.removeClass("hovered");
+        cy.elements().removeClass("faded-hover");
         if (hoverTargetRef.kind === "node" && hoverTargetRef.id === evt.target.id()) {
           scheduleClearHover();
         }
@@ -459,13 +472,21 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
 
       cy.on("mouseover", "edge", evt => {
         cancelClearHover();
-        evt.target.addClass("hovered");
+        const edge = evt.target;
+        edge.addClass("hovered");
+
+        // Edge neighborhood highlight logic
+        cy.elements().addClass("faded-hover");
+        edge.removeClass("faded-hover");
+        edge.connectedNodes().removeClass("faded-hover");
+
         hoverTargetRef.kind = "edge";
-        hoverTargetRef.id = evt.target.id();
+        hoverTargetRef.id = edge.id();
         emitHover();
       });
       cy.on("mouseout", "edge", evt => {
         evt.target.removeClass("hovered");
+        cy.elements().removeClass("faded-hover");
         if (hoverTargetRef.kind === "edge" && hoverTargetRef.id === evt.target.id()) {
           scheduleClearHover();
         }
@@ -475,13 +496,28 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
         if (hoverTargetRef.kind && hoverTargetRef.id) emitHover();
       });
 
-      /* ── Click: select node ── */
+      /* ── Click: select node & auto-focus ── */
       cy.on("tap", "node", evt => {
         cancelClearHover();
         onHoverChangeRef.current?.(null);
         hoverTargetRef.kind = null;
         hoverTargetRef.id = null;
         onClickRef.current?.(evt.target.id());
+
+        const n = evt.target;
+        const z = cy.zoom();
+        const targetZoom = Math.min(Math.max(z, 0.85), 1.35);
+        cy.animate({
+          center: { eles: n },
+          zoom: targetZoom,
+          duration: 350,
+          easing: "ease-out-cubic",
+        });
+      });
+
+      /* ── Right-Click (Context Menu Hook) ── */
+      cy.on("cxttap", "node", evt => {
+        onRightClickRef.current?.(evt.target.id(), evt.originalEvent);
       });
 
       /* ── Double-click: fit to 1-hop neighborhood ── */

@@ -543,6 +543,16 @@ class PlanningSnapshotRestoreView(APIView):
         except PlanSnapshot.DoesNotExist:
             return fail("Snapshot not found", status_code=404)
 
+        # Create a backup snapshot of current state before wiping
+        from .serializers import ProjectDetailSerializer
+        current_data = ProjectDetailSerializer(project).data
+        PlanSnapshot.objects.create(
+            project=project,
+            snapshot_type="auto",
+            data=current_data,
+            created_by=request.user
+        )
+
         # Basic restore: replace tasks/milestones
         # In a real deep implementation we'd gracefully diff, but for now wipe and restore
         project.tasks.all().delete()

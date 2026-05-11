@@ -8,7 +8,7 @@ import {
   Table as TableIcon,
   Underline as UnderlineIcon, AlignLeft,
   AlignCenter, AlignRight, Image as ImageIcon,
-  MessageSquareQuote
+  MessageSquareQuote, Printer
 } from "lucide-react";
 
 import { useState } from "react";
@@ -183,6 +183,17 @@ export default function EditorToolbar({ editor, teamId }: Props) {
           title="Insert Image"
         >
           <ImageIcon size={16} />
+        </Button>
+      </div>
+
+      <div className="w-px h-6 bg-white/10 mx-1" />
+
+      <div className="flex items-center gap-1 px-1">
+        <Button
+          onClick={() => window.print()}
+          title="Export to PDF"
+        >
+          <Printer size={16} />
         </Button>
       </div>
 

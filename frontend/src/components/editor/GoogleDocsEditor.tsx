@@ -17,6 +17,7 @@ import { Blockquote } from "@tiptap/extension-blockquote";
 import { Markdown } from "@tiptap/markdown";
 import { Link } from "@tiptap/extension-link";
 import Collaboration from "@tiptap/extension-collaboration";
+import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
 import { MathExtension } from '@aarkue/tiptap-math-extension';
 import "katex/dist/katex.min.css";
 import Youtube from '@tiptap/extension-youtube';
@@ -36,6 +37,8 @@ import getWikilinkSuggestion from "./extensions/WikilinkSuggestion";
 import { Callout } from "./extensions/Callout";
 import { ImageUpload } from "./extensions/ImageUpload";
 import { MermaidBlock } from "./extensions/MermaidBlock";
+import { GraphEmbed } from "./extensions/GraphEmbed";
+import { AIAutocomplete } from "./extensions/AIAutocomplete";
 import EditorToolbar from "./EditorToolbar";
 import { FloatingBubbleMenu } from "./FloatingBubbleMenu";
 
@@ -136,6 +139,10 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
         teamId,
       }),
       MermaidBlock,
+      AIAutocomplete.configure({
+        teamId,
+      }),
+      GraphEmbed,
     ];
 
     if (ydoc && provider) {
@@ -143,6 +150,13 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
         Collaboration.configure({
           document: ydoc,
         }),
+        CollaborationCursor.configure({
+          provider: provider,
+          user: {
+            name: `User ${Math.floor(Math.random() * 1000)}`,
+            color: `#${Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')}`,
+          },
+        })
       );
     }
 

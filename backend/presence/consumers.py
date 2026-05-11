@@ -40,9 +40,10 @@ class PresenceConsumer(AsyncWebsocketConsumer):
     async def receive(self, text_data):
         data = json.loads(text_data)
         page_slug = data.get('page_slug')
+        is_typing = data.get('is_typing', False)
         
         # Update global state
-        new_state = TeamPresenceManager.update_presence(self.team_id, self.user.email, page_slug)
+        new_state = TeamPresenceManager.update_presence(self.team_id, self.user.email, page_slug, is_typing)
 
         await self.channel_layer.group_send(
             self.room_group_name,

@@ -409,3 +409,33 @@ class ChatQueryStreamView(APIView):
         response["Cache-Control"] = "no-cache"
         response["X-Accel-Buffering"] = "no"
         return response
+
+class AdminUsageStatsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, team_id):
+        from accounts.models import TeamMember
+        if not TeamMember.objects.filter(team_id=team_id, user=request.user, role="admin").exists():
+            return fail("Admin access required", status_code=403)
+            
+        from django.db.models import Sum
+        from chat.models import ChatTokenUsage
+        
+        # Aggregate by model
+        usages = ChatTokenUsage.objects.filter(team_id=team_id).values("metadata__model").annotate(
+            total_prompt=Sum("prompt_tokens"),
+            total_completion=Sum("completion_tokens"),
+            total=Sum("total_tokens")
+        )
+        
+        data = []
+        for u in usages:
+            model_name = u.get("metadata__model", "unknown")
+            data.append({
+                "model": model_name,
+                "prompt_tokens": u["total_prompt"] or 0,
+                "completion_tokens": u["total_completion"] or 0,
+                "total_tokens": u["total"] or 0,
+            })
+            
+        return ok(data)
