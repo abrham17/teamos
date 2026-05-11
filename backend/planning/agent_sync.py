@@ -40,6 +40,7 @@ def detect_date_conflicts(
         project__team_id=team_id,
         start_date__isnull=False,
         end_date__isnull=False,
+        status__in=["todo", "in-progress", "blocked"],
     ).select_related("project", "assignee")
 
     if project_id:

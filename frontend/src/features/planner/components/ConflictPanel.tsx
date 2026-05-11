@@ -1,24 +1,56 @@
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { getProjectConflicts } from "../api";
+import { getProjectConflicts, resolveProjectConflicts } from "../api";
+import type { PlanConflict } from "../types";
+import { useToast } from "@/components/ui/Toast";
 
 interface ConflictPanelProps {
   teamId: string;
   projectId?: string;
+  refreshKey?: string;
+  onResolved?: () => void;
 }
 
-export function ConflictPanel({ teamId, projectId }: ConflictPanelProps) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [conflicts, setConflicts] = useState<any[]>([]);
+export function ConflictPanel({ teamId, projectId, refreshKey, onResolved }: ConflictPanelProps) {
+  const { success: toastSuccess, error: toastError } = useToast();
+  const [conflicts, setConflicts] = useState<PlanConflict[]>([]);
   const [loading, setLoading] = useState(true);
+  const [resolving, setResolving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const loadConflicts = () => {
+    setLoading(true);
+    setErrorMsg(null);
+    getProjectConflicts(teamId, projectId)
+      .then((data) => {
+        const order = { high: 0, medium: 1, low: 2 } as const;
+        const sorted = [...data].sort((a, b) => order[a.severity] - order[b.severity]);
+        setConflicts(sorted);
+      })
+      .catch((err) => setErrorMsg(err instanceof Error ? err.message : "Failed to load conflicts."))
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
-    setLoading(true);
-    getProjectConflicts(teamId, projectId)
-      .then(setConflicts)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [teamId, projectId]);
+    loadConflicts();
+  }, [teamId, projectId, refreshKey]);
+
+  const handleResolve = async () => {
+    if (!projectId) return;
+    setResolving(true);
+    try {
+      const result = await resolveProjectConflicts(teamId, projectId);
+      toastSuccess(
+        `Resolved ${result.resolved_count} conflict updates (${result.remaining_conflicts} remaining).`,
+      );
+      onResolved?.();
+      loadConflicts();
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : "AI conflict resolution failed.");
+    } finally {
+      setResolving(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -28,7 +60,29 @@ export function ConflictPanel({ teamId, projectId }: ConflictPanelProps) {
     );
   }
 
-  if (conflicts.length === 0) return null;
+  if (errorMsg) {
+    return (
+      <div className="bg-[var(--danger-bg)] border border-[var(--danger)]/30 rounded-xl p-4 mt-6">
+        <p className="text-xs text-[var(--danger)] mb-3">{errorMsg}</p>
+        <button
+          onClick={loadConflicts}
+          className="text-[10px] font-bold uppercase tracking-widest bg-[var(--surface-1)] text-[var(--text-primary)] px-3 py-1.5 rounded-lg"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (conflicts.length === 0) {
+    return (
+      <div className="bg-[var(--success-bg)] border border-[var(--success)]/20 rounded-xl p-4 mt-6">
+        <p className="text-xs font-bold uppercase tracking-widest text-[var(--success)]">
+          No active scheduling conflicts detected.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-[var(--danger-bg)] border border-[var(--danger)]/30 rounded-xl p-4 mt-6">
@@ -41,6 +95,9 @@ export function ConflictPanel({ teamId, projectId }: ConflictPanelProps) {
       <ul className="space-y-3">
         {conflicts.map((c, i) => (
           <li key={i} className="text-xs text-[var(--danger)]/80 flex flex-col gap-1 bg-[var(--bg-950)]/50 p-3 rounded-lg border border-[var(--danger)]/10">
+            <span className="text-[10px] uppercase tracking-widest font-bold text-[var(--warning)]">
+              Severity: {c.severity}
+            </span>
             {c.type === "task_overlap" && (
               <>
                 <span className="font-bold">Overlapping Tasks</span>
@@ -64,8 +121,12 @@ export function ConflictPanel({ teamId, projectId }: ConflictPanelProps) {
         ))}
       </ul>
       <div className="mt-4">
-        <button className="text-[10px] font-bold uppercase tracking-widest bg-[var(--danger)] text-white px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
-          Ask AI to Resolve
+        <button
+          disabled={!projectId || resolving}
+          onClick={() => void handleResolve()}
+          className="text-[10px] font-bold uppercase tracking-widest bg-[var(--danger)] text-white px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+        >
+          {resolving ? "Resolving..." : "Ask AI to Resolve"}
         </button>
       </div>
     </div>

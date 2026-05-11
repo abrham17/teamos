@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { PlanProjectDetail, PlanTask, TeamMember, PlanMilestone } from "../types";
+import { PlanProjectDetail, PlanTask, TeamMember, PlanMilestone, OverdueTask, MissedMilestone } from "../types";
 import {
   Search,
   Plus,
@@ -53,7 +53,8 @@ export function ProjectOverviewPanel({
 }: ProjectOverviewPanelProps) {
   const { currentTeamId } = useWikiStore();
   const [taskSearch, setTaskSearch] = useState("");
-  const [overdue, setOverdue] = useState<{ overdue_tasks: unknown[]; missed_milestones: unknown[] } | null>(null);
+  const [overdue, setOverdue] = useState<{ overdue_tasks: OverdueTask[]; missed_milestones: MissedMilestone[] } | null>(null);
+  const refreshKey = activeProject?.updated_at ?? "";
 
   useEffect(() => {
     if (currentTeamId) {
@@ -362,7 +363,12 @@ export function ProjectOverviewPanel({
           <div className="lg:col-span-2 space-y-6">
             
             {activeProject && currentTeamId && (
-              <ConflictPanel teamId={currentTeamId} projectId={activeProject.id} />
+              <ConflictPanel
+                teamId={currentTeamId}
+                projectId={activeProject.id}
+                refreshKey={refreshKey}
+                onResolved={onRefreshDetail}
+              />
             )}
 
             <div className="flex items-center justify-between">
@@ -470,7 +476,12 @@ export function ProjectOverviewPanel({
             </div>
 
             {currentTeamId && activeProject && (
-              <RiskCard teamId={currentTeamId} projectId={activeProject.id} />
+              <RiskCard
+                teamId={currentTeamId}
+                projectId={activeProject.id}
+                refreshKey={refreshKey}
+                onResolved={onRefreshDetail}
+              />
             )}
 
             <div className="p-6 bg-[var(--accent)]/5 border border-[var(--accent)]/10 rounded-[32px] space-y-4">

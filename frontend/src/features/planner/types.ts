@@ -116,3 +116,78 @@ export interface PlanSnapshot {
   created_at: string;
   created_by: string;
 }
+
+export interface TaskOverlapConflict {
+  type: "task_overlap";
+  severity: "low" | "medium" | "high";
+  same_assignee: boolean;
+  task_1: { id: string; title: string; project: string; start: string; end: string; assignee: string | null };
+  task_2: { id: string; title: string; project: string; start: string; end: string; assignee: string | null };
+}
+
+export interface MilestoneClashConflict {
+  type: "milestone_clash";
+  severity: "low" | "medium" | "high";
+  milestone_1: { id: string; title: string; project: string; date: string };
+  milestone_2: { id: string; title: string; project: string; date: string };
+}
+
+export type PlanConflict = TaskOverlapConflict | MilestoneClashConflict;
+
+export interface PlanRisk {
+  score: number;
+  factors: string[];
+  suggestions: string[];
+}
+
+export type RiskActionType =
+  | "update_task_dates"
+  | "update_task_priority"
+  | "add_dependency"
+  | "update_milestone_date";
+
+export interface RiskAction {
+  action: RiskActionType;
+  task_id?: string;
+  milestone_id?: string;
+  depends_on_task_id?: string;
+  start_date?: string;
+  end_date?: string;
+  target_date?: string;
+  priority?: "low" | "medium" | "high";
+  reason?: string;
+}
+
+export interface RiskResolutionProposal {
+  status: "proposed";
+  risk: PlanRisk;
+  proposed_count: number;
+  actions: RiskAction[];
+}
+
+export interface RiskResolutionApplyResult {
+  status: "applied";
+  applied_count: number;
+  skipped_count: number;
+  warnings: Array<Record<string, unknown>>;
+  remaining_risk_score: number;
+  remaining_conflicts: number;
+}
+
+export interface OverdueTask {
+  id: string;
+  title: string;
+  project: string;
+  end_date: string;
+  days_overdue: number;
+  assignee: string | null;
+  status: string;
+}
+
+export interface MissedMilestone {
+  id: string;
+  title: string;
+  project: string;
+  target_date: string;
+  days_overdue: number;
+}

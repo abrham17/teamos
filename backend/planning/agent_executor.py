@@ -21,7 +21,7 @@ from planning.agent_sync import (
     sync_project_to_wiki,
 )
 from planning.models import Project
-from planning.services import create_milestone, create_project, create_task, get_project_or_none
+from planning.services import create_milestone, create_project, create_task, get_project_or_none, update_task
 
 logger = logging.getLogger(__name__)
 
@@ -320,11 +320,67 @@ def _assess_plan_risk(
         default_on_error={"score": 50, "factors": ["Assessment failed"], "suggestions": ["Review manually"]},
     )
 
+    score = result.get("score", 50)
+    try:
+        normalized_score = max(0, min(100, int(score)))
+    except (TypeError, ValueError):
+        normalized_score = 50
+    factors = result.get("factors", [])
+    suggestions = result.get("suggestions", [])
+    if not isinstance(factors, list):
+        factors = []
+    if not isinstance(suggestions, list):
+        suggestions = []
+
     return {
-        "score": result.get("score", 50),
-        "factors": result.get("factors", []),
-        "suggestions": result.get("suggestions", []),
+        "score": normalized_score,
+        "factors": [str(f) for f in factors],
+        "suggestions": [str(s) for s in suggestions],
     }
+
+
+def generate_risk_resolution_actions(
+    team: Team,
+    project_payload: dict[str, Any],
+    conflicts: list[dict[str, Any]],
+    risk: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """
+    Generate normalized, actionable risk-resolution operations for a project.
+    """
+    prompt = (
+        "You are a planning remediation engine. "
+        "Given project state, conflicts, and risk signals, propose concrete JSON actions that reduce risk.\n\n"
+        "Allowed actions:\n"
+        "- update_task_dates: {action, task_id, start_date, end_date, reason}\n"
+        "- update_task_priority: {action, task_id, priority, reason}\n"
+        "- add_dependency: {action, task_id, depends_on_task_id, reason}\n"
+        "- update_milestone_date: {action, milestone_id, target_date, reason}\n\n"
+        "Rules:\n"
+        "- Return ONLY valid JSON.\n"
+        "- Return an array of action objects.\n"
+        "- Dates must be YYYY-MM-DD.\n"
+        "- Prefer minimal, high-impact changes.\n"
+    )
+    user_content = (
+        f"Project payload: {json.dumps(project_payload)}\n"
+        f"Conflicts: {json.dumps(conflicts)}\n"
+        f"Risk: {json.dumps(risk)}"
+    )
+    result = llm_json_call(
+        team=team,
+        operation="plan_risk_resolution",
+        messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": user_content},
+        ],
+        default_on_error=[],
+    )
+    if isinstance(result, list):
+        return [a for a in result if isinstance(a, dict)]
+    if isinstance(result, dict) and isinstance(result.get("actions"), list):
+        return [a for a in result["actions"] if isinstance(a, dict)]
+    return []
 
 def _auto_resolve_conflicts(
     team: Team,

@@ -1,28 +1,81 @@
 import { Shield, AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { getProjectRisk } from "../api";
+import {
+  applyRiskResolutionActions,
+  generateRiskResolutionProposal,
+  getProjectRisk,
+} from "../api";
+import type { PlanRisk, RiskAction } from "../types";
+import { useToast } from "@/components/ui/Toast";
 
 interface RiskCardProps {
   teamId: string;
   projectId: string;
+  refreshKey?: string;
+  onResolved?: () => void;
 }
 
-export function RiskCard({ teamId, projectId }: RiskCardProps) {
-  const [risk, setRisk] = useState<{ score: number; factors: string[]; suggestions: string[] } | null>(null);
+export function RiskCard({ teamId, projectId, refreshKey, onResolved }: RiskCardProps) {
+  const { success: toastSuccess, error: toastError } = useToast();
+  const [risk, setRisk] = useState<PlanRisk | null>(null);
+  const [proposal, setProposal] = useState<RiskAction[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resolving, setResolving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadRisk = () => {
     setLoading(true);
+    setErrorMsg(null);
     getProjectRisk(teamId, projectId)
       .then(setRisk)
-      .catch(console.error)
+      .catch((err) => setErrorMsg(err instanceof Error ? err.message : "Risk assessment unavailable."))
       .finally(() => setLoading(false));
-  }, [teamId, projectId]);
+  };
+
+  useEffect(() => {
+    loadRisk();
+  }, [teamId, projectId, refreshKey]);
+
+  const handleResolveRisk = async () => {
+    setResolving(true);
+    try {
+      const proposalResponse = await generateRiskResolutionProposal(teamId, projectId);
+      setProposal(proposalResponse.actions);
+      if (proposalResponse.actions.length === 0) {
+        toastSuccess("No actionable risk fixes were proposed.");
+        return;
+      }
+      const result = await applyRiskResolutionActions(teamId, projectId, proposalResponse.actions);
+      toastSuccess(
+        `Applied ${result.applied_count} risk fixes (${result.skipped_count} skipped). Remaining risk score: ${result.remaining_risk_score}.`,
+      );
+      onResolved?.();
+      loadRisk();
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : "Risk resolution failed.");
+    } finally {
+      setResolving(false);
+    }
+  };
 
   if (loading) {
     return (
       <div className="p-6 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] flex items-center justify-center">
         <Loader2 className="w-5 h-5 text-[var(--accent)] animate-spin" />
+      </div>
+    );
+  }
+
+  if (errorMsg) {
+    return (
+      <div className="p-6 rounded-2xl border border-[var(--danger)]/40 bg-[var(--danger-bg)]">
+        <p className="text-xs text-[var(--danger)] mb-3">{errorMsg}</p>
+        <button
+          onClick={loadRisk}
+          className="text-[10px] font-bold uppercase tracking-widest bg-[var(--surface-1)] text-[var(--text-primary)] px-3 py-1.5 rounded-lg"
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -81,6 +134,29 @@ export function RiskCard({ teamId, projectId }: RiskCardProps) {
           </ul>
         </div>
       )}
+      {proposal && proposal.length > 0 && (
+        <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-xl p-4 mt-4">
+          <h4 className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-2">
+            Last AI Proposal ({proposal.length})
+          </h4>
+          <ul className="space-y-1.5 max-h-28 overflow-y-auto">
+            {proposal.map((action, i) => (
+              <li key={i} className="text-xs text-[var(--text-secondary)]">
+                {action.action}{action.reason ? ` - ${action.reason}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="mt-4">
+        <button
+          onClick={() => void handleResolveRisk()}
+          disabled={resolving}
+          className="text-[10px] font-bold uppercase tracking-widest bg-[var(--accent)] text-white px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+        >
+          {resolving ? "Resolving Risk..." : "Resolve Risk"}
+        </button>
+      </div>
     </div>
   );
 }

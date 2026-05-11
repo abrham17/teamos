@@ -1,4 +1,5 @@
 from datetime import date
+from unittest.mock import patch
 
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -178,3 +179,133 @@ class PlanningApiTests(APITestCase):
         kinds = {row["kind"] for row in res.data["data"]}
         self.assertIn("task", kinds)
         self.assertIn("milestone", kinds)
+
+    @patch("planning.views.reindex_project")
+    @patch("planning.agent_executor._auto_resolve_conflicts")
+    @patch("planning.agent_sync.detect_date_conflicts")
+    def test_conflict_resolver_updates_task_dates(self, mock_detect_conflicts, mock_auto_resolve, _mock_reindex):
+        self.client.force_authenticate(user=self.editor)
+        task = self.project.tasks.first()
+        self.assertIsNotNone(task)
+
+        mock_detect_conflicts.side_effect = [
+            [{"type": "task_overlap", "task_1": {"id": str(task.id)}, "task_2": {"id": str(task.id)}}],
+            [],
+        ]
+        mock_auto_resolve.return_value = [
+            {"id": str(task.id), "start_date": "2026-06-01", "end_date": "2026-06-05"}
+        ]
+
+        url = f"/api/planning/{self.team.id}/projects/{self.project.id}/conflicts/resolve/"
+        res = self.client.post(url, {}, format="json")
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data["success"])
+        self.assertEqual(res.data["data"]["status"], "resolved")
+        self.assertEqual(res.data["data"]["resolved_count"], 1)
+        self.assertEqual(res.data["data"]["remaining_conflicts"], 0)
+
+        task.refresh_from_db()
+        self.assertEqual(task.start_date.isoformat(), "2026-06-01")
+        self.assertEqual(task.end_date.isoformat(), "2026-06-05")
+
+    @patch("planning.views.reindex_project")
+    @patch("planning.agent_executor._auto_resolve_conflicts")
+    @patch("planning.agent_sync.detect_date_conflicts")
+    def test_conflict_resolver_skips_invalid_updates(self, mock_detect_conflicts, mock_auto_resolve, _mock_reindex):
+        self.client.force_authenticate(user=self.editor)
+        task = self.project.tasks.first()
+        self.assertIsNotNone(task)
+        mock_detect_conflicts.side_effect = [
+            [{"type": "task_overlap", "task_1": {"id": str(task.id)}, "task_2": {"id": str(task.id)}}],
+            [{"type": "task_overlap"}],
+        ]
+        mock_auto_resolve.return_value = [
+            {"id": str(task.id), "start_date": "2026-06-07", "end_date": "2026-06-01"},
+            {"id": "not-a-real-task", "start_date": "2026-06-01", "end_date": "2026-06-02"},
+        ]
+
+        url = f"/api/planning/{self.team.id}/projects/{self.project.id}/conflicts/resolve/"
+        res = self.client.post(url, {}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["data"]["resolved_count"], 0)
+        self.assertEqual(res.data["data"]["skipped_count"], 2)
+
+    @patch("planning.agent_executor.llm_json_call")
+    def test_risk_endpoint_normalizes_score_and_lists(self, mock_llm):
+        self.client.force_authenticate(user=self.editor)
+        mock_llm.return_value = {"score": 999, "factors": "not-list", "suggestions": None}
+        url = f"/api/planning/{self.team.id}/projects/{self.project.id}/risk/"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["data"]["score"], 100)
+        self.assertEqual(res.data["data"]["factors"], [])
+        self.assertEqual(res.data["data"]["suggestions"], [])
+
+    @patch("planning.agent_executor.generate_risk_resolution_actions")
+    @patch("planning.agent_executor._assess_plan_risk")
+    @patch("planning.agent_sync.detect_date_conflicts")
+    def test_risk_resolution_proposal_returns_actions(
+        self, mock_detect_conflicts, mock_assess, mock_generate_actions
+    ):
+        self.client.force_authenticate(user=self.editor)
+        mock_detect_conflicts.return_value = [{"type": "task_overlap"}]
+        mock_assess.return_value = {"score": 70, "factors": ["risk"], "suggestions": ["mitigate"]}
+        task = self.project.tasks.first()
+        mock_generate_actions.return_value = [
+            {
+                "action": "update_task_dates",
+                "task_id": str(task.id),
+                "start_date": "2026-06-01",
+                "end_date": "2026-06-05",
+                "reason": "reduce overlap",
+            }
+        ]
+        url = f"/api/planning/{self.team.id}/projects/{self.project.id}/risk/resolve/proposal/"
+        res = self.client.post(url, {}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["data"]["status"], "proposed")
+        self.assertEqual(res.data["data"]["proposed_count"], 1)
+
+    @patch("planning.agent_executor._assess_plan_risk")
+    @patch("planning.agent_sync.detect_date_conflicts")
+    @patch("planning.views.reindex_project")
+    def test_risk_resolution_apply_updates_project_and_reports_skips(
+        self, _mock_reindex, mock_detect_conflicts, mock_assess
+    ):
+        self.client.force_authenticate(user=self.editor)
+        task = self.project.tasks.first()
+        milestone = self.project.milestones.first()
+        mock_detect_conflicts.return_value = []
+        mock_assess.return_value = {"score": 20, "factors": [], "suggestions": []}
+        url = f"/api/planning/{self.team.id}/projects/{self.project.id}/risk/resolve/apply/"
+        payload = {
+            "actions": [
+                {
+                    "action": "update_task_dates",
+                    "task_id": str(task.id),
+                    "start_date": "2026-06-02",
+                    "end_date": "2026-06-12",
+                },
+                {
+                    "action": "update_milestone_date",
+                    "milestone_id": str(milestone.id),
+                    "target_date": "2026-06-20",
+                },
+                {
+                    "action": "update_task_priority",
+                    "task_id": "00000000-0000-0000-0000-000000000000",
+                    "priority": "high",
+                },
+            ]
+        }
+        res = self.client.post(url, payload, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["data"]["status"], "applied")
+        self.assertEqual(res.data["data"]["applied_count"], 2)
+        self.assertEqual(res.data["data"]["skipped_count"], 1)
+        task.refresh_from_db()
+        milestone.refresh_from_db()
+        self.assertEqual(task.start_date.isoformat(), "2026-06-02")
+        self.assertEqual(task.end_date.isoformat(), "2026-06-12")
+        self.assertEqual(milestone.target_date.isoformat(), "2026-06-20")

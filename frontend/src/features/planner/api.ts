@@ -8,6 +8,13 @@ import type {
   TeamMember,
   ActivityItem,
   PlanSnapshot,
+  PlanConflict,
+  PlanRisk,
+  RiskAction,
+  RiskResolutionProposal,
+  RiskResolutionApplyResult,
+  OverdueTask,
+  MissedMilestone,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
@@ -235,17 +242,40 @@ export async function getProjectConflicts(teamId: string, projectId?: string) {
   const url = projectId 
     ? `/planning/${teamId}/projects/${projectId}/conflicts/` 
     : `/planning/${teamId}/conflicts/`;
-  return api.get<unknown[]>(url);
+  return api.get<PlanConflict[]>(url);
+}
+
+export async function resolveProjectConflicts(teamId: string, projectId: string) {
+  return api.post<{
+    status: string;
+    resolved_count: number;
+    skipped_count: number;
+    remaining_conflicts: number;
+  }>(`/planning/${teamId}/projects/${projectId}/conflicts/resolve/`, {});
 }
 
 export async function getProjectRisk(teamId: string, projectId: string) {
-  return api.get<{ score: number; factors: string[]; suggestions: string[] }>(`/planning/${teamId}/projects/${projectId}/risk/`);
+  return api.get<PlanRisk>(`/planning/${teamId}/projects/${projectId}/risk/`);
+}
+
+export async function generateRiskResolutionProposal(teamId: string, projectId: string) {
+  return api.post<RiskResolutionProposal>(
+    `/planning/${teamId}/projects/${projectId}/risk/resolve/proposal/`,
+    {},
+  );
+}
+
+export async function applyRiskResolutionActions(teamId: string, projectId: string, actions: RiskAction[]) {
+  return api.post<RiskResolutionApplyResult>(
+    `/planning/${teamId}/projects/${projectId}/risk/resolve/apply/`,
+    { actions },
+  );
 }
 
 export async function getTeamOverdue(teamId: string) {
   return api.get<{ 
-    overdue_tasks: unknown[]; 
-    missed_milestones: unknown[];
+    overdue_tasks: OverdueTask[]; 
+    missed_milestones: MissedMilestone[];
   }>(`/planning/${teamId}/overdue/`);
 }
 

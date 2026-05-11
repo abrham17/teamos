@@ -1,9 +1,12 @@
 import logging
 import uuid
+from datetime import date
 
 from django.http import StreamingHttpResponse
+from django.db import transaction
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
+from rest_framework import serializers
 
 from accounts.permissions import CanEditPlans
 from teamos_project.api_response import fail, ok
@@ -40,9 +43,27 @@ from .services import (
     update_task,
 )
 from .reindex import clear_project_chunks, reindex_project
-from accounts.models import User
+from accounts.models import User, Team
 
 logger = logging.getLogger(__name__)
+
+
+class RiskActionSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(
+        choices=["update_task_dates", "update_task_priority", "add_dependency", "update_milestone_date"]
+    )
+    task_id = serializers.UUIDField(required=False)
+    milestone_id = serializers.UUIDField(required=False)
+    depends_on_task_id = serializers.UUIDField(required=False)
+    start_date = serializers.DateField(required=False)
+    end_date = serializers.DateField(required=False)
+    target_date = serializers.DateField(required=False)
+    priority = serializers.ChoiceField(choices=["low", "medium", "high"], required=False)
+    reason = serializers.CharField(required=False, allow_blank=True)
+
+
+class RiskApplyRequestSerializer(serializers.Serializer):
+    actions = RiskActionSerializer(many=True)
 
 def is_valid_uuid(val):
     if not val:
@@ -463,12 +484,11 @@ class PlanningConflictResolveView(APIView):
     def post(self, request, team_id, project_id):
         from .agent_sync import detect_date_conflicts
         from .agent_executor import _auto_resolve_conflicts
-        from accounts.models import Team
         from .services import update_task, get_task_or_none
 
         project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
         if project is None:
-            return fail("Project not found.", status_code=404)
+            return fail("Project not found.", status_code=404, code="project_not_found")
 
         try:
             team = Team.objects.get(id=team_id)
@@ -478,29 +498,51 @@ class PlanningConflictResolveView(APIView):
                 return ok({"status": "no_conflicts", "resolved_count": 0})
 
             resolved_tasks = _auto_resolve_conflicts(team, str(project_id), conflicts)
-            
+            skipped: list[dict] = []
             updated_count = 0
             if resolved_tasks:
-                for rt in resolved_tasks:
-                    task = get_task_or_none(str(team_id), str(project_id), rt["id"])
-                    if task:
+                with transaction.atomic():
+                    for rt in resolved_tasks:
+                        task_id = rt.get("id")
+                        start = rt.get("start_date")
+                        end = rt.get("end_date")
+                        if not task_id:
+                            skipped.append({"item": rt, "reason": "missing_task_id"})
+                            continue
+                        task = get_task_or_none(str(team_id), str(project_id), task_id)
+                        if not task:
+                            skipped.append({"item": rt, "reason": "task_not_found"})
+                            continue
+                        if not start or not end:
+                            skipped.append({"item": rt, "reason": "missing_dates"})
+                            continue
+                        try:
+                            start_date = date.fromisoformat(str(start))
+                            end_date = date.fromisoformat(str(end))
+                        except ValueError:
+                            skipped.append({"item": rt, "reason": "invalid_date_format"})
+                            continue
+                        if start_date > end_date:
+                            skipped.append({"item": rt, "reason": "start_after_end"})
+                            continue
                         update_task(task, {
-                            "start_date": rt.get("start_date"),
-                            "end_date": rt.get("end_date")
+                            "start_date": start_date,
+                            "end_date": end_date,
                         })
                         updated_count += 1
             
-            from .reindex import reindex_project
             reindex_project(project)
             
             return ok({
                 "status": "resolved",
                 "resolved_count": updated_count,
+                "skipped_count": len(skipped),
+                "skipped": skipped[:20],
                 "remaining_conflicts": len(detect_date_conflicts(str(team_id), project_id=str(project_id)))
             })
         except Exception as e:
             logger.exception("Conflict resolution failed")
-            return fail(str(e), status_code=500)
+            return fail(str(e), status_code=500, code="resolve_failed")
 
 class PlanningRiskView(APIView):
     permission_classes = [IsAuthenticated, CanEditPlans]
@@ -508,11 +550,10 @@ class PlanningRiskView(APIView):
     def get(self, request, team_id, project_id):
         from .agent_executor import _assess_plan_risk
         from .agent_sync import detect_date_conflicts
-        from accounts.models import Team
 
         project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
         if project is None:
-            return fail("Project not found.", status_code=404)
+            return fail("Project not found.", status_code=404, code="project_not_found")
             
         try:
             team = Team.objects.get(id=team_id)
@@ -522,7 +563,132 @@ class PlanningRiskView(APIView):
             return ok(risk)
         except Exception as e:
             logger.exception("Risk assessment failed")
-            return fail(str(e), status_code=500)
+            return fail(str(e), status_code=500, code="risk_assessment_failed")
+
+
+class PlanningRiskResolveProposalView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def post(self, request, team_id, project_id):
+        from .agent_executor import _assess_plan_risk, generate_risk_resolution_actions
+        from .agent_sync import detect_date_conflicts
+
+        project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
+        if project is None:
+            return fail("Project not found.", status_code=404, code="project_not_found")
+
+        try:
+            team = Team.objects.get(id=team_id)
+            project_payload = ProjectDetailSerializer(project).data
+            conflicts = detect_date_conflicts(str(team_id), project_id=str(project_id))
+            risk = _assess_plan_risk(team, project_payload, conflicts)
+            actions = generate_risk_resolution_actions(team, project_payload, conflicts, risk)
+            return ok(
+                {
+                    "status": "proposed",
+                    "risk": risk,
+                    "proposed_count": len(actions),
+                    "actions": actions,
+                }
+            )
+        except Exception as e:
+            logger.exception("Risk proposal generation failed")
+            return fail(str(e), status_code=500, code="risk_resolution_proposal_failed")
+
+
+class PlanningRiskResolveApplyView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def post(self, request, team_id, project_id):
+        from .agent_executor import _assess_plan_risk
+        from .agent_sync import detect_date_conflicts
+
+        project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
+        if project is None:
+            return fail("Project not found.", status_code=404, code="project_not_found")
+
+        s = RiskApplyRequestSerializer(data=request.data)
+        if not s.is_valid():
+            return fail(
+                "Invalid risk resolution actions.",
+                status_code=400,
+                code="invalid_resolver_output",
+                details=s.errors,
+            )
+
+        actions = s.validated_data["actions"]
+        applied: list[dict] = []
+        skipped: list[dict] = []
+        try:
+            with transaction.atomic():
+                for action in actions:
+                    action_type = action["action"]
+                    if action_type == "update_task_dates":
+                        task = get_task_or_none(str(team_id), str(project_id), str(action.get("task_id")))
+                        if not task:
+                            skipped.append({"action": action, "reason": "task_not_found"})
+                            continue
+                        start_date = action.get("start_date")
+                        end_date = action.get("end_date")
+                        if not start_date or not end_date:
+                            skipped.append({"action": action, "reason": "missing_dates"})
+                            continue
+                        if start_date > end_date:
+                            skipped.append({"action": action, "reason": "start_after_end"})
+                            continue
+                        update_task(task, {"start_date": start_date, "end_date": end_date})
+                        applied.append({"action": action_type, "task_id": str(task.id)})
+                    elif action_type == "update_task_priority":
+                        task = get_task_or_none(str(team_id), str(project_id), str(action.get("task_id")))
+                        if not task:
+                            skipped.append({"action": action, "reason": "task_not_found"})
+                            continue
+                        update_task(task, {"priority": action.get("priority")})
+                        applied.append({"action": action_type, "task_id": str(task.id)})
+                    elif action_type == "add_dependency":
+                        task = get_task_or_none(str(team_id), str(project_id), str(action.get("task_id")))
+                        depends_on = get_task_or_none(
+                            str(team_id), str(project_id), str(action.get("depends_on_task_id"))
+                        )
+                        if not task or not depends_on:
+                            skipped.append({"action": action, "reason": "dependency_task_not_found"})
+                            continue
+                        if str(task.id) == str(depends_on.id):
+                            skipped.append({"action": action, "reason": "self_dependency"})
+                            continue
+                        task.dependencies.add(depends_on)
+                        applied.append({"action": action_type, "task_id": str(task.id)})
+                    elif action_type == "update_milestone_date":
+                        milestone_id = action.get("milestone_id")
+                        milestone = get_milestone_or_none(
+                            team_id=str(team_id),
+                            project_id=str(project_id),
+                            milestone_id=str(milestone_id),
+                        )
+                        if not milestone:
+                            skipped.append({"action": action, "reason": "milestone_not_found"})
+                            continue
+                        update_milestone(milestone, {"target_date": action.get("target_date")})
+                        applied.append({"action": action_type, "milestone_id": str(milestone.id)})
+
+            reindex_project(project)
+            team = Team.objects.get(id=team_id)
+            project_payload = ProjectDetailSerializer(project).data
+            remaining_conflicts = detect_date_conflicts(str(team_id), project_id=str(project_id))
+            remaining_risk = _assess_plan_risk(team, project_payload, remaining_conflicts)
+            return ok(
+                {
+                    "status": "applied",
+                    "applied_count": len(applied),
+                    "skipped_count": len(skipped),
+                    "warnings": skipped[:20],
+                    "remaining_risk_score": remaining_risk.get("score", 50),
+                    "remaining_conflicts": len(remaining_conflicts),
+                }
+            )
+        except Exception as e:
+            logger.exception("Risk resolution apply failed")
+            return fail(str(e), status_code=500, code="risk_resolution_apply_failed")
 
 class PlanningOverdueView(APIView):
     permission_classes = [IsAuthenticated, CanEditPlans]
