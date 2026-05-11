@@ -260,6 +260,3 @@ export async function createPlanSnapshot(teamId: string, projectId: string, type
 export async function restorePlanSnapshot(teamId: string, projectId: string, snapshotId: string) {
   return api.post(`/planning/${teamId}/projects/${projectId}/snapshots/${snapshotId}/restore/`, {});
 }
-export async function resolveProjectConflicts(teamId: string, projectId: string) {
-  return api.post<{ resolved: number; tasks: unknown[] }>(`/planning/${teamId}/projects/${projectId}/conflicts/resolve/`, {});
-}

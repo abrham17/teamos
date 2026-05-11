@@ -350,8 +350,7 @@ def generate_plan_with_wiki_context(
 
     user_content = f"Team Knowledge Context:\n{context_text}\n\nTeam Expertise Profiles:\n{expertise_context}\n\nMission: {prompt}"
     if mode == "manage" and project_context:
-        # Use a safe JSON dump that handles UUIDs/dates (stringified)
-        user_content += f"\n\nExisting Project: {json.dumps(project_context, default=str)}"
+        user_content += f"\n\nExisting Project: {json.dumps(project_context)}"
 
     messages = [
         {"role": "system", "content": system_prompt},

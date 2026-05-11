@@ -383,7 +383,7 @@ def agent_react_to_page_change(self, page_id: str, event_type: str = "update", t
             return
 
         # Step 2: Classify relations
-        relation_result = classify_relations(page.team, page.content, page.title, existing_pages)
+        relation_result = classify_relations(page.content, page.title, existing_pages)
         relations = relation_result.get("relations", [])
         suggested_links = relation_result.get("suggested_wikilinks_in_existing", [])
 

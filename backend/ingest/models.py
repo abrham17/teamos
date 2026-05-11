@@ -147,7 +147,6 @@ class RawSource(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="raw_sources")
     source_type = models.CharField(max_length=20, choices=SOURCE_TYPE_CHOICES)
-    content_hash = models.CharField(max_length=64, blank=True, db_index=True)
 
     # The original file (S3/media storage) — NEVER deleted
     file = models.FileField(upload_to="raw_sources/%Y/%m/", null=True, blank=True)
