@@ -273,8 +273,36 @@ def generate_plan_with_wiki_context(
 
     team = Team.objects.get(id=team_id)
 
-    # Phase 1: Deep wiki context gathering
-    search_results = vector_store.search_similar_pages(team_id, prompt, limit=8)
+    # Phase 1: Deep wiki context gathering with Multi-Query Expansion
+    search_queries = [prompt]
+    try:
+        expansion_prompt = (
+            f"Given the planning prompt: '{prompt}', generate 3 diverse search queries to find relevant wiki content "
+            f"that captures the intent, technical context, and background. Return as a simple JSON list of strings."
+        )
+        expanded = llm_json_call(
+            team=team,
+            operation="query_expansion",
+            messages=[{"role": "user", "content": expansion_prompt}],
+            default_on_error=[]
+        )
+        if isinstance(expanded, list):
+            search_queries.extend(expanded[:3])
+    except Exception:
+        logger.warning("Query expansion failed during planning context gathering.")
+
+    all_results = []
+    seen_ids = set()
+    for q in search_queries:
+        results = vector_store.search_similar_pages(team_id, q, limit=8)
+        for res in results:
+            if res.id not in seen_ids:
+                all_results.append(res)
+                seen_ids.add(res.id)
+    
+    # Sort and take top results
+    all_results.sort(key=lambda x: x.score, reverse=True)
+    search_results = all_results[:10]
 
     # Phase 2: Traverse graph from top results for deeper context
     graph_context = []

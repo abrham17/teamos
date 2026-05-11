@@ -25,13 +25,13 @@ export function FloatingAIChat() {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
-  
+
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch sessions
@@ -116,7 +116,7 @@ export function FloatingAIChat() {
                   return next;
                 });
               }
-            } catch {}
+            } catch { }
           }
         }
       }
@@ -144,8 +144,8 @@ export function FloatingAIChat() {
   return (
     <div className={cn(
       "fixed z-[1000] transition-all duration-300 ease-in-out",
-      isOpen 
-        ? "bottom-2 left-1/2 -translate-x-1/2 w-[98vw] max-w-[1100px] px-2" 
+      isOpen
+        ? "bottom-2 left-1/2 -translate-x-1/2 w-[98vw] max-w-[1100px] px-2"
         : "bottom-6 right-6"
     )}>
       {isOpen && !isMinimized && (
@@ -153,7 +153,7 @@ export function FloatingAIChat() {
           {/* Header */}
           <div className="p-3 border-b border-white/5 bg-[var(--bg-950)]/50 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <button 
+              <button
                 onClick={() => setShowSidebar(!showSidebar)}
                 className="p-1.5 hover:bg-white/5 rounded-lg text-[var(--text-muted)] transition-colors"
               >
@@ -179,7 +179,7 @@ export function FloatingAIChat() {
             {showSidebar && (
               <div className="w-48 sm:w-56 border-r border-white/5 flex flex-col bg-black/20 shrink-0">
                 <div className="p-3">
-                  <button 
+                  <button
                     onClick={handleCreateSession}
                     className="w-full flex items-center justify-center gap-2 py-1.5 rounded-lg border border-white/10 bg-white/5 text-[9px] font-bold uppercase tracking-wider text-[var(--text-primary)] hover:bg-white/10 hover:border-[var(--accent)] transition-all shrink-0"
                   >
@@ -193,7 +193,7 @@ export function FloatingAIChat() {
                       onClick={() => setActiveSessionId(s.id)}
                       className={cn(
                         "w-full text-left px-3 py-2.5 rounded-lg text-xs transition-all truncate",
-                        activeSessionId === s.id 
+                        activeSessionId === s.id
                           ? "bg-[var(--accent-subtle)] text-[var(--accent)] font-bold border border-[var(--accent)]/20"
                           : "text-[var(--text-muted)] hover:bg-white/5 hover:text-[var(--text-primary)]"
                       )}
