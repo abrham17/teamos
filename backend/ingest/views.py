@@ -150,6 +150,7 @@ class FileIngestView(APIView):
             ingest_stage="queued",
             ingest_stage_detail="Queued for processing",
             auto_approve=auto_approve,
+            staging_data=raw_bytes,
         )
         job.staging_file.save(filename, ContentFile(raw_bytes), save=True)
         

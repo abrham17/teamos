@@ -42,6 +42,7 @@ class IngestJob(models.Model):
         null=True,
         help_text="Temporary binary upload (PDF, DOCX, image, zip); deleted after extract.",
     )
+    staging_data = models.BinaryField(null=True, blank=True, help_text="Used for Heroku ephemeral storage workaround.")
     source_metadata = models.JSONField(default=dict, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     ingest_stage = models.CharField(max_length=30, choices=STAGE_CHOICES, default="queued")

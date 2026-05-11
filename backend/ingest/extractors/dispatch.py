@@ -24,12 +24,15 @@ def extract_plain_text(job: "IngestJob", source_text: str = "") -> str:
 
     if st in ("markdown",):
         text = (source_text or "").strip()
-        if not text and getattr(job, "staging_file", None) and job.staging_file:
-            try:
-                with job.staging_file.open("rb") as fh:
-                    text = fh.read().decode("utf-8", errors="ignore").strip()
-            except Exception as exc:
-                raise ValueError(f"Could not read uploaded text file: {exc}") from exc
+        if not text:
+            if getattr(job, "staging_file", None) and job.staging_file:
+                try:
+                    with job.staging_file.open("rb") as fh:
+                        text = fh.read().decode("utf-8", errors="ignore").strip()
+                except Exception:
+                    pass
+            if not text and getattr(job, "staging_data", None):
+                text = bytes(job.staging_data).decode("utf-8", errors="ignore").strip()
         return text
 
     if st == "url":
@@ -42,16 +45,22 @@ def extract_plain_text(job: "IngestJob", source_text: str = "") -> str:
         return repo.fetch_repo_text(job.source_url)
 
     if st in ("pdf", "docx", "image", "code_zip"):
-        if not getattr(job, "staging_file", None) or not job.staging_file:
-            raise ValueError(f"Missing staging file for source_type={st}.")
-        
-        try:
-            with job.staging_file.open("rb") as fh:
-                if fh is None:
-                    raise ValueError(f"Staging file could not be opened for source_type={st}.")
-                data = fh.read()
-        except (AttributeError, FileNotFoundError) as exc:
-            raise ValueError(f"Staging file is missing or inaccessible on this worker: {exc}") from exc
+        data = None
+        # Try staging_file first (standard behavior)
+        if getattr(job, "staging_file", None) and job.staging_file:
+            try:
+                with job.staging_file.open("rb") as fh:
+                    data = fh.read()
+            except (AttributeError, FileNotFoundError, ValueError):
+                logger.warning("Staging file missing on this worker, attempting fallback to staging_data")
+
+        # Fallback to staging_data (Heroku workaround)
+        if not data and getattr(job, "staging_data", None):
+            data = bytes(job.staging_data)
+
+        if not data:
+            raise ValueError(f"Missing staging content for source_type={st}. (Dyno isolation issue?)")
+
         if st == "pdf":
             return pdf_text.extract_pdf_text(data)
         if st == "docx":
