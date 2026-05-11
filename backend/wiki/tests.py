@@ -1,11 +1,12 @@
 from unittest.mock import patch
 
 from django.test import TestCase
+from django.core.files.base import ContentFile
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from accounts.models import Team, TeamMember, User
-from ingest.models import IngestJob, WikiChangeSet
+from ingest.models import IngestJob, WikiChangeSet, RawSource, WikiSourceCitation
 from wiki.models import WikiPage
 
 
@@ -297,6 +298,53 @@ class WikiApiTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertTrue(res.data["success"])
         mock_approve.assert_called_once()
+
+    def test_page_detail_citations_include_source_char_ranges(self):
+        self.client.force_authenticate(user=self.editor)
+        page = WikiPage.objects.create(
+            team=self.team,
+            title="Cited Page",
+            slug="cited-page",
+            content="citation body",
+            created_by=self.editor,
+        )
+        source = RawSource.objects.create(
+            team=self.team,
+            source_type="markdown",
+            original_filename="doc.md",
+            extracted_text="abcdefghijk",
+            created_by=self.editor,
+        )
+        WikiSourceCitation.objects.create(
+            wiki_page=page,
+            raw_source=source,
+            wiki_section="Intro",
+            source_char_start=2,
+            source_char_end=7,
+            source_page_number=1,
+        )
+        url = f"/api/wiki/{self.team.id}/pages/{page.slug}/"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        citation = res.data["data"]["citations"][0]
+        self.assertEqual(citation["source_char_start"], 2)
+        self.assertEqual(citation["source_char_end"], 7)
+
+    def test_raw_source_detail_returns_absolute_file_url(self):
+        self.client.force_authenticate(user=self.editor)
+        source = RawSource.objects.create(
+            team=self.team,
+            source_type="pdf",
+            original_filename="guide.pdf",
+            extracted_text="sample",
+            created_by=self.editor,
+        )
+        source.file.save("raw_sources/demo.pdf", ContentFile(b"demo"), save=True)
+        url = f"/api/wiki/{self.team.id}/raw-sources/{source.id}/"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        file_url = res.data["data"]["file_url"]
+        self.assertTrue(file_url.startswith("http://testserver/") or file_url.startswith("https://"))
 
 
 class ReindexServiceTests(TestCase):

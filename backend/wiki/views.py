@@ -24,6 +24,7 @@ from .serializers import (
     WikiChangeSetSerializer,
 )
 from llm_orchestrator.orchestrator import llm_call
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -426,6 +427,16 @@ class RawSourceDetailView(APIView):
 
         # Get pages citing this source
         citations = WikiSourceCitation.objects.filter(raw_source=source).select_related("wiki_page")
+        file_url = source.file.url if source.file else None
+        if file_url and file_url.startswith("/"):
+            file_url = request.build_absolute_uri(file_url)
+        logger.info(
+            "Raw source detail served: source_id=%s storage_backend=%s has_file=%s absolute_file_url=%s",
+            source_id,
+            settings.STORAGES.get("default", {}).get("BACKEND", "unknown"),
+            bool(source.file),
+            bool(file_url and (file_url.startswith("http://") or file_url.startswith("https://"))),
+        )
 
         data = {
             "id": str(source.id),
@@ -435,7 +446,7 @@ class RawSourceDetailView(APIView):
             "extracted_text": source.extracted_text,
             "structure_map": source.structure_map,
             "has_file": bool(source.file),
-            "file_url": source.file.url if source.file else None,
+            "file_url": file_url,
             "created_at": source.created_at.isoformat(),
             "citing_pages": [
                 {

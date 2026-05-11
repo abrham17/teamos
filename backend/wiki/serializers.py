@@ -42,6 +42,8 @@ class WikiPageDetailSerializer(serializers.ModelSerializer):
                 "source_type": c.raw_source.source_type,
                 "original_filename": c.raw_source.original_filename,
                 "wiki_section": c.wiki_section,
+                "source_char_start": c.source_char_start,
+                "source_char_end": c.source_char_end,
                 "source_page_number": c.source_page_number,
                 "source_timestamp": c.source_timestamp,
             }

@@ -3,8 +3,10 @@ import hashlib
 import json
 import logging
 import re
+import uuid
 from urllib.parse import urlparse
 
+from django.core.files.base import ContentFile
 from django.utils.text import slugify
 
 from wiki.models import WikiPage, PageChunk
@@ -323,6 +325,8 @@ def run_pipeline(job: IngestJob, source_text: str = "", trace_id: str | None = N
     # ── Save raw source permanently ──────────────────────────────
     _set_job_stage(job, "governance", "Saving raw source and classifying content", 25)
     raw_source = _save_raw_source(job, parsed_text, staging_file_copy)
+    if raw_source is None:
+        raise ValueError("Unable to persist raw source.")
 
     # ── Agent decomposition pipeline ─────────────────────────────
     _set_job_stage(job, "governance", "Agent analyzing and decomposing document", 50)
@@ -368,13 +372,15 @@ def _save_raw_source(job: IngestJob, parsed_text: str, staging_file_name: str | 
             ingest_job=job,
             created_by=job.created_by,
         )
-        # If there was a staging file, copy its reference
+        # If there was a staging file, copy file bytes to a durable raw-source object.
         if staging_file_name:
             from django.core.files.storage import default_storage
 
             if default_storage.exists(staging_file_name):
-                source.file.name = staging_file_name
-                source.save(update_fields=["file"])
+                with default_storage.open(staging_file_name, "rb") as src:
+                    original_name = (job.source_filename or "source.bin").replace(" ", "_")
+                    durable_name = f"raw_sources/{job.team_id}/{uuid.uuid4().hex}-{original_name}"
+                    source.file.save(durable_name, ContentFile(src.read()), save=True)
 
         return source
     except Exception:

@@ -8,14 +8,14 @@ from rest_framework.test import APITestCase
 from accounts.models import Team, User
 from accounts.models import TeamMember
 from wiki.models import WikiPage, PageChunk
-from ingest.models import IngestJob, AsyncDeadLetter, WikiChangeSet
+from ingest.models import IngestJob, AsyncDeadLetter, WikiChangeSet, RawSource
 from types import SimpleNamespace
 
 from openai import OpenAIError
 
 from ingest.extractors import pdf_text, url_fetch, youtube_text
 from ingest.extractors.dispatch import extract_plain_text
-from ingest.pipeline import _derive_title, run_pipeline
+from ingest.pipeline import _derive_title, run_pipeline, _save_raw_source
 from ingest.tasks import infer_ai_edges, run_ingest_job, wire_page_graph
 from ingest.vectors import VectorStore
 from teamos_project.dead_letter import record_dead_letter
@@ -235,6 +235,23 @@ class IngestionPipelineTest(TestCase):
         
         # Verify no wiki page created yet
         self.assertFalse(WikiPage.objects.filter(team=self.team).exists())
+
+    @patch("django.core.files.storage.default_storage")
+    def test_save_raw_source_copies_staging_file_to_durable_path(self, mock_storage):
+        job = IngestJob.objects.create(
+            team=self.team,
+            created_by=self.user,
+            source_type="markdown",
+            source_filename="team notes.md",
+        )
+        mock_storage.exists.return_value = True
+        mock_storage.open.return_value.__enter__.return_value.read.return_value = b"abc123"
+
+        source = _save_raw_source(job, "sample text", "ingest_staging/2026/05/source.md")
+        self.assertIsNotNone(source)
+        self.assertTrue(source.file.name.startswith("raw_sources/"))
+        self.assertIn("team_notes.md", source.file.name)
+        self.assertNotEqual(source.file.name, "ingest_staging/2026/05/source.md")
 
     @patch("ingest.tasks.wire_page_graph.delay")
     @patch("wiki.services.reindex.reindex_wiki_page")
