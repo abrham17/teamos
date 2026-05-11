@@ -262,15 +262,19 @@ class WikiPagePublishView(APIView):
         else:
             auto_approve = bool(raw_auto)
 
-        # Allow passing content directly in the publish request (for unsaved changes)
-        content = request.data.get("content")
-        logger.info(f"Publish attempt for {slug}: content_in_request={bool(content)}, page_content_len={len(page.content or '')}")
+        # Allow passing content directly in the publish request (for unsaved changes),
+        # but do not mutate the persisted page until publish is approved/completed.
+        requested_content = request.data.get("content")
+        baseline_content = page.content or ""
+        publish_content = requested_content if requested_content is not None else baseline_content
+        logger.info(
+            "Publish attempt for %s: content_in_request=%s, baseline_content_len=%d",
+            slug,
+            requested_content is not None,
+            len(baseline_content),
+        )
 
-        if content is not None:
-            page.content = content
-            page.save(update_fields=["content", "updated_at"])
-        
-        if not (page.content or "").strip():
+        if not (publish_content or "").strip():
             logger.warning(f"Publish failed for {slug}: Content is empty.")
             return fail(
                 "Cannot publish an empty page. Please add some content first.",
@@ -288,10 +292,14 @@ class WikiPagePublishView(APIView):
             status="pending",
             ingest_stage="queued",
             ingest_stage_detail="Wiki publish",
+            source_metadata={
+                "publish_baseline_content": baseline_content,
+                "publish_candidate_content": publish_content,
+            },
         )
         trace_id = get_request_trace_id(request)
         try:
-            run_pipeline(job, source_text=page.content or "", trace_id=trace_id)
+            run_pipeline(job, source_text=publish_content or "", trace_id=trace_id)
         except Exception as e:
             logger.exception("Wiki publish pipeline failed")
             job.refresh_from_db()

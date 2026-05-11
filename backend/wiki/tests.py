@@ -73,6 +73,43 @@ class WikiApiTests(APITestCase):
         self.assertEqual(update_res.data["data"]["frontmatter"]["status"], "stable")
         self.assertEqual(update_res.data["data"]["frontmatter"]["priority"], "Medium")
 
+    @patch("wiki.views.run_pipeline")
+    def test_title_rename_updates_slug_and_publish_uses_new_slug(self, mock_run):
+        def fake(job, source_text="", trace_id=None):
+            job.status = "done"
+            job.raw_data = source_text or ""
+            job.ingest_stage = "completed"
+            job.save(update_fields=["status", "raw_data", "ingest_stage", "updated_at"])
+
+        mock_run.side_effect = fake
+        self.client.force_authenticate(user=self.editor)
+        page = WikiPage.objects.create(
+            team=self.team,
+            title="Old Title",
+            slug="old-title",
+            content="content",
+            created_by=self.editor,
+        )
+
+        update_url = f"/api/wiki/{self.team.id}/pages/{page.slug}/"
+        update_res = self.client.put(
+            update_url,
+            {"title": "New Title", "content": "updated content"},
+            format="json",
+        )
+        self.assertEqual(update_res.status_code, status.HTTP_200_OK)
+        new_slug = update_res.data["data"]["slug"]
+        self.assertNotEqual(new_slug, "old-title")
+
+        old_publish = f"/api/wiki/{self.team.id}/pages/old-title/publish/"
+        old_res = self.client.post(old_publish, {"auto_approve": True}, format="json")
+        self.assertEqual(old_res.status_code, status.HTTP_404_NOT_FOUND)
+
+        new_publish = f"/api/wiki/{self.team.id}/pages/{new_slug}/publish/"
+        new_res = self.client.post(new_publish, {"auto_approve": True}, format="json")
+        self.assertEqual(new_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(new_res.data["data"]["mode"], "completed")
+
     def test_viewer_cannot_create_page(self):
         self.client.force_authenticate(user=self.viewer)
         url = f"/api/wiki/{self.team.id}/pages/"
@@ -173,6 +210,63 @@ class WikiApiTests(APITestCase):
         self.assertEqual(res.data["data"]["mode"], "review_required")
         self.assertIsNotNone(res.data["data"]["changeset"])
         self.assertEqual(res.data["data"]["changeset"]["status"], "pending")
+
+    @patch("wiki.views.run_pipeline")
+    def test_publish_review_required_does_not_mutate_page_and_preserves_baseline(self, mock_run):
+        def fake(job, source_text="", trace_id=None):
+            job.status = "review_required"
+            job.raw_data = source_text or ""
+            job.save(update_fields=["status", "raw_data", "updated_at"])
+            WikiChangeSet.objects.create(
+                job=job,
+                proposed_content=source_text or "",
+                diff_summary={"contradictions": [], "additions": []},
+                status=WikiChangeSet.STATUS_PENDING,
+            )
+
+        mock_run.side_effect = fake
+        self.client.force_authenticate(user=self.editor)
+        page = WikiPage.objects.create(
+            team=self.team,
+            title="Draft Page",
+            slug="draft-page",
+            content="Original persisted content",
+            created_by=self.editor,
+        )
+        url = f"/api/wiki/{self.team.id}/pages/{page.slug}/publish/"
+        proposed = "Unsaved editor content pending approval"
+        res = self.client.post(url, {"auto_approve": False, "content": proposed}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["data"]["mode"], "review_required")
+        self.assertEqual(res.data["data"]["changeset"]["proposed_content"], proposed)
+        self.assertEqual(res.data["data"]["changeset"]["baseline_content"], "Original persisted content")
+
+        page.refresh_from_db()
+        self.assertEqual(page.content, "Original persisted content")
+
+        cs = WikiChangeSet.objects.get(id=res.data["data"]["changeset"]["id"])
+        reject_url = f"/api/wiki/{self.team.id}/changesets/{cs.id}/reject/"
+        reject_res = self.client.post(reject_url, {}, format="json")
+        self.assertEqual(reject_res.status_code, status.HTTP_200_OK)
+        page.refresh_from_db()
+        self.assertEqual(page.content, "Original persisted content")
+
+    def test_publish_rejects_empty_content_without_mutation(self):
+        self.client.force_authenticate(user=self.editor)
+        page = WikiPage.objects.create(
+            team=self.team,
+            title="Non Empty",
+            slug="non-empty",
+            content="Keep me",
+            created_by=self.editor,
+        )
+        url = f"/api/wiki/{self.team.id}/pages/{page.slug}/publish/"
+        res = self.client.post(url, {"content": "   "}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(res.data["success"])
+        self.assertEqual(res.data["error"]["code"], "empty_content")
+        page.refresh_from_db()
+        self.assertEqual(page.content, "Keep me")
 
     @patch("wiki.views.approve_wiki_changeset")
     def test_wiki_changeset_approve_calls_service(self, mock_approve):

@@ -85,5 +85,8 @@ class WikiChangeSetSerializer(serializers.ModelSerializer):
         return wp.slug if wp else None
 
     def get_baseline_content(self, obj):
+        source_metadata = getattr(obj.job, "source_metadata", {}) or {}
+        if "publish_baseline_content" in source_metadata:
+            return source_metadata.get("publish_baseline_content") or ""
         wp = getattr(obj.job, "wiki_page", None)
         return (wp.content or "") if wp else ""
