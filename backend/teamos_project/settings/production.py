@@ -36,7 +36,7 @@ if database_url and ":[" in database_url and "]@" in database_url:
 
 DATABASES = {
     "default": dj_database_url.config(
-        default=database_url,
+        default=database_url or f"sqlite:///{BASE_DIR}/db.sqlite3",
         conn_max_age=0,
         conn_health_checks=True,
     )

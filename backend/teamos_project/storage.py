@@ -31,13 +31,18 @@ class AppwriteMediaStorage(Storage):
 
     def _open(self, name, mode='rb'):
         # Appwrite doesn't support random access easily; we download the whole file
+        import logging
+        logger = logging.getLogger(__name__)
         try:
             file_id = self._get_file_id(name)
             result = self.storage_service.get_file_download(self.bucket_id, file_id)
-            return ContentFile(result)
+            if result:
+                logger.info(f"Appwrite storage: Downloaded {name} (ID: {file_id}), size={len(result)} bytes")
+                return ContentFile(result)
+            else:
+                logger.error(f"Appwrite storage: Downloaded empty file for {name} (ID: {file_id})")
+                return None
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"Appwrite storage error: Failed to download file {name} (ID: {file_id}) from bucket {self.bucket_id}: {e}")
             return None
 
@@ -46,6 +51,10 @@ class AppwriteMediaStorage(Storage):
         
         # Read content into memory
         content_bytes = content.read()
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Appwrite storage: Saving {name} (ID: {file_id}), size={len(content_bytes)} bytes")
+        
         input_file = InputFile.from_bytes(content_bytes, filename=name)
         
         try:
@@ -56,6 +65,7 @@ class AppwriteMediaStorage(Storage):
             )
             return file_id
         except Exception as e:
+            logger.error(f"Appwrite storage error: Failed to save file {name} (ID: {file_id}) to bucket {self.bucket_id}: {e}")
             # If file already exists, we might want to update or error
             raise e
 
