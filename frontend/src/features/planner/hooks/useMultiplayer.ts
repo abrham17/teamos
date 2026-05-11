@@ -65,7 +65,7 @@ export function useMultiplayer(teamId: string | null, projectId: string | null, 
 
   const sendCursorMove = (e: React.MouseEvent | MouseEvent) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    
+
     // We send percentage coordinates so it works across different screen sizes
     const x = e.clientX / window.innerWidth;
     const y = e.clientY / window.innerHeight;

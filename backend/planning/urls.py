@@ -16,6 +16,7 @@ from .views import (
     PlanningOverdueView,
     PlanningSnapshotListView,
     PlanningSnapshotRestoreView,
+    PlanningConflictResolveView,
 )
 
 urlpatterns = [
@@ -42,5 +43,6 @@ urlpatterns = [
     path("<uuid:team_id>/projects/<uuid:project_id>/risk/", PlanningRiskView.as_view()),
     path("<uuid:team_id>/projects/<uuid:project_id>/snapshots/", PlanningSnapshotListView.as_view()),
     path("<uuid:team_id>/projects/<uuid:project_id>/snapshots/<uuid:snapshot_id>/restore/", PlanningSnapshotRestoreView.as_view()),
+    path("<uuid:team_id>/projects/<uuid:project_id>/conflicts/resolve/", PlanningConflictResolveView.as_view()),
     path("<uuid:team_id>/overdue/", PlanningOverdueView.as_view()),
 ]

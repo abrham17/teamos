@@ -1,24 +1,44 @@
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2, Wand2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { getProjectConflicts } from "../api";
+import { getProjectConflicts, resolveProjectConflicts } from "../api";
 
 interface ConflictPanelProps {
   teamId: string;
   projectId?: string;
+  onResolved?: () => void;
 }
 
-export function ConflictPanel({ teamId, projectId }: ConflictPanelProps) {
+export function ConflictPanel({ teamId, projectId, onResolved }: ConflictPanelProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [conflicts, setConflicts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [resolving, setResolving] = useState(false);
 
-  useEffect(() => {
+  const fetchConflicts = () => {
     setLoading(true);
     getProjectConflicts(teamId, projectId)
       .then(setConflicts)
       .catch(console.error)
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchConflicts();
   }, [teamId, projectId]);
+
+  const handleResolve = async () => {
+    if (!projectId || resolving) return;
+    setResolving(true);
+    try {
+      await resolveProjectConflicts(teamId, projectId);
+      fetchConflicts();
+      onResolved?.();
+    } catch (err) {
+      console.error("Failed to resolve conflicts:", err);
+    } finally {
+      setResolving(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -64,8 +84,22 @@ export function ConflictPanel({ teamId, projectId }: ConflictPanelProps) {
         ))}
       </ul>
       <div className="mt-4">
-        <button className="text-[10px] font-bold uppercase tracking-widest bg-[var(--danger)] text-white px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
-          Ask AI to Resolve
+        <button 
+          onClick={handleResolve}
+          disabled={resolving || !projectId}
+          className="text-[10px] font-bold uppercase tracking-widest bg-[var(--danger)] text-white px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2 disabled:opacity-50"
+        >
+          {resolving ? (
+            <>
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Resolving...
+            </>
+          ) : (
+            <>
+              <Wand2 className="w-3 h-3" />
+              Ask AI to Resolve
+            </>
+          )}
         </button>
       </div>
     </div>

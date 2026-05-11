@@ -591,3 +591,37 @@ class PlanningSnapshotRestoreView(APIView):
 
         reindex_project(project)
         return ok({"restored": True})
+class PlanningConflictResolveView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def post(self, request, team_id, project_id):
+        from .agent_executor import _auto_resolve_conflicts
+        from .agent_sync import detect_date_conflicts
+        from accounts.models import Team
+
+        try:
+            team = Team.objects.get(id=team_id)
+            conflicts = detect_date_conflicts(str(team_id), project_id=str(project_id))
+            if not conflicts:
+                return ok({"resolved": 0, "message": "No conflicts detected."})
+
+            resolved_tasks = _auto_resolve_conflicts(team, str(project_id), conflicts)
+            
+            applied = 0
+            for rt in resolved_tasks:
+                try:
+                    task = Task.objects.get(id=rt["id"], project_id=project_id)
+                    task.start_date = rt.get("start_date")
+                    task.end_date = rt.get("end_date")
+                    task.save(update_fields=["start_date", "end_date", "updated_at"])
+                    applied += 1
+                except (Task.DoesNotExist, KeyError):
+                    continue
+
+            if applied > 0:
+                reindex_project(Task.objects.get(id=resolved_tasks[0]["id"]).project)
+
+            return ok({"resolved": applied, "tasks": resolved_tasks})
+        except Exception as e:
+            logger.exception("Conflict resolution failed")
+            return fail(str(e), status_code=500)

@@ -314,7 +314,7 @@ def run_pipeline(job: IngestJob, source_text: str = "", trace_id: str | None = N
     content_hash = hashlib.sha256(parsed_text.encode()).hexdigest()
     # We store the hash in source_metadata for future checks
     job.source_metadata["content_hash"] = content_hash
-    if RawSource.objects.filter(team=job.team, source_metadata__content_hash=content_hash).exists():
+    if RawSource.objects.filter(team=job.team, content_hash=content_hash).exists():
         _set_job_stage(job, "completed", "Duplicate content detected, ingestion skipped", 100)
         job.status = "done"
         job.save(update_fields=["status", "source_metadata"])
@@ -367,6 +367,7 @@ def _save_raw_source(job: IngestJob, parsed_text: str, staging_file_name: str | 
             source_url=job.source_url or "",
             original_filename=job.source_filename or "",
             extracted_text=parsed_text,
+            content_hash=hashlib.sha256(parsed_text.encode()).hexdigest(),
             structure_map=_build_structure_map(job.source_type, parsed_text),
             ingest_job=job,
             created_by=job.created_by,
