@@ -92,7 +92,10 @@ class VectorStore:
         from wiki.models import PageChunk
         
         for chunk in chunks_data:
-            vector = self._get_embedding(chunk["content"])
+            # Include title in embedding text for better context retrieval
+            title = chunk.get("title", "Untitled")
+            embed_text = f"Title: {title}\n\n{chunk['content']}"
+            vector = self._get_embedding(embed_text)
             PageChunk.objects.filter(id=chunk["id"]).update(embedding=vector)
 
     def search_similar_pages(self, team_id: str, query_text: str, limit: int = 10):
@@ -178,7 +181,10 @@ class VectorStore:
         from planning.models import PlanChunk
         
         for chunk in chunks_data:
-            vector = self._get_embedding(chunk["content"])
+            # Include title in embedding text for better context retrieval
+            title = chunk.get("title") or chunk.get("project_name", "Untitled Plan")
+            embed_text = f"Plan: {title}\n\n{chunk['content']}"
+            vector = self._get_embedding(embed_text)
             PlanChunk.objects.filter(id=chunk["id"]).update(embedding=vector)
 
     def delete_points(self, team_id: str, point_ids: list[str]):

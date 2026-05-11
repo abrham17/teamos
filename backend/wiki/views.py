@@ -264,11 +264,14 @@ class WikiPagePublishView(APIView):
 
         # Allow passing content directly in the publish request (for unsaved changes)
         content = request.data.get("content")
+        logger.info(f"Publish attempt for {slug}: content_in_request={bool(content)}, page_content_len={len(page.content or '')}")
+
         if content is not None:
             page.content = content
             page.save(update_fields=["content", "updated_at"])
         
         if not (page.content or "").strip():
+            logger.warning(f"Publish failed for {slug}: Content is empty.")
             return fail(
                 "Cannot publish an empty page. Please add some content first.",
                 status_code=400,
