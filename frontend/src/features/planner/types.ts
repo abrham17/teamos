@@ -101,3 +101,18 @@ export interface PlanProjectDetail {
   created_at: string;
   updated_at: string;
 }
+export interface ActivityItem {
+  kind: string;
+  title: string;
+  updated_at: string;
+  user: string;
+  project_name?: string;
+  status: string;
+}
+
+export interface PlanSnapshot {
+  id: string;
+  snapshot_type: string;
+  created_at: string;
+  created_by: string;
+}

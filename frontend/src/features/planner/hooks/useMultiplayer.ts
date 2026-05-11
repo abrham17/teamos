@@ -47,7 +47,7 @@ export function useMultiplayer(teamId: string | null, projectId: string | null, 
         } else if (data.type === "state_change") {
           onStateChange?.();
         }
-      } catch (e) {
+      } catch {
         // ignore malformed
       }
     };

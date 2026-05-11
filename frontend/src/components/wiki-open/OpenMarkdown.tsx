@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Search, FileText, RefreshCw, ChevronRight } from "lucide-react";
 import { api } from "@/lib/api";
 

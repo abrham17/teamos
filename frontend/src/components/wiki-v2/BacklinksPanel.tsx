@@ -8,9 +8,20 @@ interface BacklinksPanelProps {
   slug: string;
 }
 
+interface Backlink {
+  page_slug: string;
+  page_title: string;
+  snippet: string;
+}
+
+interface UnlinkedMention {
+  page_slug: string;
+  page_title: string;
+}
+
 export function BacklinksPanel({ teamId, slug }: BacklinksPanelProps) {
-  const [backlinks, setBacklinks] = useState<any[]>([]);
-  const [unlinked, setUnlinked] = useState<any[]>([]);
+  const [backlinks, setBacklinks] = useState<Backlink[]>([]);
+  const [unlinked, setUnlinked] = useState<UnlinkedMention[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -21,8 +32,8 @@ export function BacklinksPanel({ teamId, slug }: BacklinksPanelProps) {
       api.get(`/wiki/${teamId}/pages/${slug}/unlinked/`).catch(() => []),
     ])
       .then(([bl, ul]) => {
-        setBacklinks(bl as any[]);
-        setUnlinked(ul as any[]);
+        setBacklinks(bl as Backlink[]);
+        setUnlinked(ul as UnlinkedMention[]);
       })
       .finally(() => setLoading(false));
   }, [teamId, slug]);

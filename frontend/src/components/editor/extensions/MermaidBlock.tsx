@@ -1,5 +1,5 @@
 import { Node, mergeAttributes } from '@tiptap/core';
-import { ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from '@tiptap/react';
+import { NodeViewProps, ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from '@tiptap/react';
 import mermaid from 'mermaid';
 import { useEffect, useState } from 'react';
 
@@ -10,7 +10,7 @@ mermaid.initialize({
   securityLevel: 'loose',
 });
 
-const MermaidComponent = ({ node, updateAttributes, selected }: any) => {
+const MermaidComponent = ({ node, selected }: NodeViewProps) => {
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const code = node.textContent;
@@ -33,9 +33,10 @@ const MermaidComponent = ({ node, updateAttributes, selected }: any) => {
           setSvg(result.svg);
           setError(null);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!isCancelled) {
-          setError(err?.message || 'Syntax Error in Mermaid Diagram');
+          const message = err instanceof Error ? err.message : 'Syntax Error in Mermaid Diagram';
+          setError(message);
         }
       }
     };

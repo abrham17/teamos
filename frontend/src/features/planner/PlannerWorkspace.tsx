@@ -17,9 +17,9 @@ import { AIPlannerOverlay } from "./components/AIPlannerOverlay";
 import { usePlannerData } from "./hooks/usePlannerData";
 import { usePlannerCalendar } from "./hooks/usePlannerCalendar";
 import { useMultiplayer } from "./hooks/useMultiplayer";
-import { createPlanProject, updatePlanProject, getTeamMembers, updatePlanTask, createPlanTask, createPlanMilestone, createProjectMember, deletePlanProject, deletePlanTask, deleteProjectMember } from "./api";
+import { getTeamMembers, updatePlanTask, createPlanTask, createPlanMilestone, createProjectMember, deletePlanProject, deletePlanTask, deleteProjectMember } from "./api";
 import { LayoutGrid, Calendar, History, Columns, BarChartHorizontal, Users } from "lucide-react";
-import { TeamMember, PlanTask } from "./types";
+import { TeamMember, PlanTask, ActivityItem } from "./types";
 import { AddTaskModal } from "./components/AddTaskModal";
 import { AddMilestoneModal } from "./components/AddMilestoneModal";
 import { AddMemberModal } from "./components/AddMemberModal";
@@ -35,8 +35,7 @@ export function PlannerWorkspace() {
   const [isAIOverlayOpen, setIsAIOverlayOpen] = useState(false);
   const [aiMode, setAiMode] = useState<"create" | "manage">("create");
   const [activeView, setActiveView] = useState<PlannerView>("overview");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [activity, setActivity] = useState<any[]>([]);
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -90,8 +89,7 @@ export function PlannerWorkspace() {
     return <div className="p-8 text-[var(--text-muted)]">Select a team first.</div>;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handlePlanGenerated = async (plan: { projectName: string; description: string; tasks: any[]; milestones: any[] }) => {
+  const handlePlanGenerated = async () => {
     if (!currentTeamId) return;
     try {
       // In the new streaming agent flow, the project is already created by the backend.

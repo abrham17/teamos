@@ -22,7 +22,6 @@ import {
   Clock,
 } from "lucide-react";
 import {
-  planAssistDraft,
   planAssistStream,
   type PlannerAgentStep,
   type PlannerAgentResult,
@@ -33,8 +32,7 @@ import type { PlanProjectDetail } from "../types";
 interface AIPlannerOverlayProps {
   teamId: string;
   onClose: () => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onPlanGenerated: (plan: { projectName: string; description: string; tasks: any[]; milestones: any[] }) => Promise<void> | void;
+  onPlanGenerated: (plan: { projectName: string; description: string; tasks: unknown[]; milestones: unknown[] }) => Promise<void> | void;
   mode?: "create" | "manage";
   projectContext?: PlanProjectDetail | null;
 }
@@ -107,8 +105,6 @@ export function AIPlannerOverlay({
   const [agentSteps, setAgentSteps] = useState<AgentStepEntry[]>([]);
   const [statusText, setStatusText] = useState("");
   const [agentDoneData, setAgentDoneData] = useState<PlannerAgentDone | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [generatedPlan, setGeneratedPlan] = useState<{ projectName: string; description: string; tasks: any[]; milestones: any[] } | null>(null);
 
   // Manual fields
   const [manualName, setManualName] = useState("");
@@ -198,12 +194,6 @@ export function AIPlannerOverlay({
           },
           onDone: (data: PlannerAgentDone) => {
             setAgentDoneData(data);
-            setGeneratedPlan({
-              projectName: data.project_name,
-              description: data.description,
-              tasks: [],
-              milestones: [],
-            });
             setPhase("review");
           },
           onError: (detail: string) => {

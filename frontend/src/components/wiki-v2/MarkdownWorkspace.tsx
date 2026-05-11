@@ -117,7 +117,7 @@ export function MarkdownWorkspace() {
       setFrontmatter({});
       setSaveStatus("idle");
     }
-  }, [currentTeamId, slug, action]);
+  }, [currentTeamId, slug, action, newTitleParam]);
 
   useEffect(() => {
     if (!currentTeamId) return;

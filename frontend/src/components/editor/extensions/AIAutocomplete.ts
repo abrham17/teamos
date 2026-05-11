@@ -18,7 +18,7 @@ export const AIAutocomplete = Extension.create<AIAutocompleteOptions>({
     return {
       'Tab': () => {
         const { editor } = this;
-        const { state, view } = editor;
+        const { state } = editor;
         
         // Don't intercept tab if we are in a list or table, allow normal behavior
         if (editor.isActive('listItem') || editor.isActive('table')) {

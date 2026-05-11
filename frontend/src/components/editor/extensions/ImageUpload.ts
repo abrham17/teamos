@@ -1,5 +1,6 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { EditorView } from '@tiptap/pm/view';
 import { api } from '@/lib/api';
 
 export const ImageUpload = Extension.create({
@@ -12,7 +13,7 @@ export const ImageUpload = Extension.create({
   },
 
   addProseMirrorPlugins() {
-    const uploadImage = async (file: File, view: any, pos?: number) => {
+    const uploadImage = async (file: File, view: EditorView, pos?: number) => {
       const { teamId } = this.options;
       if (!teamId) return;
 

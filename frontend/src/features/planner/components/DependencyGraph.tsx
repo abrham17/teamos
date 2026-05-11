@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import cytoscape from "cytoscape";
-import { PlanProjectDetail, PlanTask } from "../types";
-import { Maximize2, Minimize2, ZoomIn, ZoomOut, Link as LinkIcon, Loader2, RefreshCw } from "lucide-react";
+import { PlanProjectDetail } from "../types";
+import { Maximize2, Minimize2, ZoomIn, ZoomOut, Link as LinkIcon, Loader2 } from "lucide-react";
 import { updatePlanTask } from "../api";
 import { useWikiStore } from "@/stores/useWikiStore";
 
@@ -69,8 +69,8 @@ export function DependencyGraph({ project, onRefresh }: DependencyGraphProps) {
             "font-family": "Inter, sans-serif",
             "text-wrap": "wrap",
             "text-max-width": "120px",
-            width: (ele: any) => (ele.data("priority") === "high" ? 40 : 30),
-            height: (ele: any) => (ele.data("priority") === "high" ? 40 : 30),
+            width: (ele: cytoscape.NodeSingular) => (ele.data("priority") === "high" ? 40 : 30),
+            height: (ele: cytoscape.NodeSingular) => (ele.data("priority") === "high" ? 40 : 30),
           },
         },
         {

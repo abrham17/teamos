@@ -6,6 +6,8 @@ import type {
   PlanProjectListItem,
   PlanTask,
   TeamMember,
+  ActivityItem,
+  PlanSnapshot,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
@@ -191,8 +193,7 @@ export async function getPlannerCalendarFeed(teamId: string, fromDate?: string, 
 }
 
 export async function getPlannerActivity(teamId: string) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return api.get<any[]>(`/planning/${teamId}/activity/`);
+  return api.get<ActivityItem[]>(`/planning/${teamId}/activity/`);
 }
 
 export async function getTeamMembers(teamId: string) {
@@ -203,8 +204,7 @@ export async function planAssistDraft(
   teamId: string,
   payload: { prompt: string; mode?: "create" | "manage"; project_id?: string },
 ) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return api.post<any>(`/planning/${teamId}/assist/`, payload);
+  return api.post<unknown>(`/planning/${teamId}/assist/`, payload);
 }
 
 export async function createProjectMember(teamId: string, projectId: string, userId: string, role: string) {
@@ -235,8 +235,7 @@ export async function getProjectConflicts(teamId: string, projectId?: string) {
   const url = projectId 
     ? `/planning/${teamId}/projects/${projectId}/conflicts/` 
     : `/planning/${teamId}/conflicts/`;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return api.get<any[]>(url);
+  return api.get<unknown[]>(url);
 }
 
 export async function getProjectRisk(teamId: string, projectId: string) {
@@ -245,14 +244,13 @@ export async function getProjectRisk(teamId: string, projectId: string) {
 
 export async function getTeamOverdue(teamId: string) {
   return api.get<{ 
-    overdue_tasks: any[]; 
-    missed_milestones: any[];
+    overdue_tasks: unknown[]; 
+    missed_milestones: unknown[];
   }>(`/planning/${teamId}/overdue/`);
 }
 
 export async function listPlanSnapshots(teamId: string, projectId: string) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return api.get<any[]>(`/planning/${teamId}/projects/${projectId}/snapshots/`);
+  return api.get<PlanSnapshot[]>(`/planning/${teamId}/projects/${projectId}/snapshots/`);
 }
 
 export async function createPlanSnapshot(teamId: string, projectId: string, type: "auto" | "manual" | "agent" = "manual") {

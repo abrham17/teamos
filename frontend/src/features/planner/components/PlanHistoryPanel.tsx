@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { History, Loader2, RotateCcw, Save } from "lucide-react";
 import { listPlanSnapshots, restorePlanSnapshot, createPlanSnapshot } from "../api";
+import { PlanSnapshot } from "../types";
 
 interface PlanHistoryPanelProps {
   teamId: string;
@@ -9,22 +10,21 @@ interface PlanHistoryPanelProps {
 }
 
 export function PlanHistoryPanel({ teamId, projectId, onRestore }: PlanHistoryPanelProps) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [snapshots, setSnapshots] = useState<PlanSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState<string | null>(null);
 
-  const fetchSnapshots = () => {
+  const fetchSnapshots = useCallback(() => {
     setLoading(true);
     listPlanSnapshots(teamId, projectId)
       .then(setSnapshots)
       .catch(console.error)
       .finally(() => setLoading(false));
-  };
+  }, [teamId, projectId]);
 
   useEffect(() => {
     fetchSnapshots();
-  }, [teamId, projectId]);
+  }, [fetchSnapshots]);
 
   const handleRestore = async (snapshotId: string) => {
     if (!confirm("Are you sure you want to restore this snapshot? All current tasks and milestones will be replaced.")) return;

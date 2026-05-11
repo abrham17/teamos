@@ -53,8 +53,7 @@ export function ProjectOverviewPanel({
 }: ProjectOverviewPanelProps) {
   const { currentTeamId } = useWikiStore();
   const [taskSearch, setTaskSearch] = useState("");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [overdue, setOverdue] = useState<{ overdue_tasks: any[]; missed_milestones: any[] } | null>(null);
+  const [overdue, setOverdue] = useState<{ overdue_tasks: unknown[]; missed_milestones: unknown[] } | null>(null);
 
   useEffect(() => {
     if (currentTeamId) {

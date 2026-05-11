@@ -108,10 +108,6 @@ const getSuggestions = (teamId: string) => ({
             return
           }
 
-          // We must be able to access the teamId. The suggestions configuration in GoogleDocsEditor.tsx
-          // currently doesn't pass teamId directly to suggestions items easily. 
-          // Wait, we can get it from the window URL or localStorage, but let's try reading it from the DOM or URL.
-          const urlParams = new URLSearchParams(window.location.search)
           // Actually, we can get the text around the cursor right now.
           editor.chain().focus().deleteRange(range).run()
 
@@ -165,14 +161,14 @@ const getSuggestions = (teamId: string) => ({
                     if (data.token) {
                       editor.chain().focus().insertContent(data.token).run();
                     }
-                  } catch (e) {
+                  } catch {
                     // Ignore JSON parse errors for incomplete chunks
                   }
                 }
               }
             }
-          } catch (e) {
-            console.error("AI Autocomplete failed:", e);
+          } catch (err) {
+            console.error("AI Autocomplete failed:", err);
             alert("AI Autocomplete failed.");
           }
         },
