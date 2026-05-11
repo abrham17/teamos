@@ -164,6 +164,9 @@ class RawSource(models.Model):
     # For DOCX:    {"sections": [{"heading": "Intro", "char_start": 0, "char_end": 1000}, ...]}
     structure_map = models.JSONField(default=dict, blank=True)
 
+    # General metadata for deduplication and provenance
+    source_metadata = models.JSONField(default=dict, blank=True)
+
     ingest_job = models.OneToOneField(
         IngestJob, on_delete=models.SET_NULL, null=True, blank=True, related_name="raw_source"
     )
