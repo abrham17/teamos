@@ -382,6 +382,185 @@ def generate_risk_resolution_actions(
         return [a for a in result["actions"] if isinstance(a, dict)]
     return []
 
+def run_planner_agent_v2(
+    *,
+    team_id: str,
+    prompt: str,
+    mode: str = "create",
+    project_id: str | None = None,
+    user: User,
+) -> Iterator[str]:
+    """
+    V2 planner agent using the multi-stage reasoning pipeline.
+
+    Runs: decompose → research → draft → critique → finalize → create entities → validate.
+    Yields SSE events compatible with the frontend AIPlannerOverlay.
+    """
+    from planning.reasoning_pipeline import PlanningReasoningPipeline
+
+    team = Team.objects.get(id=team_id)
+
+    project_context = None
+    if project_id:
+        project = get_project_or_none(team_id=team_id, project_id=project_id)
+        if project:
+            from planning.serializers import ProjectDetailSerializer
+            project_context = ProjectDetailSerializer(project).data
+
+    # ── Run reasoning pipeline (stages 1-5) ───────────────────────
+    pipeline = PlanningReasoningPipeline(team=team, user=user)
+    draft_data = None
+
+    for event in pipeline.run(prompt, mode=mode, project_context=project_context):
+        yield event
+        # Capture the final reasoning_done data
+        if "reasoning_done" in event:
+            try:
+                data_line = event.split("data: ", 1)[1].strip()
+                draft_data = json.loads(data_line)
+            except Exception:
+                pass
+
+    if not draft_data:
+        yield _sse("agent_error", {"detail": "Reasoning pipeline did not produce a plan."})
+        return
+
+    # ── Create entities from the reasoned plan ────────────────────
+    created_project_id = project_id
+
+    if mode == "create":
+        yield _sse("agent_status", {"status": "Creating project..."})
+        try:
+            project_obj = create_project(
+                team_id=team_id,
+                user=user,
+                payload={
+                    "name": draft_data.get("projectName", "New Project"),
+                    "description": draft_data.get("description", ""),
+                    "status": "active",
+                },
+            )
+            created_project_id = str(project_obj.id)
+            yield _sse("agent_step", {"name": "plan_create_project", "arguments": json.dumps({"name": project_obj.name})})
+            yield _sse("agent_result", {"name": "plan_create_project", "ok": True, "result": {"project_id": created_project_id}})
+        except Exception as e:
+            logger.exception("Project creation failed in v2 pipeline")
+            yield _sse("agent_error", {"detail": f"Project creation failed: {e}"})
+            return
+
+    # Create tasks
+    tasks_data = draft_data.get("tasks", [])
+    if created_project_id and tasks_data:
+        project_obj = get_project_or_none(team_id=team_id, project_id=created_project_id)
+        if project_obj:
+            for idx, t_data in enumerate(tasks_data):
+                yield _sse("agent_status", {"status": f"Creating task {idx + 1}/{len(tasks_data)}: {t_data.get('title', '')}"})
+                try:
+                    task = create_task(
+                        project=project_obj,
+                        user=user,
+                        payload={
+                            "title": t_data.get("title", "Untitled Task"),
+                            "description": t_data.get("description", ""),
+                            "status": t_data.get("status", "todo"),
+                            "priority": t_data.get("priority", "medium"),
+                            "start_date": t_data.get("startDate") or t_data.get("start_date"),
+                            "end_date": t_data.get("endDate") or t_data.get("end_date"),
+                            "order_index": t_data.get("order_index", idx),
+                        },
+                    )
+                    yield _sse("agent_step", {"name": "plan_create_task", "arguments": json.dumps({"title": task.title, "index": idx + 1, "total": len(tasks_data)})})
+                    yield _sse("agent_result", {"name": "plan_create_task", "ok": True, "result": {"task_id": str(task.id), "title": task.title}})
+                except Exception as e:
+                    logger.warning("Task creation failed: %s", e)
+                    yield _sse("agent_result", {"name": "plan_create_task", "ok": False, "result": {"error": str(e)}})
+
+    # Create milestones
+    milestones_data = draft_data.get("milestones", [])
+    if created_project_id and milestones_data:
+        project_obj = get_project_or_none(team_id=team_id, project_id=created_project_id)
+        if project_obj:
+            for idx, m_data in enumerate(milestones_data):
+                try:
+                    milestone = create_milestone(
+                        project=project_obj,
+                        user=user,
+                        payload={
+                            "title": m_data.get("title", "Untitled"),
+                            "description": m_data.get("description", ""),
+                            "status": "pending",
+                            "target_date": m_data.get("date") or m_data.get("target_date"),
+                            "order_index": idx,
+                        },
+                    )
+                    yield _sse("agent_step", {"name": "plan_create_milestone", "arguments": json.dumps({"title": milestone.title})})
+                    yield _sse("agent_result", {"name": "plan_create_milestone", "ok": True, "result": {"milestone_id": str(milestone.id)}})
+                except Exception as e:
+                    logger.warning("Milestone creation failed: %s", e)
+
+    # ── Reindex ───────────────────────────────────────────────────
+    if created_project_id:
+        try:
+            from planning.reindex import reindex_project
+            project_obj = get_project_or_none(team_id=team_id, project_id=created_project_id)
+            if project_obj:
+                reindex_project(project_obj)
+        except Exception:
+            logger.exception("Reindex failed")
+
+    # ── Conflict detection ────────────────────────────────────────
+    yield _sse("agent_status", {"status": "Detecting conflicts..."})
+    conflicts = []
+    try:
+        conflicts = detect_date_conflicts(team_id, project_id=created_project_id)
+        yield _sse("agent_step", {"name": "plan_detect_conflicts", "arguments": "{}"})
+        yield _sse("agent_result", {"name": "plan_detect_conflicts", "ok": True, "result": {"conflict_count": len(conflicts)}})
+    except Exception:
+        logger.exception("Conflict detection failed in v2")
+
+    # ── Risk assessment ───────────────────────────────────────────
+    yield _sse("agent_status", {"status": "Final risk assessment..."})
+    risk = {"score": 0, "factors": [], "suggestions": []}
+    try:
+        risk = _assess_plan_risk(team, draft_data, conflicts)
+        yield _sse("agent_step", {"name": "plan_risk_assessment", "arguments": "{}"})
+        yield _sse("agent_result", {"name": "plan_risk_assessment", "ok": True, "result": risk})
+    except Exception:
+        logger.exception("Risk assessment failed in v2")
+
+    # ── Wiki sync ─────────────────────────────────────────────────
+    yield _sse("agent_status", {"status": "Syncing to wiki..."})
+    wiki_page_url = None
+    try:
+        if created_project_id:
+            project_obj = get_project_or_none(team_id=team_id, project_id=created_project_id)
+            if project_obj:
+                page = sync_project_to_wiki(project_obj)
+                if page:
+                    wiki_page_url = f"/wiki?page={page.slug}"
+                yield _sse("agent_step", {"name": "plan_sync_wiki", "arguments": "{}"})
+                yield _sse("agent_result", {"name": "plan_sync_wiki", "ok": True, "result": {"wiki_slug": page.slug if page else None}})
+    except Exception:
+        logger.exception("Wiki sync failed in v2")
+
+    # ── Done ──────────────────────────────────────────────────────
+    yield _sse("agent_done", {
+        "project_id": created_project_id,
+        "project_name": draft_data.get("projectName", ""),
+        "description": draft_data.get("description", ""),
+        "task_count": len(tasks_data),
+        "milestone_count": len(milestones_data),
+        "conflict_count": len(conflicts),
+        "conflicts": conflicts[:5],
+        "risk": risk,
+        "wiki_page_url": wiki_page_url,
+        "knowledge_gaps": draft_data.get("knowledge_gaps", []),
+        "reasoning_traces": draft_data.get("reasoning_traces", []),
+        "critique_score": draft_data.get("critique_score", 0),
+        "critique_suggestions": draft_data.get("critique_suggestions", []),
+    })
+
+
 def _auto_resolve_conflicts(
     team: Team,
     project_id: str,

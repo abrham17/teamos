@@ -446,10 +446,10 @@ class PlanningAssistStreamView(APIView):
             return fail("Prompt is required.", status_code=400, code="prompt_required")
 
         def event_stream():
-            from .agent_executor import run_planner_agent
+            from .agent_executor import run_planner_agent_v2
 
             try:
-                for sse_line in run_planner_agent(
+                for sse_line in run_planner_agent_v2(
                     team_id=str(team_id),
                     prompt=prompt,
                     mode=mode,

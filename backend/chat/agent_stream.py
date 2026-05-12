@@ -1,5 +1,11 @@
 """
 Wiki agent: non-streaming tool rounds, then chunked token emission for the final assistant text.
+
+Supports two execution paths:
+1. Legacy: _iter_tool_agent_sse_events (original monolithic loop)
+2. AgentCore: iter_agent_core_events (new modular engine with reflection)
+
+The view layer selects which path to use. Both emit the same SSE events.
 """
 
 from __future__ import annotations
@@ -233,3 +239,50 @@ def _iter_tool_agent_sse_events(
             return
 
     yield f"event: error\ndata: {json.dumps({'detail': 'Agent stopped: tool round limit exceeded.'})}\n\n"
+
+
+# ── AgentCore-based entry points (new modular engine) ─────────────────
+
+
+def iter_agent_core_events(
+    session: ChatSession,
+    context_str: str,
+    ctx: ToolContext,
+    state: dict[str, Any],
+) -> Iterator[str]:
+    """New agent path using AgentCore with reflection and inner planning."""
+    from chat.agent_core import AgentConfig, AgentCore
+
+    config = AgentConfig(
+        system_prefix=AGENT_SYSTEM_PREFIX,
+        tools=openai_tool_schemas(),
+        execute_fn=execute_tool,
+        mode="agent",
+        enable_reflection=True,
+        enable_inner_plan=True,
+        enable_thinking_events=True,
+    )
+    core = AgentCore(session=session, ctx=ctx, config=config)
+    yield from core.run(context_str, state)
+
+
+def iter_plan_agent_core_events(
+    session: ChatSession,
+    context_str: str,
+    ctx: ToolContext,
+    state: dict[str, Any],
+) -> Iterator[str]:
+    """New plan agent path using AgentCore with reflection."""
+    from chat.agent_core import AgentConfig, AgentCore
+
+    config = AgentConfig(
+        system_prefix=PLAN_AGENT_SYSTEM_PREFIX,
+        tools=openai_plan_tool_schemas(),
+        execute_fn=execute_plan_tool,
+        mode="plan",
+        enable_reflection=True,
+        enable_inner_plan=True,
+        enable_thinking_events=True,
+    )
+    core = AgentCore(session=session, ctx=ctx, config=config)
+    yield from core.run(context_str, state)

@@ -57,6 +57,38 @@ class ChatTokenUsage(models.Model):
         ordering = ["-created_at"]
 
 
+class AgentEpisode(models.Model):
+    """
+    Episodic memory: records of complete agent interactions and their outcomes.
+    Used for learning from past successes/failures to improve future execution.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="agent_episodes")
+    session = models.ForeignKey(
+        ChatSession, on_delete=models.SET_NULL, null=True, blank=True, related_name="episodes"
+    )
+    trigger = models.TextField(help_text="The user message or event that initiated this episode")
+    plan = models.JSONField(default=dict, blank=True, help_text="The approach the agent planned")
+    actions = models.JSONField(default=list, help_text="Tool calls executed in order")
+    outcome = models.JSONField(default=dict, help_text="Success/failure metrics and results")
+    learnings = models.TextField(blank=True, help_text="Extracted lessons for future recall")
+    tags = models.JSONField(default=list, blank=True, help_text="Semantic tags for retrieval")
+    success = models.BooleanField(default=True)
+    duration_ms = models.PositiveIntegerField(default=0, help_text="Total execution time")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["team", "-created_at"]),
+            models.Index(fields=["team", "success"]),
+        ]
+
+    def __str__(self):
+        status = "✓" if self.success else "✗"
+        return f"AgentEpisode({status} {self.trigger[:40]})"
+
+
 class AgentMemory(models.Model):
     """
     Persistent key-value memory for the agent, scoped per team.

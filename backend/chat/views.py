@@ -401,13 +401,13 @@ class ChatQueryStreamView(APIView):
                         metadata={"model": model_used, "mode": "ask", "routed_by": routed_by},
                     )
                 else:
-                    from chat.agent_stream import iter_agent_sse_events, iter_plan_agent_sse_events
+                    from chat.agent_stream import iter_agent_core_events, iter_plan_agent_core_events
                     from chat.tools import ToolContext
 
                     ctx = ToolContext(user=request.user, team_id=str(team_id), membership=membership)
                     agent_state: dict = {}
                     iterator = (
-                        iter_plan_agent_sse_events if mode == "plan" else iter_agent_sse_events
+                        iter_plan_agent_core_events if mode == "plan" else iter_agent_core_events
                     )
                     for line in iterator(session, context_str, ctx, agent_state):
                         yield line
