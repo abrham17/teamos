@@ -863,13 +863,16 @@ def _plan_create_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     title = (args.get("title") or "").strip()
     if not project_id or not title:
         return {"ok": False, "error": "project_id_and_title_required"}
-    
+
     project = get_project_or_none(ctx.team_id, project_id)
     if not project:
         return {"ok": False, "error": "project_not_found"}
 
+    # Resolve assignee - default to current user if not provided or not found
     assignee = _resolve_assignee(ctx.team_id, args.get("assignee_id"))
-    
+    if not assignee:
+        assignee = ctx.user
+
     payload = {
         "title": title,
         "description": (args.get("description") or "").strip(),
@@ -880,7 +883,7 @@ def _plan_create_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
         "end_date": args.get("end_date") or None,
         "dependency_ids": args.get("dependency_ids") or [],
     }
-    
+
     task = srv_create_task(project=project, user=ctx.user, payload=payload)
     reindex_project(project)
     return {"ok": True, "task_id": str(task.id), "project_id": str(project.id), "title": task.title}
