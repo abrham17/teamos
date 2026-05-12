@@ -21,21 +21,13 @@ import {
   FileText,
   Clock,
 } from "lucide-react";
-import {
-  planAssistStream,
-  type PlannerAgentStep,
-  type PlannerAgentResult,
-  type PlannerAgentDone,
-  type PlannerReasoningDone,
-} from "../api";
+import { api, getApiAuthHeaders } from "@/lib/api";
 import type { PlanProjectDetail } from "../types";
 
 interface AIPlannerOverlayProps {
   teamId: string;
   onClose: () => void;
   onPlanGenerated: (plan: { projectName: string; description: string; tasks: unknown[]; milestones: unknown[] }) => Promise<void> | void;
-  mode?: "create" | "manage";
-  projectContext?: PlanProjectDetail | null;
 }
 
 type Phase = "input" | "executing" | "review" | "manual";
@@ -48,21 +40,14 @@ interface AgentStepEntry {
 }
 
 const STEP_LABELS: Record<string, string> = {
-  plan_generate_draft: "Generating draft",
+  wiki_search_pages: "Searching wiki",
+  wiki_create_page: "Creating wiki page",
   plan_create_project: "Creating project",
-  plan_update_project: "Updating project",
   plan_create_task: "Adding task",
   plan_create_milestone: "Adding milestone",
   plan_detect_conflicts: "Detecting conflicts",
   plan_risk_assessment: "Assessing risk",
   plan_sync_wiki: "Syncing to wiki",
-  plan_check_overdue: "Checking overdue",
-  plan_auto_resolve: "Auto-resolving conflicts",
-  reasoning_decompose: "Decomposing mission into sub-goals",
-  reasoning_research: "Researching wiki knowledge per goal",
-  reasoning_draft: "Drafting plan with reasoning traces",
-  reasoning_critique: "Self-critiquing plan quality",
-  reasoning_finalize: "Inferring dependencies & scheduling",
 };
 
 function getStepLabel(name: string, args?: string): string {
@@ -98,8 +83,6 @@ export function AIPlannerOverlay({
   teamId,
   onClose,
   onPlanGenerated,
-  mode = "create",
-  projectContext,
 }: AIPlannerOverlayProps) {
   const [phase, setPhase] = useState<Phase>("input");
   const [prompt, setPrompt] = useState("");
@@ -111,8 +94,7 @@ export function AIPlannerOverlay({
   // Agent execution state
   const [agentSteps, setAgentSteps] = useState<AgentStepEntry[]>([]);
   const [statusText, setStatusText] = useState("");
-  const [agentDoneData, setAgentDoneData] = useState<PlannerAgentDone | null>(null);
-  const [reasoningData, setReasoningData] = useState<PlannerReasoningDone | null>(null);
+  const [finalResponse, setFinalResponse] = useState<string>("");
 
   // Manual fields
   const [manualName, setManualName] = useState("");
@@ -163,8 +145,7 @@ export function AIPlannerOverlay({
   const resetExecutionState = useCallback(() => {
     setAgentSteps([]);
     setStatusText("");
-    setAgentDoneData(null);
-    setReasoningData(null);
+    setFinalResponse("");
   }, []);
 
   const handleGenerate = async () => {
@@ -174,47 +155,74 @@ export function AIPlannerOverlay({
     setPhase("executing");
 
     try {
-      await planAssistStream(
-        teamId,
-        {
-          prompt,
-          mode,
-          project_id: projectContext?.id,
-        },
-        {
-          onStep: (step: PlannerAgentStep) => {
-            const label = getStepLabel(step.name, step.arguments);
-            setAgentSteps((prev) => [...prev, { name: step.name, label, status: "running" }]);
-          },
-          onResult: (result: PlannerAgentResult) => {
-            setAgentSteps((prev) => {
-              const next = [...prev];
-              for (let i = next.length - 1; i >= 0; i--) {
-                if (next[i].name === result.name && next[i].status === "running") {
-                  next[i] = { ...next[i], status: result.ok ? "done" : "error", result: result.result };
-                  break;
-                }
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(await getApiAuthHeaders()),
+      };
+
+      // Create a new chat session for planning
+      const sessionData = await api.post<{ id: string }>(`/chat/${teamId}/sessions/`, { title: "Plan Generation" });
+      const sessionId = sessionData.id;
+
+      const response = await fetch(`${API_BASE}/chat/${teamId}/sessions/${sessionId}/stream/`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ message: prompt }),
+      });
+
+      if (!response.ok) throw new Error("Stream error");
+      if (!response.body) throw new Error("No body");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let currentEvent = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("event:")) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith("data:") && currentEvent) {
+            const dataStr = line.slice(6);
+            try {
+              const data = JSON.parse(dataStr);
+              if (currentEvent === "status") {
+                setStatusText(data.status || "");
+              } else if (currentEvent === "tool_call") {
+                const name = data.name || "";
+                const label = getStepLabel(name, data.arguments);
+                setAgentSteps((prev) => [...prev, { name, label, status: "running" }]);
+              } else if (currentEvent === "tool_result") {
+                const name = data.name || "";
+                setAgentSteps((prev) => {
+                  const next = [...prev];
+                  for (let i = next.length - 1; i >= 0; i--) {
+                    if (next[i].name === name && next[i].status === "running") {
+                      next[i] = { ...next[i], status: data.ok ? "done" : "error", result: data.result };
+                      break;
+                    }
+                  }
+                  return next;
+                });
+              } else if (currentEvent === "chunk") {
+                setFinalResponse((prev) => prev + (data.token || ""));
+              } else if (currentEvent === "done") {
+                setPhase("review");
+              } else if (currentEvent === "error") {
+                throw new Error(data.detail || "Stream error");
               }
-              return next;
-            });
-          },
-          onStatus: (status: string) => {
-            setStatusText(status);
-          },
-          onDone: (data: PlannerAgentDone) => {
-            setAgentDoneData(data);
-            setPhase("review");
-          },
-          onError: (detail: string) => {
-            console.error(detail);
-            alert(detail);
-            setPhase("input");
-          },
-          onReasoningDone: (data: PlannerReasoningDone) => {
-            setReasoningData(data);
-          },
-        },
-      );
+            } catch { /* skip parse errs */ }
+            currentEvent = "";
+          }
+        }
+      }
     } catch (error: unknown) {
       console.error(error);
       alert(error instanceof Error ? error.message : "Failed to process request. Please try again.");
@@ -258,18 +266,10 @@ export function AIPlannerOverlay({
             </div>
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">
-                {phase === "manual"
-                  ? "Manual Setup"
-                  : mode === "manage"
-                    ? "Architect Consult"
-                    : "PlanArchitect AI"}
+                Plan Architect AI
               </h2>
               <p className="text-[10px] uppercase font-bold tracking-widest text-[var(--text-muted)]">
-                {phase === "manual"
-                  ? "Custom Strategy Creation"
-                  : mode === "manage"
-                    ? `Analyzing: ${projectContext?.name}`
-                    : "Agentic Planning Engine"}
+                Agentic Planning Engine
               </p>
             </div>
           </div>
@@ -294,7 +294,7 @@ export function AIPlannerOverlay({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                      {mode === "manage" ? "What should I change?" : "Project Mission"}
+                      Project Mission
                     </label>
                     <div className="flex items-center gap-2">
                       <button
@@ -321,11 +321,7 @@ export function AIPlannerOverlay({
                     <textarea
                       value={prompt}
                       onChange={(e) => setPrompt(e.target.value)}
-                      placeholder={
-                        mode === "manage"
-                          ? "e.g., 'Delay all pending tasks by 1 week'..."
-                          : "e.g., 'Architect a migration strategy for a high-traffic platform...'"
-                      }
+                      placeholder="e.g., 'Architect a migration strategy for a high-traffic platform...'"
                       className="w-full h-44 bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-2xl p-5 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-subtle)] focus:border-[var(--accent)] transition-all resize-none leading-relaxed text-sm shadow-inner"
                     />
                     <div className="absolute bottom-4 right-4 flex items-center gap-2 text-[10px] font-bold text-[var(--text-dim)]">
@@ -334,18 +330,11 @@ export function AIPlannerOverlay({
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {(mode === "manage"
-                      ? ["Optimize Roadmap", "Add Deployment Phase", "Extend Deadline"]
-                      : ["Product Launch", "Event Planning", "SaaS MVP"]
-                    ).map((tag) => (
+                    {["Product Launch", "Event Planning", "SaaS MVP"].map((tag) => (
                       <button
                         key={tag}
                         onClick={() =>
-                          setPrompt(
-                            mode === "manage"
-                              ? tag
-                              : `Generate a 3-month strategic plan for a ${tag}`,
-                          )
+                          setPrompt(`Generate a 3-month strategic plan for a ${tag}`)
                         }
                         className="text-[10px] font-bold uppercase tracking-widest px-4 py-2 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-muted)] dark:text-[var(--text-secondary)] transition-all border border-[var(--border-subtle)] shadow-sm active:scale-95"
                       >
@@ -361,7 +350,7 @@ export function AIPlannerOverlay({
                   className="w-full h-14 bg-[var(--accent)] text-white font-bold rounded-2xl flex items-center justify-center gap-3 hover:opacity-90 disabled:opacity-50 transition-all shadow-xl shadow-[var(--accent-glow)]"
                 >
                   <Wand2 className="w-5 h-5" />
-                  {mode === "manage" ? "Architect Update" : "Build Plan with Agent"}
+                  Build Plan with Agent
                 </button>
               </motion.div>
             )}
@@ -492,176 +481,19 @@ export function AIPlannerOverlay({
               </motion.div>
             )}
 
-            {phase === "review" && agentDoneData && (
+            {phase === "review" && (
               <motion.div
                 key="review"
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 className="space-y-6"
               >
-                {/* Project header */}
-                <div className="bg-[var(--bg-900)] border-2 border-[var(--accent-subtle)] rounded-2xl p-6 shadow-sm">
-                  <h3 className="text-2xl font-bold mb-2 text-[var(--text-primary)]">
-                    {agentDoneData.project_name}
-                  </h3>
-                  {agentDoneData.description && (
-                    <div className="prose prose-invert prose-sm max-w-none">
-                      <ReactMarkdown>
-                        {agentDoneData.description}
-                      </ReactMarkdown>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-4 mt-4 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                    <span className="flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3 h-3 text-[var(--success)]" />
-                      {agentDoneData.task_count} tasks
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-3 h-3 text-[var(--accent)]" />
-                      {agentDoneData.milestone_count} milestones
-                    </span>
+                <div className="bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-2xl p-6">
+                  <h3 className="text-lg font-bold mb-4 text-[var(--text-primary)]">Agent Response</h3>
+                  <div className="prose prose-invert prose-sm max-w-none">
+                    <ReactMarkdown>{finalResponse}</ReactMarkdown>
                   </div>
                 </div>
-
-                {/* Risk & Conflicts row */}
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Risk card */}
-                  <div className={`p-4 rounded-xl border ${riskBg(agentDoneData.risk.score)} border-[var(--border-subtle)]`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Shield className={`w-4 h-4 ${riskColor(agentDoneData.risk.score)}`} />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">Risk Score</span>
-                    </div>
-                    <div className={`text-3xl font-black ${riskColor(agentDoneData.risk.score)}`}>
-                      {agentDoneData.risk.score}<span className="text-sm font-medium text-[var(--text-dim)]">/100</span>
-                    </div>
-                    {agentDoneData.risk.factors.length > 0 && (
-                      <ul className="mt-2 space-y-1">
-                        {agentDoneData.risk.factors.slice(0, 3).map((f, i) => (
-                          <li key={i} className="text-[11px] text-[var(--text-secondary)] flex items-start gap-1.5">
-                            <AlertTriangle className="w-3 h-3 text-[var(--warning)] shrink-0 mt-0.5" />
-                            {f}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  {/* Conflicts card */}
-                  <div className={`p-4 rounded-xl border ${agentDoneData.conflict_count > 0 ? "bg-[var(--danger-bg)]" : "bg-[var(--success-bg)]"} border-[var(--border-subtle)]`}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <AlertTriangle className={`w-4 h-4 ${agentDoneData.conflict_count > 0 ? "text-[var(--danger)]" : "text-[var(--success)]"}`} />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">Conflicts</span>
-                    </div>
-                    <div className={`text-3xl font-black ${agentDoneData.conflict_count > 0 ? "text-[var(--danger)]" : "text-[var(--success)]"}`}>
-                      {agentDoneData.conflict_count}
-                    </div>
-                    {agentDoneData.conflict_count > 0 && (
-                      <p className="mt-1 text-[11px] text-[var(--text-secondary)]">
-                        Scheduling overlaps detected — review recommended
-                      </p>
-                    )}
-                    {agentDoneData.conflict_count === 0 && (
-                      <p className="mt-1 text-[11px] text-[var(--text-secondary)]">No scheduling conflicts</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Suggestions */}
-                {agentDoneData.risk.suggestions.length > 0 && (
-                  <div className="bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4">
-                    <h4 className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-2 flex items-center gap-2">
-                      <Sparkles className="w-3 h-3 text-[var(--accent)]" />
-                      AI Suggestions
-                    </h4>
-                    <ul className="space-y-1.5">
-                      {agentDoneData.risk.suggestions.map((s, i) => (
-                        <li key={i} className="text-[12px] text-[var(--text-secondary)] flex items-start gap-2">
-                          <ArrowRight className="w-3 h-3 text-[var(--accent)] shrink-0 mt-0.5" />
-                          {s}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Wiki sync status */}
-                {agentDoneData.wiki_page_url && (
-                  <div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)] bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl px-4 py-3">
-                    <FileText className="w-3.5 h-3.5 text-[var(--accent)]" />
-                    Project synced to wiki
-                    <a href={agentDoneData.wiki_page_url} className="text-[var(--accent)] hover:underline ml-1">View page →</a>
-                  </div>
-                )}
-
-                {/* Overdue warning */}
-                {(agentDoneData.overdue_count ?? 0) > 0 && (
-                  <div className="flex items-center gap-2 text-[11px] text-[var(--warning)] bg-[var(--warning)]/5 border border-[var(--warning)]/20 rounded-xl px-4 py-3">
-                    <Clock className="w-3.5 h-3.5" />
-                    {agentDoneData.overdue_count} overdue task{(agentDoneData.overdue_count ?? 0) > 1 ? "s" : ""} detected across team projects
-                  </div>
-                )}
-
-                {/* Critique score */}
-                {agentDoneData.critique_score !== undefined && agentDoneData.critique_score > 0 && (
-                  <div className="bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)] flex items-center gap-2">
-                        <BrainCircuit className="w-3 h-3 text-[var(--accent)]" />
-                        Plan Quality Score
-                      </h4>
-                      <span className={`text-2xl font-black ${
-                        agentDoneData.critique_score >= 80 ? "text-[var(--success)]" :
-                        agentDoneData.critique_score >= 50 ? "text-[var(--warning)]" :
-                        "text-[var(--danger)]"
-                      }`}>
-                        {agentDoneData.critique_score}<span className="text-sm font-medium text-[var(--text-dim)]">/100</span>
-                      </span>
-                    </div>
-                    {agentDoneData.critique_suggestions && agentDoneData.critique_suggestions.length > 0 && (
-                      <ul className="space-y-1.5 mt-2">
-                        {agentDoneData.critique_suggestions.slice(0, 4).map((s, i) => (
-                          <li key={i} className="text-[11px] text-[var(--text-secondary)] flex items-start gap-2">
-                            <Sparkles className="w-3 h-3 text-[var(--accent)] shrink-0 mt-0.5" />
-                            {s}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
-
-                {/* Reasoning traces */}
-                {agentDoneData.reasoning_traces && agentDoneData.reasoning_traces.length > 0 && (
-                  <details className="group">
-                    <summary className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] cursor-pointer hover:text-[var(--text-muted)] transition-colors flex items-center gap-2">
-                      <BrainCircuit className="w-3 h-3" />
-                      Reasoning Traces ({agentDoneData.reasoning_traces.length})
-                    </summary>
-                    <div className="mt-2 space-y-2 border-l-2 border-[var(--accent-subtle)] pl-3 ml-1">
-                      {agentDoneData.reasoning_traces.map((trace, i) => (
-                        <div key={i} className="text-[11px] text-[var(--text-secondary)] leading-relaxed bg-[var(--bg-900)] rounded-lg px-3 py-2 border border-[var(--border-subtle)]">
-                          {trace}
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
-
-                {/* Knowledge gaps */}
-                {agentDoneData.knowledge_gaps.length > 0 && (
-                  <div className="bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4">
-                    <h4 className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)] mb-2">
-                      Knowledge Gaps
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
-                      {agentDoneData.knowledge_gaps.map((gap, i) => (
-                        <span key={i} className="text-[10px] px-2 py-1 rounded-md bg-[var(--warning)]/10 text-[var(--warning)] border border-[var(--warning)]/20">
-                          {gap}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 {/* Agent execution log (collapsible) */}
                 <details className="group">
@@ -691,18 +523,16 @@ export function AIPlannerOverlay({
                   </button>
                   <button
                     onClick={() => {
-                      if (agentDoneData.project_id) {
-                        onPlanGenerated({
-                          projectName: agentDoneData.project_name,
-                          description: agentDoneData.description,
-                          tasks: [],
-                          milestones: [],
-                        });
-                      }
+                      onPlanGenerated({
+                        projectName: "AI Generated Plan",
+                        description: finalResponse,
+                        tasks: [],
+                        milestones: [],
+                      });
                     }}
                     className="flex-[2] h-14 rounded-2xl bg-[var(--accent)] text-white font-bold flex items-center justify-center gap-2 hover:opacity-95 transition-all shadow-xl shadow-[var(--accent-glow)]"
                   >
-                    {mode === "manage" ? "Apply Architect Changes" : "Confirm & Open Project"}
+                    Use This Plan
                     <ArrowRight className="w-5 h-5" />
                   </button>
                 </div>

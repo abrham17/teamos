@@ -7,12 +7,11 @@ import { Send, Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2 
 import { useToast } from "@/components/ui/Toast";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { ChatCitationList } from "@/components/chat/ChatCitationList";
-import { ChatModeSegmentedControl, type ChatMode } from "@/components/chat/ChatModeSegmentedControl";
 import { ChatAgentToolTimeline } from "@/components/chat/ChatAgentToolTimeline";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
-import type { ChatSession, Citation, ChatMessage, ChatCapabilities, AgentToolStep, AgentThinking, AgentReflection } from "@/components/chat/chatTypes";
+import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentThinking, AgentReflection } from "@/components/chat/chatTypes";
 import { AgentThinkingPane } from "@/components/chat/AgentThinkingPane";
 
 type SessionDetailResponse = { messages?: ChatMessage[] };
@@ -46,8 +45,6 @@ export function ChatInterface() {
   const [status, setStatus] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
 
-  const [chatMode, setChatMode] = useState<ChatMode>("ask");
-  const [chatCaps, setChatCaps] = useState<ChatCapabilities | null>(null);
 
   const [agentThoughts, setAgentThoughts] = useState<AgentThinking[]>([]);
   const [agentReflections, setAgentReflections] = useState<AgentReflection[]>([]);
@@ -102,34 +99,7 @@ export function ChatInterface() {
     return () => { cancelled = true; };
   }, [currentTeamId, toastError]);
 
-  useEffect(() => {
-    if (!currentTeamId) return;
-    try {
-      const v = sessionStorage.getItem(`teamos-chat-mode-${currentTeamId}`);
-      if (v === "agent" || v === "ask" || v === "plan") setChatMode(v as ChatMode);
-    } catch { /* ignore */ }
-  }, [currentTeamId]);
 
-  useEffect(() => {
-    if (!currentTeamId) return;
-    try {
-      sessionStorage.setItem(`teamos-chat-mode-${currentTeamId}`, chatMode);
-    } catch { /* ignore */ }
-  }, [currentTeamId, chatMode]);
-
-  useEffect(() => {
-    if (!currentTeamId) return;
-    let cancelled = false;
-    api
-      .get<ChatCapabilities>(`/chat/${currentTeamId}/capabilities/`)
-      .then((data) => {
-        if (!cancelled && data) setChatCaps(data);
-      })
-      .catch(() => {
-        if (!cancelled) setChatCaps(null);
-      });
-    return () => { cancelled = true; };
-  }, [currentTeamId]);
 
   useEffect(() => {
     if (!currentTeamId || !activeSessionId) return;
@@ -161,11 +131,11 @@ export function ChatInterface() {
   };
 
   const sendUserMessage = useCallback(
-    async (userMsg: string, options?: { mode?: ChatMode }) => {
+    async (userMsg: string) => {
       const trimmed = userMsg.trim();
       if (!trimmed || !currentTeamId || !activeSessionId || isStreaming) return;
 
-      const mode = options?.mode ?? chatMode;
+      const mode = "agent";
 
       setIsStreaming(true);
       setStatus("Connecting...");
@@ -295,7 +265,7 @@ export function ChatInterface() {
         toastError("Failed to connect to AI server.");
       }
     },
-    [activeSessionId, chatMode, currentTeamId, isStreaming, toastError],
+    [activeSessionId, currentTeamId, isStreaming, toastError],
   );
 
   const handleNewChat = async () => {
@@ -338,7 +308,7 @@ export function ChatInterface() {
     }
   };
 
-  const handleSend = async (overrideText?: string, options?: { mode?: ChatMode }) => {
+  const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text) return;
     if (!activeSessionId) {
@@ -346,17 +316,16 @@ export function ChatInterface() {
       return;
     }
     if (!overrideText) setInput("");
-    await sendUserMessage(text, options);
+    await sendUserMessage(text);
   };
 
   const handleSaveEdit = async (id: string) => {
     const msg = messages.find(m => m.id === id);
     if (!msg || !editInput.trim()) return;
     const idx = messages.findIndex(m => m.id === id);
-    const mode = (msg.metadata?.mode as ChatMode) || chatMode;
     setMessages(prev => prev.slice(0, idx));
     setEditingMessageId(null);
-    await handleSend(editInput, { mode });
+    await handleSend(editInput);
   };
 
   if (!currentTeamId) return <div className="flex flex-1 items-center justify-center text-[var(--text-muted)]">Select a team first</div>;
@@ -480,9 +449,6 @@ export function ChatInterface() {
 
         <div className="shrink-0 bg-[var(--bg-950)] px-4 pt-2 w-full z-20">
           <div className="relative mx-auto flex w-full max-w-4xl flex-col gap-2">
-            <div className="flex items-center justify-between px-2">
-                <ChatModeSegmentedControl value={chatMode} onChange={setChatMode} capabilities={chatCaps} />
-            </div>
             <div className="relative group w-full">
               <div className="absolute -inset-0.5 bg-gradient-to-r from-[var(--accent)] to-purple-600 rounded-[1.5rem] opacity-0 group-focus-within:opacity-15 blur-md transition-opacity duration-500" />
               <input className="relative w-full rounded-[1.25rem] border border-[var(--border-strong)] bg-[var(--bg-900)] py-3 pl-5 pr-14 text-sm text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/50 focus:shadow-glow shadow-inner disabled:cursor-not-allowed disabled:opacity-50" placeholder={!sessionReady ? "Initializing Intelligence…" : "Enter command or ask a question…"} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); } }} disabled={inputTypingDisabled} />

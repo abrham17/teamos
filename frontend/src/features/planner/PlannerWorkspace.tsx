@@ -327,8 +327,6 @@ export function PlannerWorkspace() {
       {isAIOverlayOpen && (
         <AIPlannerOverlay
           teamId={currentTeamId}
-          mode={aiMode}
-          projectContext={activeProject}
           onClose={() => setIsAIOverlayOpen(false)}
           onPlanGenerated={handlePlanGenerated}
         />
