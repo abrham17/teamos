@@ -12,7 +12,8 @@ import { ChatAgentToolTimeline } from "@/components/chat/ChatAgentToolTimeline";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
-import type { ChatSession, Citation, ChatMessage, ChatCapabilities, AgentToolStep } from "@/components/chat/chatTypes";
+import type { ChatSession, Citation, ChatMessage, ChatCapabilities, AgentToolStep, AgentThinking, AgentReflection } from "@/components/chat/chatTypes";
+import { AgentThinkingPane } from "@/components/chat/AgentThinkingPane";
 
 type SessionDetailResponse = { messages?: ChatMessage[] };
 
@@ -47,6 +48,9 @@ export function ChatInterface() {
 
   const [chatMode, setChatMode] = useState<ChatMode>("ask");
   const [chatCaps, setChatCaps] = useState<ChatCapabilities | null>(null);
+
+  const [agentThoughts, setAgentThoughts] = useState<AgentThinking[]>([]);
+  const [agentReflections, setAgentReflections] = useState<AgentReflection[]>([]);
   
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editInput, setEditInput] = useState("");
@@ -165,6 +169,8 @@ export function ChatInterface() {
 
       setIsStreaming(true);
       setStatus("Connecting...");
+      setAgentThoughts([]);
+      setAgentReflections([]);
       
       const userMsgObj: ChatMessage = { role: "user", content: trimmed, id: `u-${Date.now()}`, metadata: { mode } };
       setMessages((prev) => [...prev, userMsgObj]);
@@ -260,6 +266,18 @@ export function ChatInterface() {
                     next[next.length - 1] = { ...working };
                     return next;
                   });
+                } else if (currentEvent === "thinking") {
+                  const content = String((data as { content?: string }).content ?? "");
+                  if (content) {
+                    setAgentThoughts((prev) => [...prev, { content, timestamp: Date.now() }]);
+                  }
+                } else if (currentEvent === "reflection") {
+                  const reflection = data as unknown as AgentReflection;
+                  if (reflection && !reflection.success) {
+                    setAgentReflections((prev) => [...prev, reflection]);
+                  }
+                } else if (currentEvent === "replan") {
+                  setStatus("Replanning approach...");
                 } else if (currentEvent === "done") {
                   setIsStreaming(false);
                   setStatus("");
@@ -388,6 +406,9 @@ export function ChatInterface() {
               <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} key={m.id || i} className={cn("mx-auto flex w-full max-w-4xl gap-4 group/msg", isUser ? "justify-end" : "justify-start")}>
                 {!isUser && <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] shadow-md"><Bot className="h-5 w-5 text-[var(--accent)]" /></div>}
                 <div className={cn("flex max-w-[85%] flex-col gap-3", isUser ? "items-end" : "items-start")}>
+                  {!isUser && i === messages.length - 1 && isStreaming && (agentThoughts.length > 0 || agentReflections.length > 0) && (
+                    <AgentThinkingPane thoughts={agentThoughts} reflections={agentReflections} isActive={isStreaming} />
+                  )}
                   {!isUser && agentStepsForMessage(m).length > 0 && <ChatAgentToolTimeline steps={agentStepsForMessage(m)} />}
                   <div className="relative group/msg-content">
                     <div className={cn("rounded-[1.5rem] px-5 py-4 text-[15px] leading-relaxed shadow-lg transition-all", isUser ? "bg-gradient-to-br from-[var(--accent)] to-[#009ab0] font-semibold text-[var(--bg-950)] rounded-tr-none shadow-[var(--accent-glow)]" : "bg-[var(--surface-1)]/80 backdrop-blur-md border border-[var(--border-subtle)] text-[var(--text-primary)] rounded-tl-none")}>

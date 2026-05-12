@@ -40,8 +40,22 @@ export interface PlannerAgentDone {
   conflicts: Array<Record<string, unknown>>;
   risk: { score: number; factors: string[]; suggestions: string[] };
   wiki_page_url: string | null;
-  overdue_count: number;
+  overdue_count?: number;
   knowledge_gaps: string[];
+  reasoning_traces?: string[];
+  critique_score?: number;
+  critique_suggestions?: string[];
+}
+
+export interface PlannerReasoningDone {
+  projectName: string;
+  description: string;
+  tasks: Array<Record<string, unknown>>;
+  milestones: Array<Record<string, unknown>>;
+  knowledge_gaps: string[];
+  reasoning_traces: string[];
+  critique_score: number;
+  critique_suggestions: string[];
 }
 
 export interface PlannerStreamCallbacks {
@@ -50,6 +64,7 @@ export interface PlannerStreamCallbacks {
   onStatus?: (status: string) => void;
   onDone?: (data: PlannerAgentDone) => void;
   onError?: (detail: string) => void;
+  onReasoningDone?: (data: PlannerReasoningDone) => void;
 }
 
 export async function planAssistStream(
@@ -108,6 +123,9 @@ export async function planAssistStream(
               break;
             case "agent_error":
               callbacks.onError?.(data.detail || "Agent execution failed");
+              break;
+            case "reasoning_done":
+              callbacks.onReasoningDone?.(data as PlannerReasoningDone);
               break;
           }
         } catch {

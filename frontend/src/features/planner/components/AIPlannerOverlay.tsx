@@ -26,6 +26,7 @@ import {
   type PlannerAgentStep,
   type PlannerAgentResult,
   type PlannerAgentDone,
+  type PlannerReasoningDone,
 } from "../api";
 import type { PlanProjectDetail } from "../types";
 
@@ -56,6 +57,12 @@ const STEP_LABELS: Record<string, string> = {
   plan_risk_assessment: "Assessing risk",
   plan_sync_wiki: "Syncing to wiki",
   plan_check_overdue: "Checking overdue",
+  plan_auto_resolve: "Auto-resolving conflicts",
+  reasoning_decompose: "Decomposing mission into sub-goals",
+  reasoning_research: "Researching wiki knowledge per goal",
+  reasoning_draft: "Drafting plan with reasoning traces",
+  reasoning_critique: "Self-critiquing plan quality",
+  reasoning_finalize: "Inferring dependencies & scheduling",
 };
 
 function getStepLabel(name: string, args?: string): string {
@@ -105,6 +112,7 @@ export function AIPlannerOverlay({
   const [agentSteps, setAgentSteps] = useState<AgentStepEntry[]>([]);
   const [statusText, setStatusText] = useState("");
   const [agentDoneData, setAgentDoneData] = useState<PlannerAgentDone | null>(null);
+  const [reasoningData, setReasoningData] = useState<PlannerReasoningDone | null>(null);
 
   // Manual fields
   const [manualName, setManualName] = useState("");
@@ -156,6 +164,7 @@ export function AIPlannerOverlay({
     setAgentSteps([]);
     setStatusText("");
     setAgentDoneData(null);
+    setReasoningData(null);
   }, []);
 
   const handleGenerate = async () => {
@@ -200,6 +209,9 @@ export function AIPlannerOverlay({
             console.error(detail);
             alert(detail);
             setPhase("input");
+          },
+          onReasoningDone: (data: PlannerReasoningDone) => {
+            setReasoningData(data);
           },
         },
       );
@@ -582,11 +594,57 @@ export function AIPlannerOverlay({
                 )}
 
                 {/* Overdue warning */}
-                {agentDoneData.overdue_count > 0 && (
+                {(agentDoneData.overdue_count ?? 0) > 0 && (
                   <div className="flex items-center gap-2 text-[11px] text-[var(--warning)] bg-[var(--warning)]/5 border border-[var(--warning)]/20 rounded-xl px-4 py-3">
                     <Clock className="w-3.5 h-3.5" />
-                    {agentDoneData.overdue_count} overdue task{agentDoneData.overdue_count > 1 ? "s" : ""} detected across team projects
+                    {agentDoneData.overdue_count} overdue task{(agentDoneData.overdue_count ?? 0) > 1 ? "s" : ""} detected across team projects
                   </div>
+                )}
+
+                {/* Critique score */}
+                {agentDoneData.critique_score !== undefined && agentDoneData.critique_score > 0 && (
+                  <div className="bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)] flex items-center gap-2">
+                        <BrainCircuit className="w-3 h-3 text-[var(--accent)]" />
+                        Plan Quality Score
+                      </h4>
+                      <span className={`text-2xl font-black ${
+                        agentDoneData.critique_score >= 80 ? "text-[var(--success)]" :
+                        agentDoneData.critique_score >= 50 ? "text-[var(--warning)]" :
+                        "text-[var(--danger)]"
+                      }`}>
+                        {agentDoneData.critique_score}<span className="text-sm font-medium text-[var(--text-dim)]">/100</span>
+                      </span>
+                    </div>
+                    {agentDoneData.critique_suggestions && agentDoneData.critique_suggestions.length > 0 && (
+                      <ul className="space-y-1.5 mt-2">
+                        {agentDoneData.critique_suggestions.slice(0, 4).map((s, i) => (
+                          <li key={i} className="text-[11px] text-[var(--text-secondary)] flex items-start gap-2">
+                            <Sparkles className="w-3 h-3 text-[var(--accent)] shrink-0 mt-0.5" />
+                            {s}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                {/* Reasoning traces */}
+                {agentDoneData.reasoning_traces && agentDoneData.reasoning_traces.length > 0 && (
+                  <details className="group">
+                    <summary className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] cursor-pointer hover:text-[var(--text-muted)] transition-colors flex items-center gap-2">
+                      <BrainCircuit className="w-3 h-3" />
+                      Reasoning Traces ({agentDoneData.reasoning_traces.length})
+                    </summary>
+                    <div className="mt-2 space-y-2 border-l-2 border-[var(--accent-subtle)] pl-3 ml-1">
+                      {agentDoneData.reasoning_traces.map((trace, i) => (
+                        <div key={i} className="text-[11px] text-[var(--text-secondary)] leading-relaxed bg-[var(--bg-900)] rounded-lg px-3 py-2 border border-[var(--border-subtle)]">
+                          {trace}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
                 )}
 
                 {/* Knowledge gaps */}

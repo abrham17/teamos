@@ -21,6 +21,19 @@ export type AgentToolStep = {
   result?: unknown;
 };
 
+export type AgentThinking = {
+  content: string;
+  timestamp: number;
+};
+
+export type AgentReflection = {
+  success: boolean;
+  should_retry: boolean;
+  should_replan: boolean;
+  feedback: string;
+  severity: "info" | "warning" | "critical";
+};
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
