@@ -359,83 +359,39 @@ class ChatQueryStreamView(APIView):
 
                 tool_trace_for_done: list = []
 
-                if mode == "ask":
-                    system_prompt = _build_ask_system_prompt(context_str)
+                # Unified agent mode - use AgentCore for all requests
+                from chat.agent_stream import iter_agent_core_events
+                from chat.tools import ToolContext
 
-                    history = [{"role": "system", "content": system_prompt}]
-                    recent_messages = list(session.messages.order_by("-created_at")[:10])
-                    for msg in reversed(recent_messages):
-                        history.append({"role": msg.role, "content": msg.content})
+                ctx = ToolContext(user=request.user, team_id=str(team_id), membership=membership)
+                agent_state: dict = {}
+                for line in iter_agent_core_events(session, context_str, ctx, agent_state):
+                    yield line
 
-                    full_content = ""
-                    stream, model_used, routed_by = llm_call(
-                        team=session.team,
-                        operation="chat_ask",
-                        messages=history,
-                        user=request.user,
-                        stream=True
-                    )
-
-                    for chunk in stream:
-                        token = chunk.choices[0].delta.content or ""
-                        if token:
-                            full_content += token
-                            yield f"event: chunk\ndata: {json.dumps({'token': token})}\n\n"
-
+                if agent_state.get("ok"):
+                    full_content = agent_state.get("full_text") or ""
+                    tool_trace = agent_state.get("tool_trace") or []
+                    tool_trace_for_done = list(tool_trace)
                     ChatMessage.objects.create(
                         session=session,
                         role="assistant",
                         content=full_content,
                         citations=citations,
-                        metadata={"mode": "ask"},
+                        metadata={"mode": "agent", "tool_trace": tool_trace},
                     )
-                    prompt_tokens = estimate_tokens(system_prompt) + estimate_tokens(user_message)
-                    completion_tokens = estimate_tokens(full_content)
+                    model_used = agent_state.get("model_used", "gpt-4o")
+                    approx = estimate_tokens(context_str) + estimate_tokens(user_message) + estimate_tokens(
+                        json.dumps(tool_trace)
+                    ) + estimate_tokens(full_content)
                     ChatTokenUsage.objects.create(
                         team=session.team,
                         user=request.user,
                         session=session,
-                        prompt_tokens=prompt_tokens,
-                        completion_tokens=completion_tokens,
-                        total_tokens=prompt_tokens + completion_tokens,
-                        metadata={"model": model_used, "mode": "ask", "routed_by": routed_by},
+                        prompt_tokens=max(approx // 2, 1),
+                        completion_tokens=max(approx // 2, 1),
+                        total_tokens=approx,
+                        metadata={"model": model_used, "mode": "agent"},
                     )
-                else:
-                    from chat.agent_stream import iter_agent_core_events, iter_plan_agent_core_events
-                    from chat.tools import ToolContext
-
-                    ctx = ToolContext(user=request.user, team_id=str(team_id), membership=membership)
-                    agent_state: dict = {}
-                    iterator = (
-                        iter_plan_agent_core_events if mode == "plan" else iter_agent_core_events
-                    )
-                    for line in iterator(session, context_str, ctx, agent_state):
-                        yield line
-
-                    if agent_state.get("ok"):
-                        full_content = agent_state.get("full_text") or ""
-                        tool_trace = agent_state.get("tool_trace") or []
-                        tool_trace_for_done = list(tool_trace)
-                        ChatMessage.objects.create(
-                            session=session,
-                            role="assistant",
-                            content=full_content,
-                            citations=citations,
-                            metadata={"mode": mode, "tool_trace": tool_trace},
-                        )
-                        model_used = agent_state.get("model_used", "gpt-4o")
-                        approx = estimate_tokens(context_str) + estimate_tokens(user_message) + estimate_tokens(
-                            json.dumps(tool_trace)
-                        ) + estimate_tokens(full_content)
-                        ChatTokenUsage.objects.create(
-                            team=session.team,
-                            user=request.user,
-                            session=session,
-                            prompt_tokens=max(approx // 2, 1),
-                            completion_tokens=max(approx // 2, 1),
-                            total_tokens=approx,
-                            metadata={"model": model_used, "mode": mode},
-                        )
 
                 if ChatMessage.objects.filter(session__team=session.team, role="assistant").count() == 1:
                     record_first_once(

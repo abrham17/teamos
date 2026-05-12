@@ -119,6 +119,7 @@ class AgentCore:
                 return
 
             msg = resp.choices[0].message
+            self._last_model_used = model_used
 
             # ── Extract thinking (text before tool calls) ─────────
             if msg.content and self.config.enable_thinking_events:
@@ -126,7 +127,9 @@ class AgentCore:
 
             # ── No tool calls → final answer ──────────────────────
             if not msg.tool_calls:
-                yield from self._stream_final_answer(messages, state, tool_trace)
+                # Pass the initial content to avoid double LLM call
+                initial_content = msg.content or ""
+                yield from self._stream_final_answer(messages, state, tool_trace, initial_content)
                 return
 
             # ── Process tool calls ────────────────────────────────
@@ -218,35 +221,49 @@ class AgentCore:
         yield _sse("error", {"detail": "Agent stopped: tool round limit exceeded."})
 
     def _build_messages(self, context_str: str) -> list[dict[str, Any]]:
-        """Build the initial message list with system prompt + history."""
-        # Load persistent memory
-        memory_block = ""
-        try:
-            from chat.agent_memory_service import get_agent_context_block
-            memory_block = get_agent_context_block(str(self.session.team_id))
-        except Exception:
-            pass
+        """Build the initial message list with system prompt + history using ContextBuilder."""
+        # Use ContextBuilder for dynamic context allocation
+        built_context = self.context_builder.build(
+            query=context_str[:500],  # Use the RAG query as hint
+            session=self.session,
+            include_graph=True,
+            history_limit=12,
+        )
 
         system = self.config.system_prefix
-        if memory_block:
-            system += "\n\n" + memory_block
+
+        # Add memory block from ContextBuilder
+        if built_context.memory_block:
+            system += "\n\n" + built_context.memory_block
 
         if self.config.enable_inner_plan:
             system += INNER_PLAN_INJECTION
 
-        system += (
-            "\n\nRetrieved team knowledge excerpts (may be partial):\n" + context_str
-            if context_str.strip()
-            else "\n\nNo retrieval snippets were returned for this query."
-        )
+        # Add RAG + graph context from ContextBuilder
+        if built_context.rag_block:
+            system += "\n\nRetrieved team knowledge:\n" + built_context.rag_block
+        if built_context.graph_block:
+            system += "\n\nGraph-connected context:\n" + built_context.graph_block
+
+        if not built_context.rag_block and not built_context.graph_block:
+            system += "\n\nNo retrieval snippets were returned for this query."
 
         messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
 
-        recent = list(self.session.messages.order_by("-created_at")[:12])
-        for msg in reversed(recent):
-            if msg.role not in ("user", "assistant"):
-                continue
-            messages.append({"role": msg.role, "content": msg.content})
+        # Add session history from ContextBuilder (or fallback)
+        if built_context.history_block:
+            history_lines = built_context.history_block.split("\n")
+            for line in history_lines:
+                if line.startswith("user:"):
+                    messages.append({"role": "user", "content": line[5:].strip()})
+                elif line.startswith("assistant:"):
+                    messages.append({"role": "assistant", "content": line[10:].strip()})
+        else:
+            recent = list(self.session.messages.order_by("-created_at")[:12])
+            for msg in reversed(recent):
+                if msg.role not in ("user", "assistant"):
+                    continue
+                messages.append({"role": msg.role, "content": msg.content})
 
         return messages
 
@@ -268,22 +285,32 @@ class AgentCore:
         messages: list[dict[str, Any]],
         state: dict[str, Any],
         tool_trace: list[dict[str, Any]],
+        initial_content: str = "",
     ) -> Iterator[str]:
-        """Stream the final text response."""
+        """Stream the final text response. If initial_content is provided, stream it directly without new LLM call."""
         try:
-            stream_resp, stream_model_used, _ = llm_call(
-                team=self.team,
-                operation="chat_agent",
-                messages=messages,
-                user=self.session.created_by,
-                stream=True,
-            )
             final_text = ""
-            for chunk in stream_resp:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    piece = chunk.choices[0].delta.content
-                    final_text += piece
-                    yield _sse("chunk", {"token": piece})
+
+            # If we already have content from the first LLM call, use it directly
+            if initial_content.strip():
+                final_text = initial_content
+                # Stream it character by character for consistency
+                for char in final_text:
+                    yield _sse("chunk", {"token": char})
+            else:
+                # Otherwise, make a new streaming call
+                stream_resp, stream_model_used, _ = llm_call(
+                    team=self.team,
+                    operation="chat_agent",
+                    messages=messages,
+                    user=self.session.created_by,
+                    stream=True,
+                )
+                for chunk in stream_resp:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        piece = chunk.choices[0].delta.content
+                        final_text += piece
+                        yield _sse("chunk", {"token": piece})
 
             if not final_text.strip():
                 final_text = "_No summary was returned._"
@@ -291,8 +318,12 @@ class AgentCore:
 
             state["tool_trace"] = tool_trace
             state["full_text"] = final_text
-            state["model_used"] = stream_model_used
+            state["model_used"] = getattr(self, "_last_model_used", "gpt-4o")
             state["ok"] = True
+
+            # Store episodic memory
+            user_message = messages[-1].get("content", "") if messages else ""
+            self._store_episode(user_message, tool_trace, final_text)
 
         except Exception as e:
             logger.exception("Agent final streaming failed")
