@@ -128,9 +128,10 @@ from corsheaders.defaults import default_headers
 
 CORS_ALLOWED_ORIGINS = [
     "https://team-os.tech",
+    "https://api.team-os.tech",
     "https://teamos-2.onrender.com",
     "https://teamos-w37k.vercel.app",
-    "https://team-os-dev.onrender.com",
+    "https://teamos-dev.onrender.com",
 ]
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "authorization",
