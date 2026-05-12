@@ -908,7 +908,11 @@ def _plan_update_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
             payload[field] = args[field]
     
     if "assignee_id" in args:
-        payload["assignee"] = _resolve_assignee(ctx.team_id, args["assignee_id"])
+        assignee = _resolve_assignee(ctx.team_id, args["assignee_id"])
+        # Default to current user if assignee not found
+        if not assignee:
+            assignee = ctx.user
+        payload["assignee"] = assignee
 
     updated = srv_update_task(task, payload)
     reindex_project(updated.project)
