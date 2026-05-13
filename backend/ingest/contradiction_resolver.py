@@ -156,5 +156,31 @@ def resolve_contradiction(
     diff = dict(changeset.diff_summary or {})
     diff["resolutions"] = resolutions
     diff["resolved"] = True
+
+    # Merge resolved content into proposed_content
+    proposed = changeset.proposed_content or ""
+    for r in resolutions:
+        resolution = r.get("resolution", "")
+        if resolution == "keep_existing":
+            # Remove the new content block, keep existing
+            new_snippet = ""
+            for c in diff.get("contradictions", []):
+                if c.get("id") == r.get("conflict_id") or c.get("existing_page_id") == r.get("conflict_id"):
+                    new_snippet = c.get("new_snippet", "")
+                    break
+            if new_snippet and new_snippet in proposed:
+                proposed = proposed.replace(new_snippet, "")
+        elif resolution == "manual_merge":
+            merged = r.get("merged_content", "")
+            if merged:
+                # Replace conflicting sections with merged content
+                for c in diff.get("contradictions", []):
+                    if c.get("id") == r.get("conflict_id") or c.get("existing_page_id") == r.get("conflict_id"):
+                        old_new = c.get("new_snippet", "")
+                        if old_new and old_new in proposed:
+                            proposed = proposed.replace(old_new, merged)
+                        break
+
+    changeset.proposed_content = proposed
     changeset.diff_summary = diff
-    changeset.save(update_fields=["diff_summary", "updated_at"])
+    changeset.save(update_fields=["proposed_content", "diff_summary", "updated_at"])

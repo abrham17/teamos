@@ -17,3 +17,6 @@ class WikiConfig(AppConfig):
             media_url,
             bool(media_url and str(media_url).startswith("http")),
         )
+
+        # Register wiki signals for plan synchronization
+        import wiki.signals  # noqa: F401

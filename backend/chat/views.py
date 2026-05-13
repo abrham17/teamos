@@ -359,14 +359,19 @@ class ChatQueryStreamView(APIView):
 
                 tool_trace_for_done: list = []
 
-                # Unified agent mode - use AgentCore for all requests
-                from chat.agent_stream import iter_agent_core_events
+                # Route to correct agent path based on mode
+                from chat.agent_stream import iter_agent_core_events, iter_plan_agent_core_events
                 from chat.tools import ToolContext
 
                 ctx = ToolContext(user=request.user, team_id=str(team_id), membership=membership)
                 agent_state: dict = {}
-                for line in iter_agent_core_events(session, context_str, ctx, agent_state):
-                    yield line
+
+                if mode == "plan":
+                    for line in iter_plan_agent_core_events(session, context_str, ctx, agent_state):
+                        yield line
+                else:
+                    for line in iter_agent_core_events(session, context_str, ctx, agent_state):
+                        yield line
 
                 if agent_state.get("ok"):
                     full_content = agent_state.get("full_text") or ""
@@ -440,3 +445,76 @@ class AdminUsageStatsView(APIView):
             })
             
         return ok(data)
+
+
+class ProactiveAlertsView(APIView):
+    """GET /api/chat/:team_id/alerts/ — proactive alerts for the frontend banner."""
+
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
+    def get(self, request, team_id):
+        from datetime import timedelta
+        from django.utils import timezone
+        from planning.models import Task, Milestone
+        from wiki.models import WikiPage
+
+        today = timezone.now().date()
+        week_from_now = today + timedelta(days=7)
+        alerts = []
+
+        # Overdue tasks
+        overdue = Task.objects.filter(
+            project__team_id=team_id,
+            end_date__lt=today,
+            status__in=["todo", "in-progress"],
+        ).select_related("project")[:5]
+
+        for t in overdue:
+            days = (today - t.end_date).days
+            alerts.append({
+                "id": f"overdue-{t.id}",
+                "type": "overdue",
+                "severity": "critical" if days > 7 else "warning",
+                "message": f"'{t.title}' is {days} days overdue",
+                "suggestedAction": f"Update the task status or adjust the deadline",
+                "autoFixable": False,
+                "createdAt": str(t.end_date),
+            })
+
+        # Approaching milestones
+        approaching = Milestone.objects.filter(
+            project__team_id=team_id,
+            target_date__range=[today, week_from_now],
+            status="pending",
+        ).select_related("project")[:3]
+
+        for m in approaching:
+            alerts.append({
+                "id": f"milestone-{m.id}",
+                "type": "milestone_approaching",
+                "severity": "info",
+                "message": f"Milestone '{m.title}' is approaching ({m.target_date})",
+                "suggestedAction": f"Review tasks for milestone completion",
+                "autoFixable": False,
+                "createdAt": str(m.target_date),
+            })
+
+        # Stale wiki pages
+        stale = WikiPage.objects.filter(
+            team_id=team_id,
+            is_deleted=False,
+            updated_at__lt=timezone.now() - timedelta(days=90),
+        )[:3]
+
+        for p in stale:
+            alerts.append({
+                "id": f"stale-{p.id}",
+                "type": "stale_wiki",
+                "severity": "warning",
+                "message": f"Wiki page '{p.title}' hasn't been updated in 90+ days",
+                "suggestedAction": f"Review and update or archive this page",
+                "autoFixable": False,
+                "createdAt": str(p.updated_at.date()),
+            })
+
+        return ok({"alerts": alerts})

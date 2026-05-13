@@ -448,6 +448,21 @@ def openai_agent_tool_schemas() -> list[dict[str, Any]]:
         {
             "type": "function",
             "function": {
+                "name": "graph_explain_connection",
+                "description": "Find and explain the shortest path between two wiki pages in the knowledge graph.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "page_a_id": {"type": "string", "description": "ID of the first page"},
+                        "page_b_id": {"type": "string", "description": "ID of the second page"},
+                    },
+                    "required": ["page_a_id", "page_b_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "graph_find_contradictions",
                 "description": "Find all contradiction edges in the team's knowledge graph, optionally for a specific page.",
                 "parameters": {
@@ -555,6 +570,8 @@ def execute_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, Any]:
             return _graph_traverse_neighbors(ctx, args)
         if name == "graph_find_contradictions":
             return _graph_find_contradictions(ctx, args)
+        if name == "graph_explain_connection":
+            return _graph_explain_connection(ctx, args)
         if name == "knowledge_gap_analysis":
             return _knowledge_gap_analysis(ctx, args)
         if name == "calendar_detect_conflicts":
@@ -1182,6 +1199,19 @@ def _graph_find_contradictions(ctx: ToolContext, args: dict[str, Any]) -> dict[s
     page_id = (args.get("page_id") or "").strip() or None
     results = find_contradictions(ctx.team_id, page_id=page_id)
     return {"ok": True, "contradictions": results, "count": len(results)}
+
+
+def _graph_explain_connection(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Explain the connection between two pages in the knowledge graph."""
+    from graph_engine.reasoner import explain_connection
+
+    page_a = (args.get("page_a_id") or "").strip()
+    page_b = (args.get("page_b_id") or "").strip()
+    if not page_a or not page_b:
+        return {"ok": False, "error": "Both page_a_id and page_b_id are required"}
+
+    explanation = explain_connection(ctx.team_id, page_a, page_b)
+    return {"ok": True, "explanation": explanation}
 
 
 def _knowledge_gap_analysis(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:

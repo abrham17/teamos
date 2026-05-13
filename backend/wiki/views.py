@@ -601,3 +601,69 @@ class WikiAutocompleteView(APIView):
         response["X-Accel-Buffering"] = "no"
         return response
 
+
+class WikiAIAssistView(APIView):
+    """POST /api/wiki/:team_id/ai-assist/
+    AI-powered wiki operations: expand, summarize, suggest-links, detect-stale, from-plan.
+    Body: { "action": "expand|summarize|suggest-links|detect-stale|from-plan", "page_id": "...", ... }
+    """
+    permission_classes = [IsAuthenticated, CanEditWiki]
+
+    def post(self, request, team_id):
+        from .ai_assist import (
+            expand_section, summarize_page, suggest_links,
+            detect_stale_content, generate_from_plan
+        )
+
+        action = request.data.get("action", "").strip()
+        page_id = request.data.get("page_id", "").strip()
+
+        if not action:
+            return fail("Action is required.", status_code=400, code="action_required")
+
+        membership = request.team_membership
+        quota = check_quota(membership.team, "token_consume")
+        if not quota.allowed:
+            return fail("Plan token limit reached.", status_code=402, code="plan_limit_exceeded")
+
+        try:
+            if action == "expand":
+                if not page_id:
+                    return fail("page_id required.", status_code=400)
+                section = request.data.get("section", "")
+                instructions = request.data.get("instructions", "")
+                result = expand_section(team_id, page_id, section, instructions)
+                return ok({"content": result})
+
+            elif action == "summarize":
+                if not page_id:
+                    return fail("page_id required.", status_code=400)
+                result = summarize_page(team_id, page_id)
+                return ok({"content": result})
+
+            elif action == "suggest-links":
+                if not page_id:
+                    return fail("page_id required.", status_code=400)
+                suggestions = suggest_links(team_id, page_id)
+                return ok({"suggestions": [s.__dict__ for s in suggestions]})
+
+            elif action == "detect-stale":
+                if not page_id:
+                    return fail("page_id required.", status_code=400)
+                stale = detect_stale_content(team_id, page_id)
+                return ok({"stale_sections": [s.__dict__ for s in stale]})
+
+            elif action == "from-plan":
+                project_id = request.data.get("project_id", "").strip()
+                if not project_id:
+                    return fail("project_id required.", status_code=400)
+                result = generate_from_plan(team_id, project_id)
+                return ok({"content": result})
+
+            else:
+                return fail(f"Unknown action: {action}", status_code=400)
+
+        except Exception as e:
+            logger.error("Wiki AI assist failed: %s", e)
+            return fail(str(e), status_code=500)
+

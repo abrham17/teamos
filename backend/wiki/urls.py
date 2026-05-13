@@ -16,6 +16,7 @@ from .views import (
     ContradictionResolutionView,
     WikiImageUploadView,
     WikiAutocompleteView,
+    WikiAIAssistView,
 )
 
 urlpatterns = [
@@ -40,5 +41,6 @@ urlpatterns = [
     path("<uuid:team_id>/contradictions/<uuid:changeset_id>/", ContradictionResolutionView.as_view()),
     path("<uuid:team_id>/upload-image/", WikiImageUploadView.as_view()),
     path("<uuid:team_id>/autocomplete/", WikiAutocompleteView.as_view()),
+    path("<uuid:team_id>/ai-assist/", WikiAIAssistView.as_view()),
 ]
 

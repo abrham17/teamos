@@ -236,6 +236,15 @@ class AgentCore:
         if built_context.memory_block:
             system += "\n\n" + built_context.memory_block
 
+        # Add semantic memory recall (Phase 4)
+        try:
+            from chat.semantic_memory import get_memory_context
+            semantic_ctx = get_memory_context(str(self.session.team_id), context_str[:500])
+            if semantic_ctx:
+                system += "\n\n" + semantic_ctx
+        except Exception:
+            pass
+
         if self.config.enable_inner_plan:
             system += INNER_PLAN_INJECTION
 

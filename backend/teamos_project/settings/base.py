@@ -199,6 +199,14 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute="*/15"),
         "kwargs": {"batch_size": 50},
     },
+    "daily-team-health-check": {
+        "task": "chat.background_agents.daily_health_check_all_teams",
+        "schedule": crontab(hour="6", minute="0"),
+    },
+    "weekly-retrospective": {
+        "task": "chat.background_agents.weekly_retrospective_all_teams",
+        "schedule": crontab(day_of_week="monday", hour="8", minute="0"),
+    },
 }
 
 # --- External APIs ---
