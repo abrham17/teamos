@@ -26,6 +26,10 @@ import type { PlanProjectDetail } from "../types";
 
 interface AIPlannerOverlayProps {
   teamId: string;
+  /** "create" = new project; "manage" = update active project (requires projectId). */
+  mode?: "create" | "manage";
+  /** Required when mode is "manage". */
+  projectId?: string | null;
   onClose: () => void;
   onPlanGenerated: (plan: { projectName: string; description: string; tasks: unknown[]; milestones: unknown[] }) => Promise<void> | void;
 }
@@ -49,8 +53,11 @@ const STEP_LABELS: Record<string, string> = {
   // Entity creation
   plan_generate_draft: "Generating plan draft",
   plan_create_project: "Creating project",
+  plan_update_project: "Updating project",
+  plan_update_task: "Updating task",
   plan_create_task: "Adding task",
   plan_create_milestone: "Adding milestone",
+  plan_update_milestone: "Updating milestone",
   plan_detect_conflicts: "Detecting scheduling conflicts",
   plan_auto_resolve: "Auto-resolving conflicts",
   plan_risk_assessment: "Assessing timeline risk",
@@ -67,6 +74,12 @@ function getStepLabel(name: string, args?: string): string {
     try {
       const parsed = JSON.parse(args);
       if (parsed.index && parsed.total) return `Adding task ${parsed.index}/${parsed.total}`;
+    } catch { /* ignore */ }
+  }
+  if (name === "plan_update_task" && args) {
+    try {
+      const parsed = JSON.parse(args);
+      if (parsed.index && parsed.total) return `Updating task ${parsed.index}/${parsed.total}`;
     } catch { /* ignore */ }
   }
   if (name === "plan_create_milestone" && args) {
@@ -92,6 +105,8 @@ function riskBg(score: number): string {
 
 export function AIPlannerOverlay({
   teamId,
+  mode = "create",
+  projectId = null,
   onClose,
   onPlanGenerated,
 }: AIPlannerOverlayProps) {
@@ -175,6 +190,10 @@ export function AIPlannerOverlay({
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
+    if (mode === "manage" && !projectId) {
+      alert("No project is selected. Open a project and use Ask AI from the overview.");
+      return;
+    }
     setLoading(true);
     resetExecutionState();
     setPhase("executing");
@@ -186,11 +205,16 @@ export function AIPlannerOverlay({
         ...(await getApiAuthHeaders()),
       };
 
-      // Call the dedicated 9-phase planning agent endpoint directly
+      const streamBody: { prompt: string; mode: string; project_id?: string } = { prompt, mode };
+      if (mode === "manage" && projectId) {
+        streamBody.project_id = projectId;
+      }
+
+      // Call the dedicated planning agent endpoint (create vs manage must match backend).
       const response = await fetch(`${API_BASE}/planning/${teamId}/assist/stream/`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ prompt, mode: "create" }),
+        body: JSON.stringify(streamBody),
       });
 
       if (!response.ok) throw new Error(`Server error: ${response.status}`);
@@ -316,7 +340,7 @@ export function AIPlannerOverlay({
                 Plan Architect AI
               </h2>
               <p className="text-[10px] uppercase font-bold tracking-widest text-[var(--text-muted)]">
-                Agentic Planning Engine
+                {mode === "manage" ? "Update Current Project" : "Agentic Planning Engine"}
               </p>
             </div>
           </div>
@@ -397,7 +421,7 @@ export function AIPlannerOverlay({
                   className="w-full h-14 bg-[var(--accent)] text-white font-bold rounded-2xl flex items-center justify-center gap-3 hover:opacity-90 disabled:opacity-50 transition-all shadow-xl shadow-[var(--accent-glow)]"
                 >
                   <Wand2 className="w-5 h-5" />
-                  Build Plan with Agent
+                  {mode === "manage" ? "Update Plan with Agent" : "Build Plan with Agent"}
                 </button>
               </motion.div>
             )}
