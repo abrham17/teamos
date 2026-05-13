@@ -40,14 +40,25 @@ interface AgentStepEntry {
 }
 
 const STEP_LABELS: Record<string, string> = {
-  wiki_search_pages: "Searching wiki",
-  wiki_create_page: "Creating wiki page",
+  // Reasoning pipeline stages
+  reasoning_decompose: "Decomposing mission into sub-goals",
+  reasoning_research: "Researching wiki knowledge per sub-goal",
+  reasoning_draft: "Drafting plan with reasoning traces",
+  reasoning_critique: "Self-critiquing plan for issues",
+  reasoning_finalize: "Inferring dependencies & scheduling",
+  // Entity creation
+  plan_generate_draft: "Generating plan draft",
   plan_create_project: "Creating project",
   plan_create_task: "Adding task",
   plan_create_milestone: "Adding milestone",
-  plan_detect_conflicts: "Detecting conflicts",
-  plan_risk_assessment: "Assessing risk",
-  plan_sync_wiki: "Syncing to wiki",
+  plan_detect_conflicts: "Detecting scheduling conflicts",
+  plan_auto_resolve: "Auto-resolving conflicts",
+  plan_risk_assessment: "Assessing timeline risk",
+  plan_sync_wiki: "Syncing project to wiki",
+  plan_check_overdue: "Checking for overdue items",
+  // Fallbacks
+  wiki_search_pages: "Searching wiki",
+  wiki_create_page: "Creating wiki page",
 };
 
 function getStepLabel(name: string, args?: string): string {
@@ -142,10 +153,24 @@ export function AIPlannerOverlay({
     recognitionRef.current = recognition;
   };
 
+  // Plan result data from agent_done
+  const [planResult, setPlanResult] = useState<{
+    projectId?: string;
+    projectName?: string;
+    taskCount?: number;
+    milestoneCount?: number;
+    conflictCount?: number;
+    risk?: { score: number; factors: string[]; suggestions: string[] };
+    wikiPageUrl?: string;
+    knowledgeGaps?: string[];
+    critiqueScore?: number;
+  } | null>(null);
+
   const resetExecutionState = useCallback(() => {
     setAgentSteps([]);
     setStatusText("");
     setFinalResponse("");
+    setPlanResult(null);
   }, []);
 
   const handleGenerate = async () => {
@@ -161,18 +186,15 @@ export function AIPlannerOverlay({
         ...(await getApiAuthHeaders()),
       };
 
-      // Create a new chat session for planning
-      const sessionData = await api.post<{ id: string }>(`/chat/${teamId}/sessions/`, { title: "Plan Generation" });
-      const sessionId = sessionData.id;
-
-      const response = await fetch(`${API_BASE}/chat/${teamId}/sessions/${sessionId}/stream/`, {
+      // Call the dedicated 9-phase planning agent endpoint directly
+      const response = await fetch(`${API_BASE}/planning/${teamId}/assist/stream/`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ message: prompt }),
+        body: JSON.stringify({ prompt, mode: "create" }),
       });
 
-      if (!response.ok) throw new Error("Stream error");
-      if (!response.body) throw new Error("No body");
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
+      if (!response.body) throw new Error("No response body");
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -190,16 +212,20 @@ export function AIPlannerOverlay({
           if (line.startsWith("event:")) {
             currentEvent = line.slice(7).trim();
           } else if (line.startsWith("data:") && currentEvent) {
-            const dataStr = line.slice(6);
+            const dataStr = line.slice(5).trim();
+            if (!dataStr) continue;
             try {
               const data = JSON.parse(dataStr);
-              if (currentEvent === "status") {
+
+              if (currentEvent === "agent_status") {
                 setStatusText(data.status || "");
-              } else if (currentEvent === "tool_call") {
+
+              } else if (currentEvent === "agent_step") {
                 const name = data.name || "";
-                const label = getStepLabel(name, data.arguments);
+                const label = getStepLabel(name, JSON.stringify(data.arguments || {}));
                 setAgentSteps((prev) => [...prev, { name, label, status: "running" }]);
-              } else if (currentEvent === "tool_result") {
+
+              } else if (currentEvent === "agent_result") {
                 const name = data.name || "";
                 setAgentSteps((prev) => {
                   const next = [...prev];
@@ -211,21 +237,42 @@ export function AIPlannerOverlay({
                   }
                   return next;
                 });
-              } else if (currentEvent === "chunk") {
-                setFinalResponse((prev) => prev + (data.token || ""));
-              } else if (currentEvent === "done") {
+
+              } else if (currentEvent === "reasoning_done") {
+                // Pipeline finished reasoning — entity creation follows
+                setStatusText("Reasoning complete. Creating project entities...");
+
+              } else if (currentEvent === "agent_done") {
+                setPlanResult({
+                  projectId: data.project_id,
+                  projectName: data.project_name,
+                  taskCount: data.task_count,
+                  milestoneCount: data.milestone_count,
+                  conflictCount: data.conflict_count,
+                  risk: data.risk,
+                  wikiPageUrl: data.wiki_page_url,
+                  knowledgeGaps: data.knowledge_gaps,
+                  critiqueScore: data.critique_score,
+                });
                 setPhase("review");
-              } else if (currentEvent === "error") {
-                throw new Error(data.detail || "Stream error");
+
+              } else if (currentEvent === "agent_error") {
+                throw new Error(data.detail || "Planning agent error");
               }
-            } catch { /* skip parse errs */ }
+            } catch (parseErr) {
+              if (parseErr instanceof Error && parseErr.message.startsWith("Planning agent error")) throw parseErr;
+              /* skip parse errors */
+            }
             currentEvent = "";
           }
         }
       }
+      // If we finished streaming without agent_done, transition anyway
+      if (phase === "executing") setPhase("review");
+
     } catch (error: unknown) {
       console.error(error);
-      alert(error instanceof Error ? error.message : "Failed to process request. Please try again.");
+      alert(error instanceof Error ? error.message : "Failed to generate plan. Please try again.");
       setPhase("input");
     } finally {
       setLoading(false);
@@ -488,12 +535,66 @@ export function AIPlannerOverlay({
                 animate={{ opacity: 1, scale: 1 }}
                 className="space-y-6"
               >
-                <div className="bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-2xl p-6">
-                  <h3 className="text-lg font-bold mb-4 text-[var(--text-primary)]">Agent Response</h3>
-                  <div className="prose prose-invert prose-sm max-w-none">
-                    <ReactMarkdown>{finalResponse}</ReactMarkdown>
+                {/* Plan summary card */}
+                {planResult && (
+                  <div className="bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-2xl p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+                        <CheckCircle2 className="w-5 h-5 text-[var(--success)]" />
+                        {planResult.projectName || "Plan Created"}
+                      </h3>
+                      {planResult.wikiPageUrl && (
+                        <a href={planResult.wikiPageUrl} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--accent)] hover:underline">
+                          <FileText className="w-3 h-3" /> Wiki Page
+                        </a>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-[var(--surface-2)] rounded-xl p-3 text-center">
+                        <div className="text-2xl font-black text-[var(--text-primary)]">{planResult.taskCount ?? 0}</div>
+                        <div className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">Tasks</div>
+                      </div>
+                      <div className="bg-[var(--surface-2)] rounded-xl p-3 text-center">
+                        <div className="text-2xl font-black text-[var(--text-primary)]">{planResult.milestoneCount ?? 0}</div>
+                        <div className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">Milestones</div>
+                      </div>
+                      <div className={`rounded-xl p-3 text-center ${planResult.risk ? riskBg(planResult.risk.score) : "bg-[var(--surface-2)]"}`}>
+                        <div className={`text-2xl font-black ${planResult.risk ? riskColor(planResult.risk.score) : "text-[var(--text-primary)]"}`}>
+                          {planResult.risk?.score ?? "—"}
+                        </div>
+                        <div className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">Risk Score</div>
+                      </div>
+                    </div>
+                    {(planResult.conflictCount ?? 0) > 0 && (
+                      <div className="flex items-center gap-2 text-sm text-[var(--warning)] bg-[var(--warning)]/10 rounded-xl px-4 py-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        {planResult.conflictCount} scheduling conflict{planResult.conflictCount! > 1 ? "s" : ""} detected — review in the Planner.
+                      </div>
+                    )}
+                    {planResult.risk?.suggestions && planResult.risk.suggestions.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Risk Mitigations</p>
+                        {planResult.risk.suggestions.slice(0, 3).map((s, i) => (
+                          <div key={i} className="flex items-start gap-2 text-sm text-[var(--text-secondary)]">
+                            <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--accent)]" />
+                            {s}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {planResult.knowledgeGaps && planResult.knowledgeGaps.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Knowledge Gaps Identified</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {planResult.knowledgeGaps.slice(0, 5).map((gap, i) => (
+                            <span key={i} className="text-[10px] px-2 py-1 rounded-lg bg-[var(--warning)]/10 text-[var(--warning)] border border-[var(--warning)]/20">{gap}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
 
                 {/* Agent execution log (collapsible) */}
                 <details className="group">
@@ -524,15 +625,15 @@ export function AIPlannerOverlay({
                   <button
                     onClick={() => {
                       onPlanGenerated({
-                        projectName: "AI Generated Plan",
-                        description: finalResponse,
+                        projectName: planResult?.projectName || "AI Generated Plan",
+                        description: `${planResult?.taskCount ?? 0} tasks · ${planResult?.milestoneCount ?? 0} milestones`,
                         tasks: [],
                         milestones: [],
                       });
                     }}
                     className="flex-[2] h-14 rounded-2xl bg-[var(--accent)] text-white font-bold flex items-center justify-center gap-2 hover:opacity-95 transition-all shadow-xl shadow-[var(--accent-glow)]"
                   >
-                    Use This Plan
+                    Open in Planner
                     <ArrowRight className="w-5 h-5" />
                   </button>
                 </div>

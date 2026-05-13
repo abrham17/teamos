@@ -243,11 +243,35 @@ export default function SettingsPage() {
     return "pending";
   };
 
-  const handleExportWiki = () => {
+  const handleExportWiki = async () => {
     if (!currentTeamId) return;
     info("Preparing your wiki export...");
-    const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/export/${currentTeamId}/wiki/`;
-    window.open(url, "_blank");
+    try {
+      const { getApiAuthHeaders } = await import("@/lib/api");
+      const authHeaders = await getApiAuthHeaders();
+      const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/export/${currentTeamId}/wiki/`;
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { ...authHeaders },
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = `teamos_export.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(downloadUrl);
+      success("Wiki exported successfully!");
+    } catch (err: unknown) {
+      error(toErrorMessage(err, "Failed to export wiki."));
+    }
   };
 
   const handleDeleteTeam = () => {
