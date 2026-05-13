@@ -20,8 +20,16 @@ from planning.agent_sync import (
     generate_plan_with_wiki_context,
     sync_project_to_wiki,
 )
-from planning.models import Project
-from planning.services import create_milestone, create_project, create_task, get_project_or_none, update_task
+from planning.models import Project, Task, Milestone
+from planning.services import (
+    create_milestone,
+    create_project,
+    create_task,
+    get_project_or_none,
+    update_milestone,
+    update_project,
+    update_task,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -448,55 +456,122 @@ def run_planner_agent_v2(
             yield _sse("agent_error", {"detail": f"Project creation failed: {e}"})
             return
 
-    # Create tasks
+    elif mode == "manage":
+        if not project_id:
+            yield _sse("agent_error", {"detail": "manage mode requires project_id."})
+            return
+        project_obj = get_project_or_none(team_id=team_id, project_id=str(project_id))
+        if not project_obj:
+            yield _sse("agent_error", {"detail": "Project not found."})
+            return
+        yield _sse("agent_status", {"status": "Updating existing project..."})
+        try:
+            up_payload: dict[str, Any] = {}
+            pname = draft_data.get("projectName")
+            if pname:
+                up_payload["name"] = pname
+            if "description" in draft_data:
+                up_payload["description"] = draft_data.get("description", "")
+            if up_payload:
+                update_project(project_obj, up_payload)
+            yield _sse("agent_step", {"name": "plan_update_project", "arguments": json.dumps({"project_id": str(project_id)})})
+            yield _sse("agent_result", {"name": "plan_update_project", "ok": True, "result": {"project_id": str(project_id)}})
+        except Exception as e:
+            logger.exception("Project update failed in v2 pipeline")
+            yield _sse("agent_error", {"detail": f"Project update failed: {e}"})
+            return
+    else:
+        yield _sse("agent_error", {"detail": f"Unsupported mode: {mode}"})
+        return
+
+    # Create or update tasks
     tasks_data = draft_data.get("tasks", [])
     if created_project_id and tasks_data:
         project_obj = get_project_or_none(team_id=team_id, project_id=created_project_id)
         if project_obj:
-            for idx, t_data in enumerate(tasks_data):
-                yield _sse("agent_status", {"status": f"Creating task {idx + 1}/{len(tasks_data)}: {t_data.get('title', '')}"})
-                try:
-                    task = create_task(
-                        project=project_obj,
-                        user=user,
-                        payload={
-                            "title": t_data.get("title", "Untitled Task"),
-                            "description": t_data.get("description", ""),
-                            "status": t_data.get("status", "todo"),
-                            "priority": t_data.get("priority", "medium"),
-                            "start_date": t_data.get("startDate") or t_data.get("start_date"),
-                            "end_date": t_data.get("endDate") or t_data.get("end_date"),
-                            "order_index": t_data.get("order_index", idx),
-                        },
-                    )
-                    yield _sse("agent_step", {"name": "plan_create_task", "arguments": json.dumps({"title": task.title, "index": idx + 1, "total": len(tasks_data)})})
-                    yield _sse("agent_result", {"name": "plan_create_task", "ok": True, "result": {"task_id": str(task.id), "title": task.title}})
-                except Exception as e:
-                    logger.warning("Task creation failed: %s", e)
-                    yield _sse("agent_result", {"name": "plan_create_task", "ok": False, "result": {"error": str(e)}})
+            tasks_by_title: dict[str, Task] = {}
+            if mode == "manage":
+                tasks_by_title = {t.title: t for t in project_obj.tasks.all()}
 
-    # Create milestones
+            for idx, t_data in enumerate(tasks_data):
+                title = t_data.get("title", "Untitled Task")
+                verb = "Updating" if mode == "manage" and title in tasks_by_title else "Creating"
+                yield _sse("agent_status", {"status": f"{verb} task {idx + 1}/{len(tasks_data)}: {title}"})
+                payload = {
+                    "title": title,
+                    "description": t_data.get("description", ""),
+                    "status": t_data.get("status", "todo"),
+                    "priority": t_data.get("priority", "medium"),
+                    "start_date": t_data.get("startDate") or t_data.get("start_date"),
+                    "end_date": t_data.get("endDate") or t_data.get("end_date"),
+                    "order_index": t_data.get("order_index", idx),
+                }
+                try:
+                    if mode == "manage" and title in tasks_by_title:
+                        task = tasks_by_title[title]
+                        update_task(task, payload)
+                        yield _sse(
+                            "agent_step",
+                            {"name": "plan_update_task", "arguments": json.dumps({"title": task.title, "index": idx + 1, "total": len(tasks_data)})},
+                        )
+                        yield _sse("agent_result", {"name": "plan_update_task", "ok": True, "result": {"task_id": str(task.id), "title": task.title}})
+                    else:
+                        task = create_task(
+                            project=project_obj,
+                            user=user,
+                            payload=payload,
+                        )
+                        yield _sse("agent_step", {"name": "plan_create_task", "arguments": json.dumps({"title": task.title, "index": idx + 1, "total": len(tasks_data)})})
+                        yield _sse("agent_result", {"name": "plan_create_task", "ok": True, "result": {"task_id": str(task.id), "title": task.title}})
+                except Exception as e:
+                    logger.warning("Task upsert failed: %s", e)
+                    err_step = (
+                        "plan_update_task"
+                        if mode == "manage" and title in tasks_by_title
+                        else "plan_create_task"
+                    )
+                    yield _sse("agent_result", {"name": err_step, "ok": False, "result": {"error": str(e)}})
+
+    # Create or update milestones
     milestones_data = draft_data.get("milestones", [])
     if created_project_id and milestones_data:
         project_obj = get_project_or_none(team_id=team_id, project_id=created_project_id)
         if project_obj:
+            ms_by_title: dict[str, Milestone] = {}
+            if mode == "manage":
+                ms_by_title = {m.title: m for m in project_obj.milestones.all()}
+
             for idx, m_data in enumerate(milestones_data):
+                m_title = m_data.get("title", "Untitled")
                 try:
-                    milestone = create_milestone(
-                        project=project_obj,
-                        user=user,
-                        payload={
-                            "title": m_data.get("title", "Untitled"),
-                            "description": m_data.get("description", ""),
-                            "status": "pending",
-                            "target_date": m_data.get("date") or m_data.get("target_date"),
-                            "order_index": idx,
-                        },
-                    )
-                    yield _sse("agent_step", {"name": "plan_create_milestone", "arguments": json.dumps({"title": milestone.title})})
-                    yield _sse("agent_result", {"name": "plan_create_milestone", "ok": True, "result": {"milestone_id": str(milestone.id)}})
+                    if mode == "manage" and m_title in ms_by_title:
+                        milestone = ms_by_title[m_title]
+                        update_milestone(
+                            milestone,
+                            {
+                                "description": m_data.get("description", ""),
+                                "target_date": m_data.get("date") or m_data.get("target_date"),
+                                "order_index": idx,
+                            },
+                        )
+                        yield _sse("agent_step", {"name": "plan_update_milestone", "arguments": json.dumps({"title": milestone.title})})
+                        yield _sse("agent_result", {"name": "plan_update_milestone", "ok": True, "result": {"milestone_id": str(milestone.id)}})
+                    else:
+                        milestone = create_milestone(
+                            project=project_obj,
+                            user=user,
+                            payload={
+                                "title": m_title,
+                                "description": m_data.get("description", ""),
+                                "status": "pending",
+                                "target_date": m_data.get("date") or m_data.get("target_date"),
+                                "order_index": idx,
+                            },
+                        )
+                        yield _sse("agent_step", {"name": "plan_create_milestone", "arguments": json.dumps({"title": milestone.title})})
+                        yield _sse("agent_result", {"name": "plan_create_milestone", "ok": True, "result": {"milestone_id": str(milestone.id)}})
                 except Exception as e:
-                    logger.warning("Milestone creation failed: %s", e)
+                    logger.warning("Milestone upsert failed: %s", e)
 
     # ── Reindex ───────────────────────────────────────────────────
     if created_project_id:
