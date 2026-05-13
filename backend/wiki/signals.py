@@ -1,5 +1,6 @@
 """Wiki change event handlers for plan synchronization."""
 
+import json
 import logging
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
@@ -69,6 +70,7 @@ def _scan_plans_for_new_page(page: WikiPage, team_id: str):
     )
 
     from llm_orchestrator.orchestrator import llm_call
+
     prompt = f"""A new wiki page was created. Check if any active tasks should reference it.
 
 New page: "{page.title}"
@@ -82,14 +84,40 @@ Return JSON array of task titles that should reference this page:
 [{{"task_title": "...", "reason": "why"}}]
 If none, return []."""
 
-    resp, _, _ = llm_call(
-        system="You are a project-wiki linker. Return only valid JSON array.",
-        prompt=prompt
-    )
+    try:
+        resp, _, _ = llm_call(
+            team=page.team,
+            operation="wiki_plan_linker",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a project-wiki linker. Return only valid JSON array.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            user=page.created_by,
+            temperature=0.3,
+        )
+    except Exception:
+        logger.exception("wiki_plan_linker LLM call failed for page %s", page.title)
+        return
 
     try:
-        import json
-        matches = json.loads(resp.choices[0].message.content if resp else "[]")
+        raw = (
+            resp.choices[0].message.content
+            if resp and resp.choices
+            else "[]"
+        )
+        raw = raw.strip()
+        raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        matches = json.loads(raw)
+        if not isinstance(matches, list):
+            logger.warning(
+                "wiki_plan_linker expected a JSON array for page %s, got %s",
+                page.title,
+                type(matches).__name__,
+            )
+            return
         for match in matches:
             task_title = match.get("task_title", "")
             task = active_tasks.filter(title=task_title).first()
