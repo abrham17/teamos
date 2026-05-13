@@ -18,13 +18,21 @@ def on_wiki_page_saved(sender, instance, created, **kwargs):
 
     team_id = str(instance.team_id)
 
-    # When a new page is created, scan active plans for tasks that should reference it
-    if created:
-        _scan_plans_for_new_page(instance, team_id)
+    try:
+        # When a new page is created, scan active plans for tasks that should reference it
+        if created:
+            _scan_plans_for_new_page(instance, team_id)
 
-    # When a page is updated, check if active tasks referencing it need attention
-    if not created:
-        _check_affected_tasks(instance, team_id)
+        # When a page is updated, check if active tasks referencing it need attention
+        if not created:
+            _check_affected_tasks(instance, team_id)
+    except Exception:
+        # Never break WikiPage.save() (e.g. ingest worker, admin); log and continue.
+        logger.exception(
+            "Wiki post_save handler failed for page id=%s title=%s",
+            getattr(instance, "pk", None),
+            getattr(instance, "title", ""),
+        )
 
 
 @receiver(post_delete, sender=WikiPage)
@@ -56,10 +64,13 @@ def on_wiki_page_deleted(sender, instance, **kwargs):
 
 def _scan_plans_for_new_page(page: WikiPage, team_id: str):
     """Check if any active project tasks should reference this new page."""
-    active_tasks = Task.objects.filter(
-        project__team_id=team_id,
-        status__in=["todo", "in-progress"],
-    ).select_related("project")[:50]
+    # Materialize before further filters: Django forbids .filter() after [:50].
+    active_tasks = list(
+        Task.objects.filter(
+            project__team_id=team_id,
+            status__in=["todo", "in-progress"],
+        ).select_related("project")[:50]
+    )
 
     if not active_tasks:
         return
@@ -118,9 +129,10 @@ If none, return []."""
                 type(matches).__name__,
             )
             return
+        by_title = {t.title: t for t in active_tasks}
         for match in matches:
             task_title = match.get("task_title", "")
-            task = active_tasks.filter(title=task_title).first()
+            task = by_title.get(task_title)
             if task:
                 task.description = (task.description or "") + f"\n\n📄 See: [[{page.title}]]"
                 task.save(update_fields=["description"])

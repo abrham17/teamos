@@ -1,4 +1,7 @@
+import asyncio
 import logging
+import queue
+import threading
 import uuid
 from datetime import date
 
@@ -46,6 +49,10 @@ from .reindex import clear_project_chunks, reindex_project
 from accounts.models import User, Team
 
 logger = logging.getLogger(__name__)
+
+# Heroku H12: router drops connections with ~30s of inactivity. Emit SSE comments
+# between planner chunks so bytes still flow during long LLM/DB work.
+PLANNING_SSE_KEEPALIVE_SEC = 18.0
 
 
 class RiskActionSerializer(serializers.Serializer):
@@ -445,7 +452,7 @@ class PlanningAssistStreamView(APIView):
         if not prompt:
             return fail("Prompt is required.", status_code=400, code="prompt_required")
 
-        def event_stream():
+        def _planner_sse_sync():
             from .agent_executor import run_planner_agent_v2
 
             try:
@@ -461,10 +468,50 @@ class PlanningAssistStreamView(APIView):
                 logger.exception("Planner agent stream failed")
                 yield f"event: agent_error\ndata: {_json.dumps({'detail': str(e)})}\n\n"
 
-        # Sync iterator only: wrapping in an async generator makes Django treat the
-        # stream as async and raises SynchronousOnlyOperation on ORM inside
-        # run_planner_agent_v2 (see Team.objects.get in agent_executor).
-        response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+        _stream_done = object()
+        _heartbeat = object()
+
+        def _queue_get_timed(q, timeout):
+            try:
+                return q.get(timeout=timeout)
+            except queue.Empty:
+                return _heartbeat
+
+        async def async_event_stream():
+            # ASGI needs a real async iterator (not sync map). Run the sync planner
+            # generator in a dedicated thread and multiplex timed reads so we can
+            # emit SSE comment keepalives (Heroku H12 ~30s idle on the connection).
+            out_q: queue.Queue = queue.Queue()
+
+            def producer():
+                try:
+                    for sse_line in _planner_sse_sync():
+                        out_q.put(sse_line)
+                except Exception:
+                    logger.exception("Planner SSE producer thread failed")
+                finally:
+                    out_q.put(_stream_done)
+
+            threading.Thread(
+                target=producer,
+                name="planning-assist-sse",
+                daemon=True,
+            ).start()
+
+            yield ": connected\n\n"
+
+            while True:
+                chunk = await asyncio.to_thread(
+                    _queue_get_timed, out_q, PLANNING_SSE_KEEPALIVE_SEC
+                )
+                if chunk is _stream_done:
+                    break
+                if chunk is _heartbeat:
+                    yield ": keepalive\n\n"
+                    continue
+                yield chunk
+
+        response = StreamingHttpResponse(async_event_stream(), content_type="text/event-stream")
         response["Cache-Control"] = "no-cache"
         response["X-Accel-Buffering"] = "no"
         return response

@@ -362,25 +362,38 @@ def run_pipeline(job: IngestJob, source_text: str = "", trace_id: str | None = N
 def _save_raw_source(job: IngestJob, parsed_text: str, staging_file_name: str | None) -> RawSource | None:
     """Persist the original source permanently for traceability."""
     try:
-        source = RawSource.objects.create(
-            team=job.team,
-            source_type=job.source_type,
-            source_url=job.source_url or "",
-            original_filename=job.source_filename or "",
-            extracted_text=parsed_text,
-            structure_map=_build_structure_map(job.source_type, parsed_text),
-            ingest_job=job,
-            created_by=job.created_by,
-        )
+        structure_map = _build_structure_map(job.source_type, parsed_text)
+        defaults = {
+            "team": job.team,
+            "source_type": job.source_type,
+            "source_url": job.source_url or "",
+            "original_filename": job.source_filename or "",
+            "extracted_text": parsed_text,
+            "structure_map": structure_map,
+            "created_by": job.created_by,
+        }
+        # Celery retries re-enter the pipeline; RawSource.ingest_job is OneToOne — reuse row.
+        source, created = RawSource.objects.get_or_create(ingest_job=job, defaults=defaults)
+        if not created:
+            if (
+                source.extracted_text != parsed_text
+                or source.structure_map != structure_map
+            ):
+                source.extracted_text = parsed_text
+                source.structure_map = structure_map
+                source.save(update_fields=["extracted_text", "structure_map"])
+
         # If there was a staging file, copy file bytes to a durable raw-source object.
         if staging_file_name:
             from django.core.files.storage import default_storage
 
             if default_storage.exists(staging_file_name):
-                with default_storage.open(staging_file_name, "rb") as src:
-                    original_name = (job.source_filename or "source.bin").replace(" ", "_")
-                    durable_name = f"raw_sources/{job.team_id}/{uuid.uuid4().hex}-{original_name}"
-                    source.file.save(durable_name, ContentFile(src.read()), save=True)
+                has_file = bool(getattr(source.file, "name", None))
+                if created or not has_file:
+                    with default_storage.open(staging_file_name, "rb") as src:
+                        original_name = (job.source_filename or "source.bin").replace(" ", "_")
+                        durable_name = f"raw_sources/{job.team_id}/{uuid.uuid4().hex}-{original_name}"
+                        source.file.save(durable_name, ContentFile(src.read()), save=True)
 
         return source
     except Exception:
