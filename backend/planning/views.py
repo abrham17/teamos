@@ -461,11 +461,10 @@ class PlanningAssistStreamView(APIView):
                 logger.exception("Planner agent stream failed")
                 yield f"event: agent_error\ndata: {_json.dumps({'detail': str(e)})}\n\n"
 
-        async def async_event_stream():
-            for chunk in event_stream():
-                yield chunk
-
-        response = StreamingHttpResponse(async_event_stream(), content_type="text/event-stream")
+        # Sync iterator only: wrapping in an async generator makes Django treat the
+        # stream as async and raises SynchronousOnlyOperation on ORM inside
+        # run_planner_agent_v2 (see Team.objects.get in agent_executor).
+        response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
         response["Cache-Control"] = "no-cache"
         response["X-Accel-Buffering"] = "no"
         return response
