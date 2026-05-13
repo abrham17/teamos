@@ -58,22 +58,24 @@ interface Props {
 type MarkdownStorage = {
   markdown?: {
     getMarkdown: () => string;
+    setContent: (markdown: string) => void;
   };
 };
 
 function setEditorMarkdownContent(editor: NonNullable<ReturnType<typeof useEditor>>, markdown: string) {
-  let value = markdown || "";
+  const value = markdown || "";
 
-  // Pre-process [[Wikilinks]] if they are raw in markdown
-  // This helps TipTap's Wikilink extension recognize them on load
-  value = value.replace(/\[\[([^\]]+)\]\]/g, (match, title) => {
-    return `<span data-wikilink data-title="${title}" class="wikilink">[[${title}]]</span>`;
-  });
-
-  editor.commands.setContent(value, {
-    emitUpdate: false,
-    parseOptions: { preserveWhitespace: "full" },
-  });
+  // Use the Markdown extension's storage to properly parse markdown content.
+  // This ensures headings, lists, code blocks, etc. are rendered correctly.
+  const mdStorage = (editor.storage as unknown as MarkdownStorage).markdown;
+  if (mdStorage?.setContent) {
+    mdStorage.setContent(value);
+  } else {
+    editor.commands.setContent(value, {
+      emitUpdate: false,
+      parseOptions: { preserveWhitespace: "full" },
+    });
+  }
 }
 
 export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(function GoogleDocsEditor(

@@ -173,6 +173,164 @@ const getSuggestions = (teamId: string) => ({
           }
         },
       },
+      {
+        title: '✨ AI Expand Section',
+        command: async ({ editor, range }: CommandContext) => {
+          const sectionName = prompt('Which section heading should the AI expand?')
+          if (!sectionName) {
+            editor.chain().focus().deleteRange(range).run()
+            return
+          }
+          const instructions = prompt('Any specific instructions? (optional)') || ''
+          editor.chain().focus().deleteRange(range).run()
+
+          if (!teamId) {
+            alert("No active team found to use AI.");
+            return;
+          }
+
+          try {
+            const authHeaders = await getApiAuthHeaders();
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+            const pageId = new URLSearchParams(window.location.search).get('page') || '';
+
+            const response = await fetch(`${API_URL}/wiki/${teamId}/ai-assist/`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...authHeaders },
+              body: JSON.stringify({
+                action: 'expand',
+                page_id: pageId,
+                section: sectionName,
+                instructions,
+              })
+            });
+
+            if (!response.ok) throw new Error('AI expand failed');
+            const data = await response.json();
+            if (data.data?.content) {
+              editor.chain().focus().insertContent(data.data.content).run();
+            }
+          } catch (err) {
+            console.error("AI Expand failed:", err);
+            alert("AI Expand failed.");
+          }
+        },
+      },
+      {
+        title: '✨ AI Summarize Page',
+        command: async ({ editor, range }: CommandContext) => {
+          editor.chain().focus().deleteRange(range).run()
+
+          if (!teamId) {
+            alert("No active team found to use AI.");
+            return;
+          }
+
+          try {
+            const authHeaders = await getApiAuthHeaders();
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+            const pageId = new URLSearchParams(window.location.search).get('page') || '';
+
+            const response = await fetch(`${API_URL}/wiki/${teamId}/ai-assist/`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...authHeaders },
+              body: JSON.stringify({
+                action: 'summarize',
+                page_id: pageId,
+              })
+            });
+
+            if (!response.ok) throw new Error('AI summarize failed');
+            const data = await response.json();
+            if (data.data?.content) {
+              editor.chain().focus().insertContent('\n## AI Summary\n\n' + data.data.content + '\n').run();
+            }
+          } catch (err) {
+            console.error("AI Summarize failed:", err);
+            alert("AI Summarize failed.");
+          }
+        },
+      },
+      {
+        title: '✨ AI Suggest Links',
+        command: async ({ editor, range }: CommandContext) => {
+          editor.chain().focus().deleteRange(range).run()
+
+          if (!teamId) {
+            alert("No active team found to use AI.");
+            return;
+          }
+
+          try {
+            const authHeaders = await getApiAuthHeaders();
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+            const pageId = new URLSearchParams(window.location.search).get('page') || '';
+
+            const response = await fetch(`${API_URL}/wiki/${teamId}/ai-assist/`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...authHeaders },
+              body: JSON.stringify({
+                action: 'suggest-links',
+                page_id: pageId,
+              })
+            });
+
+            if (!response.ok) throw new Error('AI suggest links failed');
+            const data = await response.json();
+            const suggestions = data.data?.suggestions || [];
+            if (suggestions.length > 0) {
+              const links = suggestions.map((s: { page_title: string; relevance: string }) =>
+                `- [[${s.page_title}]] — ${s.relevance}`
+              ).join('\n');
+              editor.chain().focus().insertContent('\n## Suggested Links\n\n' + links + '\n').run();
+            } else {
+              alert('No relevant links found.');
+            }
+          } catch (err) {
+            console.error("AI Suggest Links failed:", err);
+            alert("AI Suggest Links failed.");
+          }
+        },
+      },
+      {
+        title: '✨ AI Generate from Plan',
+        command: async ({ editor, range }: CommandContext) => {
+          const projectId = prompt('Enter the project ID to generate wiki documentation from:')
+          if (!projectId) {
+            editor.chain().focus().deleteRange(range).run()
+            return
+          }
+          editor.chain().focus().deleteRange(range).run()
+
+          if (!teamId) {
+            alert("No active team found to use AI.");
+            return;
+          }
+
+          try {
+            const authHeaders = await getApiAuthHeaders();
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+
+            const response = await fetch(`${API_URL}/wiki/${teamId}/ai-assist/`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...authHeaders },
+              body: JSON.stringify({
+                action: 'from-plan',
+                project_id: projectId,
+              })
+            });
+
+            if (!response.ok) throw new Error('AI generate from plan failed');
+            const data = await response.json();
+            if (data.data?.content) {
+              editor.chain().focus().setContent(data.data.content).run();
+            }
+          } catch (err) {
+            console.error("AI Generate from Plan failed:", err);
+            alert("AI Generate from Plan failed.");
+          }
+        },
+      },
     ];
 
     if (isTableActive) {
