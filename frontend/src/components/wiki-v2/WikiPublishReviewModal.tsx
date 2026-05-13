@@ -9,7 +9,13 @@ export type WikiChangeSetPayload = {
   proposed_content: string;
   baseline_content?: string;
   diff_summary?: {
-    contradictions?: string[];
+    contradictions?: Array<string | {
+      reason?: string;
+      existing_page_title?: string;
+      existing_snippet?: string;
+      new_snippet?: string;
+      confidence?: number;
+    }>;
     additions?: string[];
     related_pages?: string[];
   };
@@ -108,9 +114,17 @@ export function WikiPublishReviewModal({ open, teamId, changeset, onClose, onApp
             <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
               <div className="text-xs font-bold uppercase text-amber-200">Possible contradictions</div>
               <ul className="mt-2 list-inside list-disc text-sm text-amber-100/90">
-                {contradictions.map((c, i) => (
-                  <li key={i}>{c}</li>
-                ))}
+                {contradictions.map((c, i) => {
+                  const text = typeof c === "string"
+                    ? c
+                    : c.reason || [
+                        c.existing_page_title ? `Conflict with ${c.existing_page_title}` : "Possible conflict",
+                        c.existing_snippet && c.new_snippet
+                          ? `${c.existing_snippet} / ${c.new_snippet}`
+                          : "",
+                      ].filter(Boolean).join(": ");
+                  return <li key={i}>{text}</li>;
+                })}
               </ul>
             </div>
           )}
