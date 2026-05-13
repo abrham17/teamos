@@ -269,6 +269,71 @@ class WikiApiTests(APITestCase):
         page.refresh_from_db()
         self.assertEqual(page.content, "Keep me")
 
+    @patch("ingest.pipeline._chat_json_completion")
+    def test_publish_review_pipeline_creates_changeset_without_mutating_page(self, mock_llm):
+        mock_llm.side_effect = [
+            {"type": "standard", "template_name": "Standard Page"},
+            {"contradictions": ["Conflicts with current onboarding policy"], "additions": ["New rollout steps"]},
+        ]
+        self.client.force_authenticate(user=self.editor)
+        page = WikiPage.objects.create(
+            team=self.team,
+            title="New Markdown",
+            slug="new-markdown",
+            content="Original page body",
+            created_by=self.editor,
+        )
+        proposed = "# New Markdown\n\nUpdated body for review."
+
+        url = f"/api/wiki/{self.team.id}/pages/{page.slug}/publish/"
+        res = self.client.post(
+            url,
+            {"auto_approve": False, "content": proposed},
+            format="json",
+        )
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["data"]["mode"], "review_required")
+        changeset = res.data["data"]["changeset"]
+        self.assertEqual(changeset["proposed_content"], proposed)
+        self.assertEqual(changeset["baseline_content"], "Original page body")
+        self.assertEqual(changeset["diff_summary"]["contradictions"], ["Conflicts with current onboarding policy"])
+        page.refresh_from_db()
+        self.assertEqual(page.content, "Original page body")
+
+    @patch("ingest.pipeline._chat_json_completion")
+    def test_publish_review_approve_applies_proposed_markdown(self, mock_llm):
+        mock_llm.side_effect = [
+            {"type": "standard", "template_name": "Standard Page"},
+            {"contradictions": ["Review this change"], "additions": []},
+            {"type": "standard", "template_name": "Standard Page"},
+        ]
+        self.client.force_authenticate(user=self.editor)
+        page = WikiPage.objects.create(
+            team=self.team,
+            title="Approval Markdown",
+            slug="approval-markdown",
+            content="Before approval",
+            created_by=self.editor,
+        )
+        proposed = "# Approval Markdown\n\nAfter approval."
+
+        publish_url = f"/api/wiki/{self.team.id}/pages/{page.slug}/publish/"
+        publish_res = self.client.post(
+            publish_url,
+            {"auto_approve": False, "content": proposed},
+            format="json",
+        )
+        self.assertEqual(publish_res.status_code, status.HTTP_200_OK)
+        changeset_id = publish_res.data["data"]["changeset"]["id"]
+
+        approve_url = f"/api/wiki/{self.team.id}/changesets/{changeset_id}/approve/"
+        approve_res = self.client.post(approve_url, {}, format="json")
+        self.assertEqual(approve_res.status_code, status.HTTP_200_OK)
+        page.refresh_from_db()
+        self.assertEqual(page.content, proposed)
+        self.assertEqual(WikiChangeSet.objects.get(id=changeset_id).status, WikiChangeSet.STATUS_APPROVED)
+
     @patch("wiki.views.approve_wiki_changeset")
     def test_wiki_changeset_approve_calls_service(self, mock_approve):
         self.client.force_authenticate(user=self.editor)

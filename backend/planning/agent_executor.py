@@ -11,7 +11,7 @@ import json
 import logging
 from typing import Any, Iterator
 
-from accounts.models import Team, User
+from accounts.models import Team, TeamMember, User
 from chat.tools import ToolContext, execute_plan_tool, openai_plan_tool_schemas
 from llm_orchestrator.orchestrator import llm_call, llm_json_call
 from planning.agent_sync import (
@@ -26,6 +26,8 @@ from planning.services import (
     create_project,
     create_task,
     get_project_or_none,
+    add_project_member,
+    remove_project_member,
     update_milestone,
     update_project,
     update_task,
@@ -48,6 +50,65 @@ PLANNER_AGENT_SYSTEM = (
     "5. Provide a summary that highlights the semantic connections you made from the Wiki.\n\n"
     "Return ONLY tool calls during execution. Finally, provide a markdown summary.\n"
 )
+
+
+def _item_id(data: dict[str, Any]) -> str | None:
+    value = data.get("id") or data.get("task_id") or data.get("taskId") or data.get("milestone_id") or data.get("milestoneId")
+    return str(value) if value else None
+
+
+def _title_key(value: str | None) -> str:
+    return " ".join((value or "").strip().lower().split())
+
+
+def _should_create_in_manage(data: dict[str, Any], has_existing_items: bool) -> bool:
+    if not has_existing_items:
+        return True
+    action = str(data.get("action") or data.get("operation") or "").strip().lower()
+    return action in {"create", "add", "new"} or data.get("is_new") is True or data.get("isNew") is True
+
+
+def _team_user_ids(team: Team) -> set[str]:
+    return {
+        str(user_id)
+        for user_id in TeamMember.objects.filter(team=team).values_list("user_id", flat=True)
+    }
+
+
+def _resolve_team_user_id(data: dict[str, Any], valid_user_ids: set[str]) -> str | None:
+    value = data.get("assignee_id") or data.get("assigneeId") or data.get("user_id") or data.get("userId")
+    if value and str(value) in valid_user_ids:
+        return str(value)
+    return None
+
+
+def _apply_project_members(
+    *,
+    project: Project,
+    members_data: list[dict[str, Any]],
+    valid_user_ids: set[str],
+) -> int:
+    changed = 0
+    for member_data in members_data:
+        if not isinstance(member_data, dict):
+            continue
+        user_id = _resolve_team_user_id(member_data, valid_user_ids)
+        if not user_id:
+            continue
+        try:
+            member_user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            continue
+
+        if member_data.get("remove") is True:
+            remove_project_member(project=project, user=member_user)
+            changed += 1
+            continue
+
+        role = member_data.get("role") or member_data.get("project_role") or member_data.get("projectRole") or "Contributor"
+        add_project_member(project=project, user=member_user, role=str(role)[:100])
+        changed += 1
+    return changed
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:
@@ -435,6 +496,7 @@ def run_planner_agent_v2(
 
     # ── Create entities from the reasoned plan ────────────────────
     created_project_id = project_id
+    valid_user_ids = _team_user_ids(team)
 
     if mode == "create":
         yield _sse("agent_status", {"status": "Creating project..."})
@@ -451,6 +513,15 @@ def run_planner_agent_v2(
             created_project_id = str(project_obj.id)
             yield _sse("agent_step", {"name": "plan_create_project", "arguments": json.dumps({"name": project_obj.name})})
             yield _sse("agent_result", {"name": "plan_create_project", "ok": True, "result": {"project_id": created_project_id}})
+
+            member_count = _apply_project_members(
+                project=project_obj,
+                members_data=draft_data.get("members", []),
+                valid_user_ids=valid_user_ids,
+            )
+            if member_count:
+                yield _sse("agent_step", {"name": "plan_assign_project_roles", "arguments": json.dumps({"project_id": created_project_id})})
+                yield _sse("agent_result", {"name": "plan_assign_project_roles", "ok": True, "result": {"member_count": member_count}})
         except Exception as e:
             logger.exception("Project creation failed in v2 pipeline")
             yield _sse("agent_error", {"detail": f"Project creation failed: {e}"})
@@ -476,6 +547,15 @@ def run_planner_agent_v2(
                 update_project(project_obj, up_payload)
             yield _sse("agent_step", {"name": "plan_update_project", "arguments": json.dumps({"project_id": str(project_id)})})
             yield _sse("agent_result", {"name": "plan_update_project", "ok": True, "result": {"project_id": str(project_id)}})
+
+            member_count = _apply_project_members(
+                project=project_obj,
+                members_data=draft_data.get("members", []),
+                valid_user_ids=valid_user_ids,
+            )
+            if member_count:
+                yield _sse("agent_step", {"name": "plan_assign_project_roles", "arguments": json.dumps({"project_id": str(project_id)})})
+                yield _sse("agent_result", {"name": "plan_assign_project_roles", "ok": True, "result": {"member_count": member_count}})
         except Exception as e:
             logger.exception("Project update failed in v2 pipeline")
             yield _sse("agent_error", {"detail": f"Project update failed: {e}"})
@@ -489,26 +569,40 @@ def run_planner_agent_v2(
     if created_project_id and tasks_data:
         project_obj = get_project_or_none(team_id=team_id, project_id=created_project_id)
         if project_obj:
-            tasks_by_title: dict[str, Task] = {}
-            if mode == "manage":
-                tasks_by_title = {t.title: t for t in project_obj.tasks.all()}
+            existing_tasks = list(project_obj.tasks.all())
+            tasks_by_title: dict[str, Task] = {_title_key(t.title): t for t in existing_tasks}
+            tasks_by_id: dict[str, Task] = {str(t.id): t for t in existing_tasks}
 
             for idx, t_data in enumerate(tasks_data):
                 title = t_data.get("title", "Untitled Task")
-                verb = "Updating" if mode == "manage" and title in tasks_by_title else "Creating"
+                existing_task = None
+                if mode == "manage":
+                    existing_task = tasks_by_id.get(_item_id(t_data) or "") or tasks_by_title.get(_title_key(title))
+                will_create = mode == "create" or (
+                    existing_task is None and _should_create_in_manage(t_data, bool(existing_tasks))
+                )
+                if mode == "manage" and existing_task is None and not will_create:
+                    yield _sse("agent_step", {"name": "plan_skip_task", "arguments": json.dumps({"title": title})})
+                    yield _sse("agent_result", {"name": "plan_skip_task", "ok": True, "result": {"reason": "No matching existing task and no explicit create action."}})
+                    continue
+
+                verb = "Updating" if existing_task else "Creating"
                 yield _sse("agent_status", {"status": f"{verb} task {idx + 1}/{len(tasks_data)}: {title}"})
                 payload = {
                     "title": title,
                     "description": t_data.get("description", ""),
                     "status": t_data.get("status", "todo"),
                     "priority": t_data.get("priority", "medium"),
+                    "assignee_id": _resolve_team_user_id(t_data, valid_user_ids),
                     "start_date": t_data.get("startDate") or t_data.get("start_date"),
                     "end_date": t_data.get("endDate") or t_data.get("end_date"),
                     "order_index": t_data.get("order_index", idx),
                 }
+                if payload["assignee_id"] is None:
+                    payload.pop("assignee_id")
                 try:
-                    if mode == "manage" and title in tasks_by_title:
-                        task = tasks_by_title[title]
+                    if existing_task:
+                        task = existing_task
                         update_task(task, payload)
                         yield _sse(
                             "agent_step",
@@ -521,15 +615,14 @@ def run_planner_agent_v2(
                             user=user,
                             payload=payload,
                         )
+                        existing_tasks.append(task)
+                        tasks_by_id[str(task.id)] = task
+                        tasks_by_title[_title_key(task.title)] = task
                         yield _sse("agent_step", {"name": "plan_create_task", "arguments": json.dumps({"title": task.title, "index": idx + 1, "total": len(tasks_data)})})
                         yield _sse("agent_result", {"name": "plan_create_task", "ok": True, "result": {"task_id": str(task.id), "title": task.title}})
                 except Exception as e:
                     logger.warning("Task upsert failed: %s", e)
-                    err_step = (
-                        "plan_update_task"
-                        if mode == "manage" and title in tasks_by_title
-                        else "plan_create_task"
-                    )
+                    err_step = "plan_update_task" if existing_task else "plan_create_task"
                     yield _sse("agent_result", {"name": err_step, "ok": False, "result": {"error": str(e)}})
 
     # Create or update milestones
@@ -537,19 +630,32 @@ def run_planner_agent_v2(
     if created_project_id and milestones_data:
         project_obj = get_project_or_none(team_id=team_id, project_id=created_project_id)
         if project_obj:
-            ms_by_title: dict[str, Milestone] = {}
-            if mode == "manage":
-                ms_by_title = {m.title: m for m in project_obj.milestones.all()}
+            existing_milestones = list(project_obj.milestones.all())
+            ms_by_title: dict[str, Milestone] = {_title_key(m.title): m for m in existing_milestones}
+            ms_by_id: dict[str, Milestone] = {str(m.id): m for m in existing_milestones}
 
             for idx, m_data in enumerate(milestones_data):
                 m_title = m_data.get("title", "Untitled")
+                existing_milestone = None
+                if mode == "manage":
+                    existing_milestone = ms_by_id.get(_item_id(m_data) or "") or ms_by_title.get(_title_key(m_title))
+                will_create = mode == "create" or (
+                    existing_milestone is None and _should_create_in_manage(m_data, bool(existing_milestones))
+                )
+                if mode == "manage" and existing_milestone is None and not will_create:
+                    yield _sse("agent_step", {"name": "plan_skip_milestone", "arguments": json.dumps({"title": m_title})})
+                    yield _sse("agent_result", {"name": "plan_skip_milestone", "ok": True, "result": {"reason": "No matching existing milestone and no explicit create action."}})
+                    continue
+
                 try:
-                    if mode == "manage" and m_title in ms_by_title:
-                        milestone = ms_by_title[m_title]
+                    if existing_milestone:
+                        milestone = existing_milestone
                         update_milestone(
                             milestone,
                             {
+                                "title": m_title,
                                 "description": m_data.get("description", ""),
+                                "status": m_data.get("status", milestone.status),
                                 "target_date": m_data.get("date") or m_data.get("target_date"),
                                 "order_index": idx,
                             },
@@ -568,6 +674,9 @@ def run_planner_agent_v2(
                                 "order_index": idx,
                             },
                         )
+                        existing_milestones.append(milestone)
+                        ms_by_id[str(milestone.id)] = milestone
+                        ms_by_title[_title_key(milestone.title)] = milestone
                         yield _sse("agent_step", {"name": "plan_create_milestone", "arguments": json.dumps({"title": milestone.title})})
                         yield _sse("agent_result", {"name": "plan_create_milestone", "ok": True, "result": {"milestone_id": str(milestone.id)}})
                 except Exception as e:

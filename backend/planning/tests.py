@@ -6,7 +6,17 @@ from rest_framework.test import APITestCase
 
 from accounts.models import Team, TeamMember, User
 
-from .models import Milestone, Project, Task
+from .models import Milestone, Project, ProjectMember, Task
+
+
+class FakePlannerPipeline:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def run(self, prompt, mode="create", project_context=None):
+        import json
+
+        yield f"event: reasoning_done\ndata: {json.dumps(self.payload)}\n\n"
 
 
 class PlanningApiTests(APITestCase):
@@ -309,3 +319,114 @@ class PlanningApiTests(APITestCase):
         self.assertEqual(task.start_date.isoformat(), "2026-06-02")
         self.assertEqual(task.end_date.isoformat(), "2026-06-12")
         self.assertEqual(milestone.target_date.isoformat(), "2026-06-20")
+
+    @patch("planning.agent_executor.sync_project_to_wiki", return_value=None)
+    @patch("planning.agent_executor._assess_plan_risk", return_value={"score": 10, "factors": [], "suggestions": []})
+    @patch("planning.agent_executor.detect_date_conflicts", return_value=[])
+    @patch("planning.reindex.reindex_project")
+    @patch("planning.services.reindex_wiki_page")
+    def test_ai_architect_create_assigns_tasks_and_project_roles(
+        self, _mock_wiki_reindex, _mock_plan_reindex, _mock_conflicts, _mock_risk, _mock_sync
+    ):
+        from planning.agent_executor import run_planner_agent_v2
+
+        payload = {
+            "projectName": "Launch readiness",
+            "description": "Prepare launch using [[Launch SOP]].",
+            "tasks": [
+                {
+                    "title": "Day 1 checklist",
+                    "description": "Run [[Launch SOP]] checks.",
+                    "status": "todo",
+                    "priority": "high",
+                    "assignee_id": str(self.editor.id),
+                    "startDate": "2026-06-01",
+                    "endDate": "2026-06-01",
+                }
+            ],
+            "milestones": [
+                {"title": "Launch go/no-go", "date": "2026-06-02", "description": "", "status": "pending"}
+            ],
+            "members": [{"userId": str(self.editor.id), "role": "Launch Owner"}],
+        }
+
+        with patch("planning.reasoning_pipeline.PlanningReasoningPipeline", return_value=FakePlannerPipeline(payload)):
+            list(run_planner_agent_v2(team_id=str(self.team.id), prompt="Plan launch", user=self.editor))
+
+        project = Project.objects.get(team=self.team, name="Launch readiness")
+        task = project.tasks.get(title="Day 1 checklist")
+        self.assertEqual(task.assignee_id, self.editor.id)
+        self.assertEqual(task.start_date.isoformat(), "2026-06-01")
+        self.assertEqual(project.milestones.count(), 1)
+        self.assertTrue(
+            ProjectMember.objects.filter(project=project, user=self.editor, role="Launch Owner").exists()
+        )
+
+    @patch("planning.agent_executor.sync_project_to_wiki", return_value=None)
+    @patch("planning.agent_executor._assess_plan_risk", return_value={"score": 10, "factors": [], "suggestions": []})
+    @patch("planning.agent_executor.detect_date_conflicts", return_value=[])
+    @patch("planning.reindex.reindex_project")
+    def test_ai_architect_manage_updates_existing_items_without_duplicate_project_or_tasks(
+        self, _mock_plan_reindex, _mock_conflicts, _mock_risk, _mock_sync
+    ):
+        from planning.agent_executor import run_planner_agent_v2
+
+        task = self.project.tasks.first()
+        milestone = self.project.milestones.first()
+        payload = {
+            "projectName": self.project.name,
+            "description": "Updated scope grounded in [[Platform Runbook]].",
+            "tasks": [
+                {
+                    "id": str(task.id),
+                    "title": "Audit infrastructure",
+                    "description": "Refine audit with [[Platform Runbook]].",
+                    "status": "in-progress",
+                    "priority": "high",
+                    "assignee_id": str(self.editor.id),
+                    "startDate": "2026-05-02",
+                    "endDate": "2026-05-12",
+                },
+                {
+                    "title": "Unrequested duplicate-looking task",
+                    "description": "The model should not create this in manage mode without action=create.",
+                    "status": "todo",
+                    "priority": "medium",
+                    "startDate": "2026-05-13",
+                    "endDate": "2026-05-14",
+                },
+            ],
+            "milestones": [
+                {
+                    "id": str(milestone.id),
+                    "title": "Migration plan approved",
+                    "date": "2026-05-20",
+                    "description": "Approval moved after scope review.",
+                    "status": "pending",
+                },
+                {"title": "Unrequested extra milestone", "date": "2026-05-25", "description": "", "status": "pending"},
+            ],
+            "members": [{"userId": str(self.editor.id), "role": "Reviewer"}],
+        }
+
+        with patch("planning.reasoning_pipeline.PlanningReasoningPipeline", return_value=FakePlannerPipeline(payload)):
+            list(
+                run_planner_agent_v2(
+                    team_id=str(self.team.id),
+                    prompt="Update the migration plan",
+                    mode="manage",
+                    project_id=str(self.project.id),
+                    user=self.editor,
+                )
+            )
+
+        self.assertEqual(Project.objects.filter(team=self.team).count(), 1)
+        self.assertEqual(self.project.tasks.count(), 1)
+        self.assertEqual(self.project.milestones.count(), 1)
+        task.refresh_from_db()
+        milestone.refresh_from_db()
+        self.assertEqual(task.title, "Audit infrastructure")
+        self.assertEqual(task.assignee_id, self.editor.id)
+        self.assertEqual(task.end_date.isoformat(), "2026-05-12")
+        self.assertEqual(milestone.target_date.isoformat(), "2026-05-20")
+        self.assertTrue(ProjectMember.objects.filter(project=self.project, user=self.editor, role="Reviewer").exists())

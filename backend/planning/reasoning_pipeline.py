@@ -364,13 +364,19 @@ class PlanningReasoningPipeline:
             "IMPORTANT RULES:\n"
             "- Reference specific wiki pages using [[Page Title]] syntax in task descriptions.\n"
             "- For EACH task, add a 'reasoning' field explaining WHY this task, priority, and deadline.\n"
-            "- Assign tasks to team members based on their expertise.\n"
-            "- Tasks should cover ALL sub-goals from the decomposition.\n\n"
+            "- Assign tasks to team members based on their expertise using assignee_id from Team Expertise.\n"
+            "- Tasks should include startDate and endDate so the timeline, board, and day-by-day calendar can be derived.\n"
+            "- Members should define project roles for assigned team members.\n"
+            "- In create mode, build a complete project: scope, tasks, timeline dates, milestones, members, and role assignments.\n"
+            "- In manage mode, update ONLY the provided existing project. Preserve project/task/milestone ids. "
+            "Do not propose a new project. For existing tasks/milestones, include their id. "
+            "Only add a new task or milestone when the user explicitly asks for more work, and mark it with action: 'create'.\n"
+            "- Tasks should cover ALL sub-goals from the decomposition while staying inside the existing project scope.\n\n"
             "Return JSON with:\n"
             "  projectName: string\n"
             "  description: string (markdown, reference [[wiki pages]])\n"
-            "  tasks: [{title, description, status, priority, startDate, endDate, assignee_id, reasoning, wikiReferences: []}]\n"
-            "  milestones: [{title, date, description, status}]\n"
+            "  tasks: [{id, action, title, description, status, priority, startDate, endDate, assignee_id, reasoning, wikiReferences: []}]\n"
+            "  milestones: [{id, action, title, date, description, status}]\n"
             "  members: [{userId, role}]\n"
             "  reasoning_traces: [string] (key decisions explained)\n"
             "  wiki_references: [string] (all wiki pages referenced)\n"
@@ -391,7 +397,10 @@ class PlanningReasoningPipeline:
         )
 
         if mode == "manage" and project_context:
-            user_content += f"Existing Project: {json.dumps(project_context)[:2000]}\n"
+            user_content += (
+                "Existing Project Context (authoritative scope and IDs; update this project only):\n"
+                f"{json.dumps(project_context, default=str)[:6000]}\n"
+            )
 
         if research.knowledge_gaps:
             user_content += f"\nKnowledge Gaps (topics not documented): {', '.join(research.knowledge_gaps)}\n"
@@ -432,8 +441,8 @@ class PlanningReasoningPipeline:
             "Return JSON:\n"
             "  score: 0-100 (overall quality)\n"
             "  issues: [{type: 'coverage'|'realism'|'dependency'|'risk'|'completeness', description, severity: 'low'|'medium'|'high'}]\n"
-            "  revised_tasks: [...] (return ONLY if changes needed, otherwise empty array)\n"
-            "  revised_milestones: [...] (return ONLY if changes needed, otherwise empty array)\n"
+            "  revised_tasks: [...] (return ONLY if changes needed, otherwise empty array; preserve id, action, assignee_id, dates)\n"
+            "  revised_milestones: [...] (return ONLY if changes needed, otherwise empty array; preserve id, action, dates)\n"
             "  suggestions: [string] (improvement recommendations)\n"
         )
 

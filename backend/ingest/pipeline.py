@@ -119,6 +119,62 @@ def _analyze_governance(job, new_text: str):
     )
 
 
+def _is_wiki_publish_job(job: IngestJob) -> bool:
+    metadata = job.source_metadata or {}
+    return bool(job.wiki_page_id and "publish_candidate_content" in metadata)
+
+
+def _create_publish_review_changeset(job: IngestJob, parsed_text: str) -> WikiChangeSet:
+    """
+    Manual wiki publish review should behave like a content pull request:
+    keep the persisted page untouched and store the editor candidate in a
+    changeset for the conflict/review window.
+    """
+    try:
+        return job.changeset
+    except WikiChangeSet.DoesNotExist:
+        pass
+
+    try:
+        results = vector_store.search_similar_pages(job.team.id, parsed_text[:1000], limit=5)
+    except Exception:
+        logger.exception("Publish governance vector search failed for job %s", job.id)
+        results = []
+
+    diff_summary = {
+        "contradictions": [],
+        "additions": [],
+        "related_pages": [res.payload.get("page_title") for res in results if res.payload.get("page_title")],
+    }
+
+    context = "\n\n".join(
+        f"PAGE: {res.payload.get('page_title')}\nCONTENT: {(res.payload.get('content') or '')[:500]}"
+        for res in results
+    ) or "(No related indexed pages found.)"
+    prompt = (
+        f"Compare this proposed wiki publish with existing wiki knowledge.\n\nPROPOSED:\n{parsed_text[:2000]}\n\n"
+        f"EXISTING KNOWLEDGE:\n{context}\n\nIdentify contradictions and notable additions. "
+        'Respond in JSON: {"contradictions": ["..."], "additions": ["..."]}'
+    )
+    merged = _chat_json_completion(
+        team=job.team,
+        messages=[{"role": "user", "content": prompt}],
+        operation="wiki_publish_governance",
+        user=job.created_by,
+        default_on_error=None,
+    )
+    if isinstance(merged, dict):
+        diff_summary["contradictions"] = merged.get("contradictions") or []
+        diff_summary["additions"] = merged.get("additions") or []
+
+    return WikiChangeSet.objects.create(
+        job=job,
+        proposed_content=parsed_text,
+        diff_summary=diff_summary,
+        status=WikiChangeSet.STATUS_PENDING,
+    )
+
+
 def _slug_for_ingested_page(team, title: str) -> str:
     base = slugify(title) or "ingested-page"
     slug = base
@@ -309,11 +365,13 @@ def run_pipeline(job: IngestJob, source_text: str = "", trace_id: str | None = N
     if not parsed_text:
         raise ValueError("No extractable text content found.")
 
+    is_publish_job = _is_wiki_publish_job(job)
+
     # ── Deduplication Check ──────────────────────────────────────
     content_hash = hashlib.sha256(parsed_text.encode()).hexdigest()
     # We store the hash in source_metadata for future checks
     job.source_metadata["content_hash"] = content_hash
-    if RawSource.objects.filter(team=job.team, source_metadata__content_hash=content_hash).exists():
+    if not is_publish_job and RawSource.objects.filter(team=job.team, source_metadata__content_hash=content_hash).exists():
         _set_job_stage(job, "completed", "Duplicate content detected, ingestion skipped", 100)
         job.status = "done"
         job.save(update_fields=["status", "source_metadata"])
@@ -327,6 +385,19 @@ def run_pipeline(job: IngestJob, source_text: str = "", trace_id: str | None = N
     raw_source = _save_raw_source(job, parsed_text, staging_file_copy)
     if raw_source is None:
         raise ValueError("Unable to persist raw source.")
+
+    if is_publish_job:
+        page_type, template_name = _detect_template_and_type(job.team, parsed_text)
+        if not job.auto_approve:
+            _create_publish_review_changeset(job, parsed_text)
+            job.status = "review_required"
+            job.ingest_stage = "governance"
+            job.ingest_stage_detail = "Publish requires review"
+            job.save(update_fields=["status", "ingest_stage", "ingest_stage_detail", "updated_at"])
+            return
+
+        _materialize_and_index(job, parsed_text, page_type, template_name, trace_id, prune_semantic=True)
+        return
 
     # ── Agent decomposition pipeline ─────────────────────────────
     _set_job_stage(job, "governance", "Agent analyzing and decomposing document", 50)
@@ -448,4 +519,3 @@ def _build_structure_map(source_type: str, text: str) -> dict:
         structure["paragraphs"] = paragraphs[:50]
 
     return structure
-

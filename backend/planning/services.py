@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from django.db.models import Count, Q, QuerySet
 
 from accounts.models import User, Team
@@ -11,6 +13,8 @@ from wiki.services.reindex import reindex_wiki_page
 from llm_orchestrator.orchestrator import llm_json_call
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+
+logger = logging.getLogger(__name__)
 
 def broadcast_project_update(project: Project, action: str):
     channel_layer = get_channel_layer()
@@ -66,8 +70,12 @@ def create_project(*, team_id: str, user: User, payload: dict) -> Project:
         created_by=user
     )
     
-    # Index the new wiki page (this also wires the graph)
-    reindex_wiki_page(wiki_page)
+    # Index the new wiki page when embeddings are available. Project creation
+    # should still succeed in local/dev environments without LLM credentials.
+    try:
+        reindex_wiki_page(wiki_page)
+    except Exception:
+        logger.exception("Failed to reindex wiki page after planning project creation")
 
     return project
 
@@ -230,11 +238,14 @@ def generate_plan_draft(
         "Generate a detailed project plan or update in JSON format. "
         "The plan must include a projectName, description, tasks, milestones, and members. "
         "Tasks should have: title, description, status (todo, in-progress, completed, blocked), "
-        "priority (low, medium, high), startDate (YYYY-MM-DD), and endDate (YYYY-MM-DD). "
+        "priority (low, medium, high), assignee_id when a team member is appropriate, startDate (YYYY-MM-DD), and endDate (YYYY-MM-DD). "
         "Milestones should have: title, date (YYYY-MM-DD), description, and status (pending, reached, missed). "
         "Members should be a list of suggested roles: { \"userId\": \"...\", \"role\": \"...\" }. "
-        "CRITICAL: When updating a project, you MUST preserve the existing 'id' for tasks/milestones you wish to keep or modify. "
-        "Omit the 'id' for new items. You are expected to populate the project timeline intelligently across days/weeks. "
+        "CRITICAL: Create mode must build the full execution plan: tasks, timeline dates, board-ready statuses, calendar-ready dates, and role assignments. "
+        "CRITICAL: Manage mode must update ONLY the existing project supplied in context. Do not invent or describe a new project. "
+        "When updating a project, preserve the existing 'id' for tasks/milestones you wish to keep or modify. "
+        "Only add new tasks/milestones when explicitly requested, omit the 'id', and set action to 'create'. "
+        "You are expected to populate the project timeline intelligently across days/weeks. "
         "Return ONLY valid JSON."
     )
 

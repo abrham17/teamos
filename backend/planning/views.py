@@ -379,6 +379,8 @@ class PlanningAssistView(APIView):
 
         if not prompt:
             return fail("Prompt is required.", status_code=400, code="prompt_required")
+        if mode == "manage" and not project_id:
+            return fail("Project is required for update mode.", status_code=400, code="project_required")
 
         project_context = None
         if project_id:
@@ -386,6 +388,8 @@ class PlanningAssistView(APIView):
             if project:
                 from .serializers import ProjectDetailSerializer
                 project_context = ProjectDetailSerializer(project).data
+            elif mode == "manage":
+                return fail("Project not found.", status_code=404, code="project_not_found")
 
         try:
             draft = generate_plan_draft(team_id, prompt, mode=mode, project_context=project_context)
@@ -451,6 +455,10 @@ class PlanningAssistStreamView(APIView):
 
         if not prompt:
             return fail("Prompt is required.", status_code=400, code="prompt_required")
+        if mode == "manage" and not project_id:
+            return fail("Project is required for update mode.", status_code=400, code="project_required")
+        if mode == "manage" and get_project_or_none(team_id=str(team_id), project_id=str(project_id)) is None:
+            return fail("Project not found.", status_code=404, code="project_not_found")
 
         def _planner_sse_sync():
             from .agent_executor import run_planner_agent_v2
@@ -558,6 +566,9 @@ class PlanningConflictResolveView(APIView):
                         end = rt.get("end_date")
                         if not task_id:
                             skipped.append({"item": rt, "reason": "missing_task_id"})
+                            continue
+                        if not is_valid_uuid(task_id):
+                            skipped.append({"item": rt, "reason": "invalid_task_id"})
                             continue
                         task = get_task_or_none(str(team_id), str(project_id), task_id)
                         if not task:
