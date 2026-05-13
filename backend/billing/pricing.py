@@ -73,8 +73,9 @@ def public_plan_catalog() -> dict[str, Any]:
                 "price_label": "$0",
                 "seat_min": 1,
                 "seat_max": 3,
+                "seat_default": 1,
                 "trial_days": 60,
-                "features": ["1 User Only", "Basic Wiki", "Local Knowledge Processing", "Standard Intelligence Engine"],
+                "features": ["Up to 3 Users", "Basic Wiki", "Local Knowledge Processing", "Standard Intelligence Engine"],
             },
             {
                 "key": "team",
@@ -82,6 +83,7 @@ def public_plan_catalog() -> dict[str, Any]:
                 "price_label": f"${TEAM_PER_USER_USD}/user",
                 "seat_min": 1,
                 "seat_max": 1000,
+                "seat_default": 10,
                 "features": [
                     "Unrestricted members",
                     "High-performance routing",
@@ -95,6 +97,7 @@ def public_plan_catalog() -> dict[str, Any]:
                 "price_label": f"${PRO_PER_USER_USD}/user",
                 "seat_min": 1,
                 "seat_max": 5000,
+                "seat_default": 10,
                 "features": [
                     "Unrestricted members",
                     "Advanced Agentic Engine",

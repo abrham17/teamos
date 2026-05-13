@@ -25,6 +25,7 @@ from chat.agent_reflector import AgentReflector, Reflection
 from chat.context_builder import ContextBuilder
 from chat.models import ChatSession
 from chat.tools import ToolContext
+from chat.working_memory import WorkingMemory
 from llm_orchestrator.orchestrator import llm_call
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,7 @@ class AgentCore:
         self.team: Team = session.team
         self.reflector = AgentReflector(self.team) if config.enable_reflection else None
         self.context_builder = ContextBuilder(str(session.team_id))
+        self.working_memory = WorkingMemory(str(session.id))
 
     def run(self, context_str: str, state: dict[str, Any]) -> Iterator[str]:
         """
@@ -176,6 +178,9 @@ class AgentCore:
                     "result": result,
                 })
 
+                # Track in working memory scratchpad
+                self.working_memory.track_tool_call(name, {}, bool(result.get("ok")))
+
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
@@ -235,6 +240,11 @@ class AgentCore:
         # Add memory block from ContextBuilder
         if built_context.memory_block:
             system += "\n\n" + built_context.memory_block
+
+        # Inject working memory scratchpad (what the agent did this session)
+        wm_ctx = self.working_memory.recall_session()
+        if wm_ctx:
+            system += "\n\n" + wm_ctx
 
         # Add semantic memory recall (Phase 4)
         try:
@@ -358,5 +368,8 @@ class AgentCore:
                 },
                 learnings=final_text[:500],
             )
+            # Clear the session scratchpad — next session starts fresh
+            self.working_memory.clear()
         except Exception:
             logger.exception("Failed to store agent episode")
+

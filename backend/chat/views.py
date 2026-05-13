@@ -17,7 +17,7 @@ from product_analytics.services import record_first_once
 from .models import ChatSession, ChatMessage, ChatTokenUsage
 from .serializers import ChatSessionSerializer
 from teamos_project.api_response import ok, fail
-from llm_orchestrator.orchestrator import llm_call
+from llm_orchestrator.orchestrator import llm_call, llm_json_call
 
 logger = logging.getLogger(__name__)
 
@@ -86,11 +86,12 @@ def _retrieve_wiki_citations(team_id, user_message: str, team_obj=None) -> tuple
                 f"Write a short, professional paragraph that would perfectly answer the query: '{user_message}'. "
                 f"Focus on factual, relevant technical or team information."
             )
-            hyde_answer, _, _ = llm_call(
+            hyde_resp, _, _ = llm_call(
                 team=team_obj,
                 operation="hyde_generation",
                 messages=[{"role": "user", "content": hyde_prompt}],
             )
+            hyde_answer = hyde_resp.choices[0].message.content if hyde_resp and hyde_resp.choices else None
             if hyde_answer:
                 search_queries.append(hyde_answer)
                 

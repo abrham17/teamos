@@ -61,17 +61,25 @@ class LlmUsageMiddleware:
     def _resolve_team_id(self, request):
         parts = request.path.strip("/").split("/")
         
-        # Skip operations
-        if len(parts) >= 2 and parts[1] == "admin":
+        # Skip non-team-scoped paths
+        if len(parts) < 3:
+            return None
+        # parts[0] = "api", parts[1] = module, parts[2] = team_id (usually)
+        module = parts[1] if len(parts) > 1 else ""
+        if module in ("admin", "auth"):
+            return None
+        # Billing catalog/quote/webhook/reconcile don't carry team_id at position 2
+        if module == "billing" and len(parts) >= 3 and parts[2] in ("plans", "quote", "webhook", "reconcile"):
             return None
 
-        # Resolve UUID from path (standard pattern: /api/<module>/<team_id>/...)
-        for part in parts:
+        # The team_id is at position 2 in the standard pattern: /api/<module>/<team_id>/...
+        candidate = parts[2] if len(parts) > 2 else None
+        if candidate:
             try:
-                uuid.UUID(str(part))
-                return part
+                uuid.UUID(str(candidate))
+                return candidate
             except ValueError:
-                continue
+                pass
         return None
 
 # Alias for backwards compatibility with old settings configurations

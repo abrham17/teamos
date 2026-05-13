@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from accounts.models import TeamMember
 
-from .models import Milestone, PlanChunk, Project, Task, ProjectMember
+from .models import Milestone, PlanChunk, Project, Task, TaskComment, Notification, ProjectMember
 
 
 class TaskSerializer(serializers.ModelSerializer):
@@ -160,3 +160,39 @@ class PlanChunkSerializer(serializers.ModelSerializer):
             "content",
             "created_at",
         ]
+
+
+class TaskCommentSerializer(serializers.ModelSerializer):
+    author_email = serializers.SerializerMethodField()
+    author_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskComment
+        fields = [
+            "id",
+            "task_id",
+            "author_id",
+            "author_email",
+            "author_name",
+            "content",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "author_id", "author_email", "author_name", "created_at", "updated_at"]
+
+    def get_author_email(self, obj):
+        return obj.author.email if obj.author else None
+
+    def get_author_name(self, obj):
+        return obj.author.get_full_name() or obj.author.email if obj.author else None
+
+
+class TaskCommentWriteSerializer(serializers.Serializer):
+    content = serializers.CharField(max_length=5000)
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ["id", "user_id", "team_id", "notification_type", "title", "message", "link", "is_read", "created_at"]
+        read_only_fields = ["id", "user_id", "team_id", "created_at"]

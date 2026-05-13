@@ -108,8 +108,10 @@ If the request spans multiple domains, set requires_multiple=true and list subta
 Otherwise, route to the single best agent."""
 
         resp, _, _ = llm_call(
-            system="You are a request router. Return only valid JSON.",
-            prompt=prompt,
+            messages=[
+                {"role": "system", "content": "You are a request router. Return only valid JSON."},
+                {"role": "user", "content": prompt},
+            ],
         )
 
         try:
@@ -126,6 +128,52 @@ Otherwise, route to the single best agent."""
                 confidence=data.get("confidence", 0.8),
             )
         except (json.JSONDecodeError, AttributeError, ValueError):
+            return Classification(primary_agent=AgentRole.WIKI)
+
+    def classify_sync(self, user_message: str, team) -> Classification:
+        """Synchronous classification with team budget awareness."""
+        import json as _json
+        prompt = f"""Classify this user request for routing to specialist agents.
+
+User message: "{user_message}"
+
+Available specialists:
+- wiki: knowledge management, wiki pages, documentation, knowledge graph
+- plan: project planning, tasks, milestones, scheduling, resource allocation
+- analyst: data analysis, retrospectives, trends, performance metrics
+
+Return JSON:
+{{
+  "primary_agent": "wiki|plan|analyst",
+  "requires_multiple": true/false,
+  "subtasks": [["agent_name", "subtask description"], ...],
+  "confidence": 0.0-1.0
+}}
+
+If the request spans multiple domains, set requires_multiple=true and list subtasks.
+Otherwise, route to the single best agent."""
+
+        try:
+            resp, _, _ = llm_call(
+                team=team,
+                operation="query_expansion",  # cheap nano/mini operation
+                messages=[
+                    {"role": "system", "content": "You are a request router. Return only valid JSON."},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            data = _json.loads(resp.choices[0].message.content if resp else "{}")
+            primary = AgentRole(data.get("primary_agent", "wiki"))
+            return Classification(
+                primary_agent=primary,
+                requires_multiple=data.get("requires_multiple", False),
+                subtasks=[
+                    (AgentRole(st[0]), st[1])
+                    for st in data.get("subtasks", [])
+                ],
+                confidence=data.get("confidence", 0.8),
+            )
+        except Exception:
             return Classification(primary_agent=AgentRole.WIKI)
 
     def get_system_prompt(self, role: AgentRole) -> str:
@@ -187,8 +235,10 @@ Create a unified response that:
 Output in natural language, formatted as markdown."""
 
         resp, _, _ = llm_call(
-            system="You are a coordinator synthesizing multi-agent results.",
-            prompt=prompt,
+            messages=[
+                {"role": "system", "content": "You are a coordinator synthesizing multi-agent results."},
+                {"role": "user", "content": prompt},
+            ],
         )
         return resp.choices[0].message.content if resp else ""
 

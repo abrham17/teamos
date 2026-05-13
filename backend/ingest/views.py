@@ -159,9 +159,3 @@ class FileIngestView(APIView):
         run_ingest_job.delay(str(job.id), "", trace_id=trace_id)
         
         return ok(IngestJobSerializer(job).data, status_code=status.HTTP_201_CREATED)
-
-        return fail(
-            "Unsupported file type for ingest. Use pdf, docx, zip (code), images (png/jpg/…), or markdown/text.",
-            status_code=status.HTTP_400_BAD_REQUEST,
-            code="unsupported_file_type",
-        )

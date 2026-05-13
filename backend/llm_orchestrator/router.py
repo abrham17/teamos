@@ -23,6 +23,15 @@ OPERATION_CONFIG = {
     "ingest_relate": {"value_score": "low", "priority_model": MODEL_GPT_4_1_NANO, "fallback": MODEL_GPT_4_1_NANO},
     "ingest_governance": {"value_score": "low", "priority_model": MODEL_GPT_4_1_NANO, "fallback": MODEL_GPT_4_1_NANO},
     "template_detect": {"value_score": "low", "priority_model": MODEL_GPT_4_1_NANO, "fallback": MODEL_GPT_4_1_NANO},
+    # RAG auxiliary steps — cheap models to preserve budget
+    "query_expansion": {"value_score": "low", "priority_model": MODEL_GPT_4_1_NANO, "fallback": MODEL_GPT_4_1_NANO},
+    "hyde_generation": {"value_score": "low", "priority_model": MODEL_GPT_4O_MINI, "fallback": MODEL_GPT_4_1_NANO},
+    # User-facing wiki features — higher value
+    "wiki_autocomplete": {"value_score": "medium", "priority_model": MODEL_GPT_4O, "fallback": MODEL_GPT_4O_MINI},
+    "wiki_ai_assist": {"value_score": "medium", "priority_model": MODEL_GPT_4O, "fallback": MODEL_GPT_4O_MINI},
+    # Planning agent operations
+    "plan_risk_assess": {"value_score": "medium", "priority_model": MODEL_GPT_4O_MINI, "fallback": MODEL_GPT_4_1_NANO},
+    "plan_conflict_resolve": {"value_score": "medium", "priority_model": MODEL_GPT_4O_MINI, "fallback": MODEL_GPT_4_1_NANO},
 }
 
 def get_routed_model(team_subscription, operation: str) -> Tuple[str, str]:

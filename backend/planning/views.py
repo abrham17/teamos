@@ -8,7 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework import serializers
 
-from accounts.permissions import CanEditPlans
+from accounts.permissions import CanEditPlans, IsTeamMember
 from teamos_project.api_response import fail, ok
 
 from .models import Task, Milestone, Project
@@ -802,3 +802,69 @@ class PlanningSnapshotRestoreView(APIView):
 
         reindex_project(project)
         return ok({"restored": True})
+
+
+class NotificationListView(APIView):
+    """GET /api/planning/:team_id/notifications/ — list user notifications
+       PATCH /api/planning/:team_id/notifications/ — mark notifications as read"""
+
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
+    def get(self, request, team_id):
+        from .models import Notification
+
+        unread_only = request.query_params.get("unread_only", "").lower() == "true"
+        qs = Notification.objects.filter(user=request.user, team_id=team_id)
+        if unread_only:
+            qs = qs.filter(is_read=False)
+        qs = qs[:50]
+
+        from .serializers import NotificationSerializer
+        return ok(NotificationSerializer(qs, many=True).data)
+
+    def patch(self, request, team_id):
+        from .models import Notification
+
+        ids = request.data.get("ids", [])
+        if not ids:
+            return fail("ids required.", status_code=400, code="ids_required")
+
+        Notification.objects.filter(
+            id__in=ids, user=request.user, team_id=team_id
+        ).update(is_read=True)
+        return ok({"marked_read": len(ids)})
+
+
+class TaskCommentListView(APIView):
+    """GET  /api/planning/:team_id/projects/:project_id/tasks/:task_id/comments/
+       POST /api/planning/:team_id/projects/:project_id/tasks/:task_id/comments/"""
+
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
+    def get(self, request, team_id, project_id, task_id):
+        from .models import TaskComment
+
+        qs = TaskComment.objects.filter(task_id=task_id).select_related("author")
+        from .serializers import TaskCommentSerializer
+        return ok(TaskCommentSerializer(qs, many=True).data)
+
+    def post(self, request, team_id, project_id, task_id):
+        from .models import TaskComment, Task
+
+        try:
+            task = Task.objects.get(id=task_id, project_id=project_id, project__team_id=team_id)
+        except Task.DoesNotExist:
+            return fail("Task not found.", status_code=404, code="task_not_found")
+
+        from .serializers import TaskCommentWriteSerializer
+        ser = TaskCommentWriteSerializer(data=request.data)
+        if not ser.is_valid():
+            return fail(str(ser.errors), status_code=400, code="invalid_data")
+
+        comment = TaskComment.objects.create(
+            task=task,
+            author=request.user,
+            content=ser.validated_data["content"],
+        )
+        from .serializers import TaskCommentSerializer
+        return ok(TaskCommentSerializer(comment).data, status_code=201)

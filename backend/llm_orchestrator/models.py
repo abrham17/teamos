@@ -28,6 +28,11 @@ class TeamApiUsage(models.Model):
     ROUTED_BY_CHOICES = [
         ("free_fixed", "Free Fixed"),
         ("continuous_curve", "Continuous Curve"),
+        ("grace_period_fallback", "Grace Period Fallback"),
+        ("value_aware_priority", "Value-Aware Priority"),
+        ("pro_background_routing", "Pro Background Routing"),
+        ("team_background_routing", "Team Background Routing"),
+        ("cache", "Cache Hit"),
         ("enterprise_sla", "Enterprise SLA"),
     ]
     routed_by = models.CharField(max_length=30, choices=ROUTED_BY_CHOICES, default="continuous_curve")

@@ -533,6 +533,20 @@ def openai_agent_tool_schemas() -> list[dict[str, Any]]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "agent_memory_delete",
+                "description": "Delete a stale or incorrect memory entry by key. Use when a stored fact is no longer true or relevant.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "key": {"type": "string", "description": "The memory key to delete"},
+                    },
+                    "required": ["key"],
+                },
+            },
+        },
     ]
 
 
@@ -582,6 +596,8 @@ def execute_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, Any]:
             return _agent_memory_read(ctx, args)
         if name == "agent_memory_write":
             return _agent_memory_write(ctx, args)
+        if name == "agent_memory_delete":
+            return _agent_memory_delete(ctx, args)
         if name == "ingest_markdown":
             return _ingest_markdown(ctx, args)
         if name == "plan_generate_draft":
@@ -1276,3 +1292,14 @@ def _agent_memory_write(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any
     set_memory(ctx.team_id, key, value, category=category, summary=summary)
     return {"ok": True, "key": key, "stored": True}
 
+
+def _agent_memory_delete(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Delete a stale or incorrect persistent memory entry."""
+    from chat.agent_memory_service import delete_memory
+
+    key = (args.get("key") or "").strip()
+    if not key:
+        return {"ok": False, "error": "key_required"}
+
+    deleted = delete_memory(ctx.team_id, key)
+    return {"ok": True, "key": key, "deleted": deleted}

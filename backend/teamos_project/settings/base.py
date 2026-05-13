@@ -207,6 +207,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "chat.background_agents.weekly_retrospective_all_teams",
         "schedule": crontab(day_of_week="monday", hour="8", minute="0"),
     },
+    "cleanup-expired-memories": {
+        "task": "chat.background_agents.cleanup_expired_memories",
+        "schedule": crontab(hour="3", minute="0"),
+    },
+    "prune-expired-agent-memories": {
+        "task": "chat.tasks.prune_expired_agent_memories",
+        "schedule": crontab(hour="3", minute="30"),
+    },
 }
 
 # --- External APIs ---

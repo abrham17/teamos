@@ -158,3 +158,20 @@ def weekly_retrospective_all_teams(self):
     from accounts.models import Team
     for team in Team.objects.all():
         weekly_retrospective.delay(str(team.id))
+
+
+@shared_task(bind=True, max_retries=1)
+def cleanup_expired_memories(self):
+    """Delete AgentMemory entries that have exceeded their TTL."""
+    from django.utils import timezone
+    from .models import AgentMemory
+
+    now = timezone.now()
+    deleted = 0
+    for memory in AgentMemory.objects.all():
+        if memory.ttl_days and (now - memory.updated_at).days > memory.ttl_days:
+            memory.delete()
+            deleted += 1
+
+    logger.info("Cleaned up %d expired agent memories", deleted)
+    return deleted

@@ -16,6 +16,7 @@ import concurrent.futures
 from typing import Any, Callable, Iterator
 
 from chat.models import ChatSession
+from chat.multi_agent import get_orchestrator, AgentRole, SPECIALIST_TOOLS
 from chat.tools import (
     ToolContext,
     execute_plan_tool,
@@ -250,12 +251,36 @@ def iter_agent_core_events(
     ctx: ToolContext,
     state: dict[str, Any],
 ) -> Iterator[str]:
-    """New agent path using AgentCore with reflection and inner planning."""
+    """New agent path using AgentCore with reflection and multi-agent routing."""
     from chat.agent_core import AgentConfig, AgentCore
+
+    # Attempt multi-agent classification to restrict tools to relevant specialist
+    all_tools = openai_tool_schemas()
+    selected_tools = all_tools  # default: all tools
+    try:
+        orchestrator = get_orchestrator(str(session.team_id), str(session.created_by_id))
+        # Extract user message from last history entry for classification
+        last_user_msg = ""
+        recent = list(session.messages.order_by("-created_at")[:1])
+        if recent:
+            last_user_msg = recent[0].content
+        if last_user_msg:
+            classification = orchestrator.classify_sync(last_user_msg, session.team)
+            specialist_tool_names = set(SPECIALIST_TOOLS.get(classification.primary_agent, []))
+            if specialist_tool_names:
+                # Filter to specialist tools + always include memory/graph tools
+                core_tools = {"agent_memory_read", "agent_memory_write", "agent_memory_delete",
+                              "graph_traverse_neighbors", "knowledge_gap_analysis"}
+                allowed = specialist_tool_names | core_tools
+                filtered = [t for t in all_tools if t["function"]["name"] in allowed]
+                if filtered:
+                    selected_tools = filtered
+    except Exception:
+        logger.debug("Orchestrator classify failed — using all tools", exc_info=True)
 
     config = AgentConfig(
         system_prefix=AGENT_SYSTEM_PREFIX,
-        tools=openai_tool_schemas(),
+        tools=selected_tools,
         execute_fn=execute_tool,
         mode="agent",
         enable_reflection=True,
