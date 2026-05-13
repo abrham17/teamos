@@ -307,7 +307,7 @@ class PlanningReasoningPipeline:
         try:
             from graph_engine.traversal import knowledge_gap_analysis
             gaps = knowledge_gap_analysis(self.team_id)
-            all_knowledge_gaps = gaps.get("orphan_concepts", [])[:5]
+            all_knowledge_gaps = [c["title"] for c in gaps.get("orphan_concepts", [])[:5]]
         except Exception:
             pass
 

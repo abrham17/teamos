@@ -461,7 +461,11 @@ class PlanningAssistStreamView(APIView):
                 logger.exception("Planner agent stream failed")
                 yield f"event: agent_error\ndata: {_json.dumps({'detail': str(e)})}\n\n"
 
-        response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+        async def async_event_stream():
+            for chunk in event_stream():
+                yield chunk
+
+        response = StreamingHttpResponse(async_event_stream(), content_type="text/event-stream")
         response["Cache-Control"] = "no-cache"
         response["X-Accel-Buffering"] = "no"
         return response
