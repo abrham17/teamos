@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { Send, Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, Mic } from "lucide-react";
+import { Send, Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, Mic, BrainCircuit, Search, Calendar } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { ChatCitationList } from "@/components/chat/ChatCitationList";
@@ -45,6 +45,7 @@ export function ChatInterface() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
+  const [chatMode, setChatMode] = useState<"ask" | "agent" | "plan">("agent");
 
 
   const [agentThoughts, setAgentThoughts] = useState<AgentThinking[]>([]);
@@ -188,7 +189,7 @@ export function ChatInterface() {
       const trimmed = userMsg.trim();
       if (!trimmed || !currentTeamId || !activeSessionId || isStreaming) return;
 
-      const mode = "agent";
+      const mode = chatMode;
 
       setIsStreaming(true);
       setStatus("Connecting...");
@@ -318,7 +319,7 @@ export function ChatInterface() {
         toastError("Failed to connect to AI server.");
       }
     },
-    [activeSessionId, currentTeamId, isStreaming, toastError],
+    [activeSessionId, currentTeamId, isStreaming, chatMode, toastError],
   );
 
   const handleNewChat = async () => {
@@ -502,6 +503,27 @@ export function ChatInterface() {
 
         <div className="shrink-0 bg-[var(--bg-950)] px-4 pt-2 w-full z-20">
           <div className="relative mx-auto flex w-full max-w-4xl flex-col gap-2">
+            <div className="flex items-center gap-1.5 mb-1 px-1">
+              {([
+                { key: "ask" as const, icon: Search, label: "Ask", desc: "Quick knowledge lookup" },
+                { key: "agent" as const, icon: BrainCircuit, label: "Agent", desc: "Multi-step tool execution" },
+                { key: "plan" as const, icon: Calendar, label: "Plan", desc: "Project planning mode" },
+              ]).map(({ key, icon: Icon, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setChatMode(key)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all",
+                    chatMode === key
+                      ? "bg-[var(--accent-subtle)] text-[var(--accent)] border border-[var(--accent)]/20"
+                      : "text-[var(--text-dim)] hover:text-[var(--text-muted)] hover:bg-white/5"
+                  )}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="relative group w-full">
               <div className="absolute -inset-0.5 bg-gradient-to-r from-[var(--accent)] to-purple-600 rounded-[1.5rem] opacity-0 group-focus-within:opacity-15 blur-md transition-opacity duration-500" />
               <input className="relative w-full rounded-[1.25rem] border border-[var(--border-strong)] bg-[var(--bg-900)] py-3 pl-5 pr-24 text-sm text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/50 focus:shadow-glow shadow-inner disabled:cursor-not-allowed disabled:opacity-50" placeholder={!sessionReady ? "Initializing Intelligence…" : "Enter command or ask a question…"} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); } }} disabled={inputTypingDisabled} />

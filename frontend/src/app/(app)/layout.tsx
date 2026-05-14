@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { CommandPalette } from "@/components/command/CommandPalette";
 import { ProvisionUser } from "@/components/auth/ProvisionUser";
+import { FloatingAIChat } from "@/components/chat/FloatingAIChat";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
@@ -18,6 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {children}
       </main>
       <CommandPalette />
+      <FloatingAIChat />
     </div>
   );
 }
