@@ -44,7 +44,7 @@ def list_projects(team_id: str, query: str = "") -> QuerySet[Project]:
 def get_project_or_none(team_id: str, project_id: str) -> Project | None:
     try:
         return Project.objects.get(team_id=team_id, id=project_id)
-    except Project.DoesNotExist:
+    except (Project.DoesNotExist, ValueError):
         return None
 
 
@@ -98,7 +98,7 @@ def list_tasks(team_id: str, project_id: str) -> QuerySet[Task]:
 def get_task_or_none(team_id: str, project_id: str, task_id: str) -> Task | None:
     try:
         return Task.objects.get(project__team_id=team_id, project_id=project_id, id=task_id)
-    except Task.DoesNotExist:
+    except (Task.DoesNotExist, ValueError):
         return None
 
 
@@ -137,7 +137,7 @@ def list_milestones(team_id: str, project_id: str) -> QuerySet[Milestone]:
 def get_milestone_or_none(team_id: str, project_id: str, milestone_id: str) -> Milestone | None:
     try:
         return Milestone.objects.get(project__team_id=team_id, project_id=project_id, id=milestone_id)
-    except Milestone.DoesNotExist:
+    except (Milestone.DoesNotExist, ValueError):
         return None
 
 

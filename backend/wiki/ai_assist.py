@@ -4,6 +4,14 @@ from dataclasses import dataclass, field
 from llm_orchestrator.orchestrator import llm_call
 from wiki.models import WikiPage
 from planning.models import Project, Task, Milestone
+from accounts.models import Team
+
+
+def _get_team_or_none(team_id: str) -> Team | None:
+    try:
+        return Team.objects.get(id=team_id)
+    except Team.DoesNotExist:
+        return None
 
 
 @dataclass
@@ -51,7 +59,18 @@ Instructions: {instructions or "Add more detail, examples, and best practices."}
 
 Output ONLY the expanded markdown for this section. Do not repeat the heading."""
     
-    resp, _, _ = llm_call(system="You are a technical wiki editor. Output only markdown.", prompt=prompt)
+    team = _get_team_or_none(team_id)
+    if not team:
+        return ""
+
+    resp, _, _ = llm_call(
+        team=team,
+        operation="wiki_expand",
+        messages=[
+            {"role": "system", "content": "You are a technical wiki editor. Output only markdown."},
+            {"role": "user", "content": prompt},
+        ],
+    )
     return resp.choices[0].message.content if resp else ""
 
 
@@ -71,7 +90,18 @@ Content:
 
 Output only the bullet-point summary in markdown."""
     
-    resp, _, _ = llm_call(system="You are a technical summarizer. Output only markdown bullets.", prompt=prompt)
+    team = _get_team_or_none(team_id)
+    if not team:
+        return ""
+
+    resp, _, _ = llm_call(
+        team=team,
+        operation="wiki_summarize",
+        messages=[
+            {"role": "system", "content": "You are a technical summarizer. Output only markdown bullets."},
+            {"role": "user", "content": prompt},
+        ],
+    )
     return resp.choices[0].message.content if resp else ""
 
 
@@ -104,7 +134,18 @@ Available pages:
 Return JSON array: [{{"page_title": "...", "relevance": "why this should be linked"}}]
 Only suggest pages that are genuinely relevant. Max 5 suggestions."""
     
-    resp, _, _ = llm_call(system="You are a knowledge graph curator. Return only valid JSON array.", prompt=prompt)
+    team = _get_team_or_none(team_id)
+    if not team:
+        return []
+
+    resp, _, _ = llm_call(
+        team=team,
+        operation="wiki_suggest_links",
+        messages=[
+            {"role": "system", "content": "You are a knowledge graph curator. Return only valid JSON array."},
+            {"role": "user", "content": prompt},
+        ],
+    )
     
     try:
         import json
@@ -156,7 +197,18 @@ Newer pages:
 Return JSON array: [{{"heading": "section name", "reason": "why it's stale", "newer_source": "which page has newer info"}}]
 If nothing is stale, return empty array []."""
     
-    resp, _, _ = llm_call(system="You are a wiki quality auditor. Return only valid JSON array.", prompt=prompt)
+    team = _get_team_or_none(team_id)
+    if not team:
+        return []
+
+    resp, _, _ = llm_call(
+        team=team,
+        operation="wiki_detect_stale",
+        messages=[
+            {"role": "system", "content": "You are a wiki quality auditor. Return only valid JSON array."},
+            {"role": "user", "content": prompt},
+        ],
+    )
     
     try:
         import json
@@ -201,7 +253,18 @@ Generate a well-structured markdown wiki page with:
 
 Output the full markdown page."""
     
-    resp, _, _ = llm_call(system="You are a technical documentation writer. Output only markdown.", prompt=prompt)
+    team = _get_team_or_none(team_id)
+    if not team:
+        return ""
+
+    resp, _, _ = llm_call(
+        team=team,
+        operation="wiki_from_plan",
+        messages=[
+            {"role": "system", "content": "You are a technical documentation writer. Output only markdown."},
+            {"role": "user", "content": prompt},
+        ],
+    )
     return resp.choices[0].message.content if resp else ""
 
 

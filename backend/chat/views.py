@@ -360,35 +360,44 @@ class ChatQueryStreamView(APIView):
 
                 tool_trace_for_done: list = []
 
-                # Route to correct agent path based on mode
-                from chat.agent_stream import iter_agent_core_events, iter_plan_agent_core_events
-                from chat.tools import ToolContext
+                if mode == "ask":
+                    # Lightweight RAG-only: no tools, just context + LLM stream
+                    from llm_orchestrator.orchestrator import llm_call
 
-                ctx = ToolContext(user=request.user, team_id=str(team_id), membership=membership)
-                agent_state: dict = {}
+                    history = list(session.messages.order_by("-created_at")[:12])
+                    msgs: list[dict] = [
+                        {"role": "system", "content": (
+                            "You are TeamOS — a knowledgeable assistant. "
+                            "Answer the user's question using the retrieved team knowledge below.\n\n"
+                            + (context_str if context_str.strip() else "No retrieval snippets were returned for this query.")
+                        )}
+                    ]
+                    for msg in reversed(history):
+                        if msg.role in ("user", "assistant"):
+                            msgs.append({"role": msg.role, "content": msg.content})
 
-                if mode == "plan":
-                    for line in iter_plan_agent_core_events(session, context_str, ctx, agent_state):
-                        yield line
-                else:
-                    for line in iter_agent_core_events(session, context_str, ctx, agent_state):
-                        yield line
+                    stream_resp, model_used, _ = llm_call(
+                        team=session.team,
+                        operation="chat_ask",
+                        messages=msgs,
+                        user=request.user,
+                        stream=True,
+                    )
+                    full_text = ""
+                    for chunk in stream_resp:
+                        if chunk.choices and chunk.choices[0].delta.content:
+                            piece = chunk.choices[0].delta.content
+                            full_text += piece
+                            yield f"event: chunk\ndata: {json.dumps({'token': piece})}\n\n"
 
-                if agent_state.get("ok"):
-                    full_content = agent_state.get("full_text") or ""
-                    tool_trace = agent_state.get("tool_trace") or []
-                    tool_trace_for_done = list(tool_trace)
                     ChatMessage.objects.create(
                         session=session,
                         role="assistant",
-                        content=full_content,
+                        content=full_text,
                         citations=citations,
-                        metadata={"mode": "agent", "tool_trace": tool_trace},
+                        metadata={"mode": "ask"},
                     )
-                    model_used = agent_state.get("model_used", "gpt-4o")
-                    approx = estimate_tokens(context_str) + estimate_tokens(user_message) + estimate_tokens(
-                        json.dumps(tool_trace)
-                    ) + estimate_tokens(full_content)
+                    approx = estimate_tokens(context_str) + estimate_tokens(user_message) + estimate_tokens(full_text)
                     ChatTokenUsage.objects.create(
                         team=session.team,
                         user=request.user,
@@ -396,8 +405,47 @@ class ChatQueryStreamView(APIView):
                         prompt_tokens=max(approx // 2, 1),
                         completion_tokens=max(approx // 2, 1),
                         total_tokens=approx,
-                        metadata={"model": model_used, "mode": "agent"},
+                        metadata={"model": model_used, "mode": "ask"},
                     )
+                else:
+                    # Agent or Plan mode: full tool loop
+                    from chat.agent_stream import iter_agent_core_events, iter_plan_agent_core_events
+                    from chat.tools import ToolContext
+
+                    ctx = ToolContext(user=request.user, team_id=str(team_id), membership=membership)
+                    agent_state: dict = {}
+
+                    if mode == "plan":
+                        for line in iter_plan_agent_core_events(session, context_str, ctx, agent_state):
+                            yield line
+                    else:
+                        for line in iter_agent_core_events(session, context_str, ctx, agent_state):
+                            yield line
+
+                    if agent_state.get("ok"):
+                        full_content = agent_state.get("full_text") or ""
+                        tool_trace = agent_state.get("tool_trace") or []
+                        tool_trace_for_done = list(tool_trace)
+                        ChatMessage.objects.create(
+                            session=session,
+                            role="assistant",
+                            content=full_content,
+                            citations=citations,
+                            metadata={"mode": mode, "tool_trace": tool_trace},
+                        )
+                        model_used = agent_state.get("model_used", "gpt-4o")
+                        approx = estimate_tokens(context_str) + estimate_tokens(user_message) + estimate_tokens(
+                            json.dumps(tool_trace)
+                        ) + estimate_tokens(full_content)
+                        ChatTokenUsage.objects.create(
+                            team=session.team,
+                            user=request.user,
+                            session=session,
+                            prompt_tokens=max(approx // 2, 1),
+                            completion_tokens=max(approx // 2, 1),
+                            total_tokens=approx,
+                            metadata={"model": model_used, "mode": mode},
+                        )
 
                 if ChatMessage.objects.filter(session__team=session.team, role="assistant").count() == 1:
                     record_first_once(

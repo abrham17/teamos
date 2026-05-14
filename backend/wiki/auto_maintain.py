@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from llm_orchestrator.orchestrator import llm_call
 from wiki.models import WikiPage
+from accounts.models import Team
 
 
 @dataclass
@@ -48,9 +49,18 @@ Page B: "{p2['title']}"
 Are there any contradictions? Return JSON:
 {{"has_contradiction": true/false, "topic": "what they disagree on", "summary": "brief description", "severity": "low/medium/high"}}"""
 
+            try:
+                team = Team.objects.get(id=team_id)
+            except Team.DoesNotExist:
+                continue
+
             resp, _, _ = llm_call(
-                system="You are a knowledge quality auditor. Return only valid JSON.",
-                prompt=prompt
+                team=team,
+                operation="wiki_contradiction_check",
+                messages=[
+                    {"role": "system", "content": "You are a knowledge quality auditor. Return only valid JSON."},
+                    {"role": "user", "content": prompt},
+                ],
             )
 
             try:
@@ -95,9 +105,18 @@ Page B: "{p2['title']}"
 Return JSON:
 {{"should_merge": true/false, "similarity": 0-100, "reason": "why they should or shouldn't be merged"}}"""
 
+            try:
+                team = Team.objects.get(id=team_id)
+            except Team.DoesNotExist:
+                continue
+
             resp, _, _ = llm_call(
-                system="You are a wiki organization expert. Return only valid JSON.",
-                prompt=prompt
+                team=team,
+                operation="wiki_merge_check",
+                messages=[
+                    {"role": "system", "content": "You are a wiki organization expert. Return only valid JSON."},
+                    {"role": "user", "content": prompt},
+                ],
             )
 
             try:
@@ -144,8 +163,12 @@ Does the referencing page contain outdated information about the updated page?
 Return JSON: {{"needs_update": true/false, "section": "which section", "suggestion": "what to change"}}"""
 
         resp, _, _ = llm_call(
-            system="You are a wiki maintenance bot. Return only valid JSON.",
-            prompt=prompt
+            team=updated_page.team,
+            operation="wiki_stale_ref_check",
+            messages=[
+                {"role": "system", "content": "You are a wiki maintenance bot. Return only valid JSON."},
+                {"role": "user", "content": prompt},
+            ],
         )
 
         try:
@@ -193,9 +216,18 @@ Create a markdown index page with:
 
 Output only the markdown."""
 
+        try:
+            team = Team.objects.get(id=team_id)
+        except Team.DoesNotExist:
+            continue
+
         resp, _, _ = llm_call(
-            system="You are a wiki organizer. Output only markdown.",
-            prompt=prompt
+            team=team,
+            operation="wiki_generate_index",
+            messages=[
+                {"role": "system", "content": "You are a wiki organizer. Output only markdown."},
+                {"role": "user", "content": prompt},
+            ],
         )
 
         content = resp.choices[0].message.content if resp else ""

@@ -69,7 +69,6 @@ def _paddle_price_id_for_plan(plan_key: str) -> str:
     mapping = {
         "team": getattr(settings, "PADDLE_PRICE_ID_TEAM", "") or "",
         "pro": getattr(settings, "PADDLE_PRICE_ID_PRO", "") or "",
-        "enterprise": getattr(settings, "PADDLE_PRICE_ID_ENTERPRISE", "") or "",
     }
     return mapping.get(plan_key, "")
 

@@ -5,6 +5,7 @@ from collections import deque
 from llm_orchestrator.orchestrator import llm_call
 from graph_engine.models import GraphEdge
 from wiki.models import WikiPage
+from accounts.models import Team
 
 
 @dataclass
@@ -45,9 +46,18 @@ Path: {path_str}
 
 Explain the relationship chain in 2-3 sentences. What does each step in the path represent?"""
 
+    try:
+        team = Team.objects.get(id=team_id)
+    except Team.DoesNotExist:
+        return f"Path: {path_str}"
+
     resp, _, _ = llm_call(
-        system="You explain knowledge graph connections clearly and concisely.",
-        prompt=prompt
+        team=team,
+        operation="graph_explain",
+        messages=[
+            {"role": "system", "content": "You explain knowledge graph connections clearly and concisely."},
+            {"role": "user", "content": prompt},
+        ],
     )
     return resp.choices[0].message.content if resp else f"Path: {path_str}"
 
@@ -98,9 +108,18 @@ Path: {' → '.join(path_titles)}
 Is there a causal chain here? Does A cause or enable B, which causes or enables C?
 Explain the causal relationship in one paragraph."""
 
+    try:
+        team = Team.objects.get(id=team_id)
+    except Team.DoesNotExist:
+        return CausalChain(path=path_titles, explanation="No causal explanation available.")
+
     resp, _, _ = llm_call(
-        system="You analyze causal relationships in knowledge graphs.",
-        prompt=prompt
+        team=team,
+        operation="graph_causal",
+        messages=[
+            {"role": "system", "content": "You analyze causal relationships in knowledge graphs."},
+            {"role": "user", "content": prompt},
+        ],
     )
 
     return CausalChain(

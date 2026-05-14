@@ -8,4 +8,6 @@ urlpatterns = [
     path("<uuid:team_id>/jobs/", views.IngestJobListView.as_view()),
     path("<uuid:team_id>/url/", views.UrlIngestView.as_view()),
     path("<uuid:team_id>/file/", views.FileIngestView.as_view()),
+    path("<uuid:team_id>/activities/", views.KnowledgeActivityListView.as_view()),
+    path("<uuid:team_id>/dead-letters/", views.AsyncDeadLetterListView.as_view()),
 ]

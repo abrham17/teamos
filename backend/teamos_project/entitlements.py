@@ -38,10 +38,11 @@ def check_quota(team, operation: str, **kwargs) -> QuotaResult:
     plan = sub.plan_key
     
     # 2. Seat Checks
-    if operation == "add_member":
-        current_seats = team.memberships.count()
+    if operation in ("add_member", "seat_manage"):
+        current_seats = team.members.count()
         if plan == "free":
-            limit = 3
+            from django.conf import settings
+            limit = getattr(settings, "FREE_TRIAL_SEAT_LIMIT", 3)
             if current_seats >= limit:
                 return QuotaResult(allowed=False, limit=limit, current=current_seats, reason="seat_limit_reached")
         else:
@@ -74,6 +75,15 @@ def check_quota(team, operation: str, **kwargs) -> QuotaResult:
         # Paid plans have generous soft limits managed by LLM budget
         return QuotaResult(allowed=True, limit=1000, current=0)
 
+    # 5. Wiki Page Limits
+    if operation == "wiki_page_create":
+        if plan == "free":
+            limit = 50
+            current = team.pages.filter(is_deleted=False).count()
+            if current >= limit:
+                return QuotaResult(allowed=False, limit=limit, current=current, reason="wiki_page_limit_reached")
+        return QuotaResult(allowed=True, limit=10000, current=0)
+
     return QuotaResult(allowed=True, limit=-1, current=-1)
 
 def get_team_status_banner(team) -> dict | None:
@@ -88,7 +98,7 @@ def get_team_status_banner(team) -> dict | None:
     if sub.status == "trial_expired":
         return {"type": "error", "title": "Trial Expired", "message": "Your 60-day trial has ended. Upgrade to preserve your team knowledge."}
     
-    if sub.status == "free" and sub.trial_expires_at:
+    if sub.status == "trialing" and sub.trial_expires_at:
         days_left = (sub.trial_expires_at - now).days
         if days_left <= 7:
             return {"type": "warning", "title": "Trial Ending Soon", "message": f"Only {max(0, days_left)} days left in your free trial."}

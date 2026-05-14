@@ -159,3 +159,53 @@ class FileIngestView(APIView):
         run_ingest_job.delay(str(job.id), "", trace_id=trace_id)
         
         return ok(IngestJobSerializer(job).data, status_code=status.HTTP_201_CREATED)
+
+
+class KnowledgeActivityListView(APIView):
+    """Chronological log of how the wiki evolves — read-only."""
+    permission_classes = [permissions.IsAuthenticated, IsTeamMember]
+
+    def get(self, request, team_id):
+        from ingest.models import KnowledgeActivity
+        from ingest.serializers import KnowledgeActivitySerializer
+
+        try:
+            team = Team.objects.get(id=team_id)
+        except Team.DoesNotExist:
+            return fail("Team not found.", status_code=404, code="team_not_found")
+
+        limit = min(int(request.query_params.get("limit", 50)), 200)
+        activities = KnowledgeActivity.objects.filter(team=team).select_related("page").order_by("-created_at")[:limit]
+        return ok(KnowledgeActivitySerializer(activities, many=True).data)
+
+
+class AsyncDeadLetterListView(APIView):
+    """Admin view for failed async tasks — list and requeue."""
+    permission_classes = [permissions.IsAuthenticated, IsTeamMember]
+
+    def get(self, request, team_id):
+        from ingest.models import AsyncDeadLetter
+        from ingest.serializers import AsyncDeadLetterSerializer
+
+        only_new = request.query_params.get("status", "new")
+        limit = min(int(request.query_params.get("limit", 50)), 200)
+        qs = AsyncDeadLetter.objects.filter(status=only_new).order_by("-created_at")[:limit]
+        return ok(AsyncDeadLetterSerializer(qs, many=True).data)
+
+    def patch(self, request, team_id):
+        """Mark a dead letter as resolved or requeued."""
+        from ingest.models import AsyncDeadLetter
+
+        dl_id = request.data.get("id")
+        new_status = request.data.get("status")
+        if not dl_id or new_status not in ("requeued", "resolved"):
+            return fail("Provide id and status (requeued|resolved).", status_code=400, code="invalid_params")
+
+        try:
+            dl = AsyncDeadLetter.objects.get(id=dl_id)
+        except AsyncDeadLetter.DoesNotExist:
+            return fail("Dead letter not found.", status_code=404, code="not_found")
+
+        dl.status = new_status
+        dl.save(update_fields=["status", "updated_at"])
+        return ok({"id": str(dl.id), "status": dl.status})

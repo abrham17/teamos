@@ -58,8 +58,8 @@ class CreateCheckoutSessionView(APIView):
                 code="billing_checkout_params_required",
             )
 
-        if plan_key not in ("team", "pro", "enterprise"):
-            return fail("plan_key must be team, pro, or enterprise.", status_code=400, code="invalid_plan_key")
+        if plan_key not in ("team", "pro"):
+            return fail("plan_key must be team or pro.", status_code=400, code="invalid_plan_key")
 
         try:
             seat_raw = request.data.get("seat_count")
