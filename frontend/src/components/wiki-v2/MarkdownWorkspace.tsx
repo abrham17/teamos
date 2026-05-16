@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, type RefObject } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useWikiStore } from "@/stores/useWikiStore";
 import { api } from "@/lib/api";
@@ -39,6 +39,19 @@ function getErrorMessage(error: unknown, fallback: string) {
     return error.message;
   }
   return fallback;
+}
+
+/** Prefer live editor markdown, then React state, then last saved page body. */
+function resolveBodyMarkdown(
+  editorRef: RefObject<GoogleDocsEditorHandle | null>,
+  content: string,
+  savedContent?: string,
+): string {
+  const fromEditor = editorRef.current?.getMarkdown()?.trim() ?? "";
+  if (fromEditor) return fromEditor;
+  const fromState = content.trim();
+  if (fromState) return fromState;
+  return (savedContent ?? "").trim();
 }
 
 export function MarkdownWorkspace() {
@@ -152,17 +165,21 @@ export function MarkdownWorkspace() {
 
   const handlePublish = async () => {
     if (!currentTeamId || !page?.slug) return;
+    const bodyMarkdown = resolveBodyMarkdown(editorRef, content, page.content);
+    if (!bodyMarkdown) {
+      toastError("Cannot publish an empty page. Add some content first.");
+      return;
+    }
     setPublishBusy(true);
     try {
-      const bodyMarkdown = editorRef.current?.getMarkdown() ?? content;
       const data = await api.post<{
         mode: string;
         changeset?: WikiChangeSetPayload | null;
         job?: unknown;
-      }>(`/wiki/${currentTeamId}/pages/${page.slug}/publish/`, { 
+      }>(`/wiki/${currentTeamId}/pages/${page.slug}/publish/`, {
         auto_approve: autoApproveWiki,
         content: bodyMarkdown,
-        title: title
+        title: title,
       });
       if (data.mode === "review_required" && data.changeset) {
         setReviewChangeset(data.changeset);
@@ -197,9 +214,9 @@ export function MarkdownWorkspace() {
   };
 
   useEffect(() => {
-    if (loading || (!page && !isNew) || !currentTeamId || !isNew) return;
+    if (loading || (!page && !isNew) || !currentTeamId) return;
 
-    const flushedBody = editorRef.current?.getMarkdown() ?? content;
+    const flushedBody = resolveBodyMarkdown(editorRef, content, page?.content);
 
     // Don't trigger save if content hasn't changed from initial load
     const pageFrontmatter = JSON.stringify((page?.frontmatter || {}) as Record<string, string>);
@@ -216,10 +233,9 @@ export function MarkdownWorkspace() {
 
     setSaveStatus("saving");
     const t = setTimeout(() => {
-      const bodyMarkdown = editorRef.current?.getMarkdown() ?? content;
-      
-      // CRITICAL: If the editor returns empty but we have content in state, 
-      // it might mean the editor hasn't finished loading. DON'T SAVE.
+      const bodyMarkdown = resolveBodyMarkdown(editorRef, content, page?.content);
+
+      // Editor not ready: avoid overwriting saved content with an empty body.
       if (!bodyMarkdown.trim() && (content.trim() || page?.content?.trim())) {
         console.warn("Blocking empty save - editor might not be ready");
         setSaveStatus("idle");
@@ -227,7 +243,7 @@ export function MarkdownWorkspace() {
       }
 
       if (isNew) {
-        if (!title.trim() && !bodyMarkdown.trim()) {
+        if (!bodyMarkdown.trim()) {
           setSaveStatus("idle");
           return;
         }
@@ -401,7 +417,10 @@ export function MarkdownWorkspace() {
               </label>
               <button
                 type="button"
-                disabled={publishBusy}
+                disabled={
+                  publishBusy ||
+                  !resolveBodyMarkdown(editorRef, content, page.content)
+                }
                 onClick={() => void handlePublish()}
                 className="rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] px-5 py-2 text-xs font-bold text-[var(--bg-950)] hover:shadow-[0_0_20px_rgba(var(--accent-rgb),0.4)] hover:scale-[1.02] active:scale-95 disabled:opacity-50 transition-all"
               >

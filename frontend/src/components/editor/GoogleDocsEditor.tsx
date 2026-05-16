@@ -169,6 +169,7 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
     onCreate: ({ editor }) => {
       if (!ydoc) {
         setEditorMarkdownContent(editor, initialText);
+        queueMicrotask(() => onChange(getEditorMarkdown(editor)));
       }
     },
     onUpdate: ({ editor }) => {
@@ -192,9 +193,10 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
       const current = getEditorMarkdown(editor);
       if (initialText !== current) {
         setEditorMarkdownContent(editor, initialText);
+        queueMicrotask(() => onChange(getEditorMarkdown(editor)));
       }
     }
-  }, [initialText, editor, ydoc]);
+  }, [initialText, editor, ydoc, onChange]);
 
   if (!editor) return null;
 
