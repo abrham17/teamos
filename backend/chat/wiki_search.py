@@ -259,6 +259,8 @@ def resolve_wiki_page(
     if len(candidates) > 1 and (top["score"] - second_score) < _RESOLVE_MIN_GAP:
         return None, candidates, "wiki_resolve_ambiguous"
 
+    try:
+        page = WikiPage.objects.get(id=top["id"], team_id=team_id, is_deleted=False)
     except WikiPage.DoesNotExist:
         return None, candidates, "wiki_page_not_found"
     return page, candidates, None
