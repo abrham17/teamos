@@ -32,6 +32,7 @@ class ToolContext:
     user: User
     team_id: str
     membership: TeamMember
+    session_id: str | None = None
 
 
 def openai_tool_schemas() -> list[dict[str, Any]]:
