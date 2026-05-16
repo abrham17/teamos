@@ -157,6 +157,8 @@ def llm_json_call(
     messages: List[Dict[str, str]],
     user=None,
     default_on_error: Any = None,
+    max_tokens: Optional[int] = None,
+    temperature: float = 0.7,
 ) -> Any:
     """
     Helper for JSON-wrapped calls.
@@ -168,7 +170,9 @@ def llm_json_call(
             operation=operation,
             messages=messages,
             user=user,
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            max_tokens=max_tokens,
+            temperature=temperature,
         )
         content = resp.choices[0].message.content
         return json.loads(content)
@@ -183,7 +187,9 @@ def llm_json_call(
                 team=team,
                 operation=operation,
                 messages=msgs,
-                user=user
+                user=user,
+                max_tokens=max_tokens,
+                temperature=temperature,
             )
             content = resp.choices[0].message.content.strip()
             # Basic cleanup of markdown fences if any

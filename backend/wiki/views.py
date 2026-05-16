@@ -265,14 +265,19 @@ class WikiPagePublishView(APIView):
 
         # Allow passing content directly in the publish request (for unsaved changes),
         # but do not mutate the persisted page until publish is approved/completed.
-        requested_content = request.data.get("content")
+        # Empty/whitespace request bodies fall back to the saved page (avoids editor sync races).
         baseline_content = page.content or ""
-        publish_content = requested_content if requested_content is not None else baseline_content
+        requested_content = request.data.get("content")
+        if requested_content is not None and str(requested_content).strip():
+            publish_content = str(requested_content)
+        else:
+            publish_content = baseline_content
         logger.info(
-            "Publish attempt for %s: content_in_request=%s, baseline_content_len=%d",
+            "Publish attempt for %s: request_content_len=%d, baseline_content_len=%d, publish_len=%d",
             slug,
-            requested_content is not None,
+            len(str(requested_content)) if requested_content is not None else -1,
             len(baseline_content),
+            len(publish_content or ""),
         )
 
         if not (publish_content or "").strip():

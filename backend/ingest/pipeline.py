@@ -505,7 +505,14 @@ def _build_structure_map(source_type: str, text: str) -> dict:
         structure["sections"] = sections
 
     else:
-        # Generic: split by double newlines as paragraphs
+        # Chapters / major sections (PDF, DOCX, plain text extracts)
+        try:
+            from ingest.agent_decompose import detect_document_segments
+
+            structure["segments"] = detect_document_segments(text, structure)
+        except Exception:
+            logger.exception("Failed to build chapter segments for structure_map")
+
         paragraphs = []
         pos = 0
         for i, block in enumerate(text.split("\n\n")):

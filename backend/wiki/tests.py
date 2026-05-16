@@ -252,7 +252,15 @@ class WikiApiTests(APITestCase):
         page.refresh_from_db()
         self.assertEqual(page.content, "Original persisted content")
 
-    def test_publish_rejects_empty_content_without_mutation(self):
+    @patch("wiki.views.run_pipeline")
+    def test_publish_whitespace_request_content_falls_back_to_saved_body(self, mock_run):
+        def fake(job, source_text="", trace_id=None):
+            job.status = "done"
+            job.ingest_stage = "completed"
+            job.raw_data = source_text or ""
+            job.save(update_fields=["status", "ingest_stage", "raw_data", "updated_at"])
+
+        mock_run.side_effect = fake
         self.client.force_authenticate(user=self.editor)
         page = WikiPage.objects.create(
             team=self.team,
@@ -262,12 +270,29 @@ class WikiApiTests(APITestCase):
             created_by=self.editor,
         )
         url = f"/api/wiki/{self.team.id}/pages/{page.slug}/publish/"
+        res = self.client.post(url, {"content": "   ", "auto_approve": True}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        mock_run.assert_called_once()
+        self.assertEqual(mock_run.call_args.kwargs.get("source_text"), "Keep me")
+        page.refresh_from_db()
+        self.assertEqual(page.content, "Keep me")
+
+    def test_publish_rejects_empty_content_without_mutation(self):
+        self.client.force_authenticate(user=self.editor)
+        page = WikiPage.objects.create(
+            team=self.team,
+            title="Empty Page",
+            slug="empty-page",
+            content="",
+            created_by=self.editor,
+        )
+        url = f"/api/wiki/{self.team.id}/pages/{page.slug}/publish/"
         res = self.client.post(url, {"content": "   "}, format="json")
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(res.data["success"])
         self.assertEqual(res.data["error"]["code"], "empty_content")
         page.refresh_from_db()
-        self.assertEqual(page.content, "Keep me")
+        self.assertEqual(page.content, "")
 
     @patch("ingest.pipeline._chat_json_completion")
     def test_publish_review_pipeline_creates_changeset_without_mutating_page(self, mock_llm):
