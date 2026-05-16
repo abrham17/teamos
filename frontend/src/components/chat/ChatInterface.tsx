@@ -12,7 +12,7 @@ import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { VoiceChatOverlay, VoiceOverlayPhase } from "@/components/chat/VoiceChatOverlay";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
-import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentThinking, AgentReflection } from "@/components/chat/chatTypes";
+import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentThinking, AgentReflection, AgentStep, AgentStrategy } from "@/components/chat/chatTypes";
 import { AgentThinkingPane } from "@/components/chat/AgentThinkingPane";
 
 type SessionDetailResponse = { messages?: ChatMessage[] };
@@ -348,7 +348,7 @@ export function ChatInterface() {
         toastError("Failed to connect to AI server.");
       }
     },
-    [activeSessionId, currentTeamId, isStreaming, chatMode, toastError],
+    [activeSessionId, currentTeamId, isStreaming, toastError],
   );
 
   const handleNewChat = async () => {

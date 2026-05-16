@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import ReactMarkdown from "react-markdown";
 import { motion, AnimatePresence } from "motion/react";
 import {
   X,
@@ -19,10 +18,8 @@ import {
   AlertTriangle,
   Shield,
   FileText,
-  Clock,
 } from "lucide-react";
-import { api, getApiAuthHeaders } from "@/lib/api";
-import type { PlanProjectDetail } from "../types";
+import { getApiAuthHeaders } from "@/lib/api";
 
 interface AIPlannerOverlayProps {
   teamId: string;
@@ -122,7 +119,6 @@ export function AIPlannerOverlay({
   // Agent execution state
   const [agentSteps, setAgentSteps] = useState<AgentStepEntry[]>([]);
   const [statusText, setStatusText] = useState("");
-  const [finalResponse, setFinalResponse] = useState<string>("");
 
   // Manual fields
   const [manualName, setManualName] = useState("");
@@ -186,7 +182,6 @@ export function AIPlannerOverlay({
   const resetExecutionState = useCallback(() => {
     setAgentSteps([]);
     setStatusText("");
-    setFinalResponse("");
     setPlanResult(null);
   }, []);
 

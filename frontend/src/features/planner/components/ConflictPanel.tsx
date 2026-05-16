@@ -1,5 +1,5 @@
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { getProjectConflicts, resolveProjectConflicts } from "../api";
 import type { PlanConflict } from "../types";
 import { useToast } from "@/components/ui/Toast";
@@ -18,7 +18,7 @@ export function ConflictPanel({ teamId, projectId, refreshKey, onResolved }: Con
   const [resolving, setResolving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const loadConflicts = () => {
+  const loadConflicts = useCallback(() => {
     setLoading(true);
     setErrorMsg(null);
     getProjectConflicts(teamId, projectId)
@@ -29,11 +29,11 @@ export function ConflictPanel({ teamId, projectId, refreshKey, onResolved }: Con
       })
       .catch((err) => setErrorMsg(err instanceof Error ? err.message : "Failed to load conflicts."))
       .finally(() => setLoading(false));
-  };
+  }, [teamId, projectId]);
 
   useEffect(() => {
     loadConflicts();
-  }, [teamId, projectId, refreshKey]);
+  }, [loadConflicts, refreshKey]);
 
   const handleResolve = async () => {
     if (!projectId) return;

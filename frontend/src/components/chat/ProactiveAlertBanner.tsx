@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Bell, AlertTriangle, Clock, FileWarning, X } from "lucide-react";
+import { Bell, AlertTriangle, Clock, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { api } from "@/lib/api";
 

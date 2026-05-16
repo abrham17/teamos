@@ -1,5 +1,5 @@
 import { Shield, AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   applyRiskResolutionActions,
   generateRiskResolutionProposal,
@@ -23,18 +23,18 @@ export function RiskCard({ teamId, projectId, refreshKey, onResolved }: RiskCard
   const [resolving, setResolving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const loadRisk = () => {
+  const loadRisk = useCallback(() => {
     setLoading(true);
     setErrorMsg(null);
     getProjectRisk(teamId, projectId)
       .then(setRisk)
       .catch((err) => setErrorMsg(err instanceof Error ? err.message : "Risk assessment unavailable."))
       .finally(() => setLoading(false));
-  };
+  }, [teamId, projectId]);
 
   useEffect(() => {
     loadRisk();
-  }, [teamId, projectId, refreshKey]);
+  }, [loadRisk, refreshKey]);
 
   const handleResolveRisk = async () => {
     setResolving(true);
