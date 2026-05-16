@@ -34,6 +34,19 @@ export type AgentReflection = {
   severity: "info" | "warning" | "critical";
 };
 
+export type AgentStep = {
+  name: string;
+  arguments?: string;
+  ok?: boolean;
+  result?: unknown;
+};
+
+export type AgentStrategy = {
+  primary_agent: string;
+  reasoning_depth: "lightweight" | "standard" | "deep";
+  confidence: number;
+};
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -41,6 +54,8 @@ export type ChatMessage = {
   citations?: Citation[];
   metadata?: Record<string, unknown>;
   toolSteps?: AgentToolStep[];
+  agentSteps?: AgentStep[];
+  strategy?: AgentStrategy;
 };
 
 export type ChatCapabilities = {

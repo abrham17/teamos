@@ -2,16 +2,18 @@
 
 import { motion, AnimatePresence } from "motion/react";
 import { BrainCircuit, AlertTriangle, RotateCcw, RefreshCw } from "lucide-react";
-import type { AgentThinking, AgentReflection } from "./chatTypes";
+import type { AgentThinking, AgentReflection, AgentStep } from "./chatTypes";
+import { Check, Loader2 } from "lucide-react";
 
 interface AgentThinkingPaneProps {
   thoughts: AgentThinking[];
   reflections: AgentReflection[];
+  steps?: AgentStep[];
   isActive: boolean;
 }
 
-export function AgentThinkingPane({ thoughts, reflections, isActive }: AgentThinkingPaneProps) {
-  if (thoughts.length === 0 && reflections.length === 0) return null;
+export function AgentThinkingPane({ thoughts, reflections, steps = [], isActive }: AgentThinkingPaneProps) {
+  if (thoughts.length === 0 && reflections.length === 0 && steps.length === 0) return null;
 
   return (
     <AnimatePresence>
@@ -38,6 +40,34 @@ export function AgentThinkingPane({ thoughts, reflections, isActive }: AgentThin
               {thought.content}
             </motion.div>
           ))}
+
+          {steps.length > 0 && (
+            <div className="space-y-1.5 py-1">
+              {steps.map((step, idx) => (
+                <motion.div
+                  key={`step-${idx}`}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]"
+                >
+                  {step.ok === true ? (
+                    <div className="w-4 h-4 rounded-full bg-[var(--success)]/10 flex items-center justify-center">
+                      <Check className="w-2.5 h-2.5 text-[var(--success)]" />
+                    </div>
+                  ) : step.ok === false ? (
+                    <div className="w-4 h-4 rounded-full bg-[var(--danger)]/10 flex items-center justify-center">
+                      <AlertTriangle className="w-2.5 h-2.5 text-[var(--danger)]" />
+                    </div>
+                  ) : (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" />
+                  )}
+                  <span className={step.ok !== undefined ? "text-[var(--text-muted)]" : "text-[var(--accent)] font-bold"}>
+                    {step.name.replace("plan_", "").replace("reasoning_", "").replace("_", " ")}
+                  </span>
+                </motion.div>
+              ))}
+            </div>
+          )}
 
           {reflections
             .filter((r) => !r.success)

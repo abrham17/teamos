@@ -45,9 +45,8 @@ export function ChatInterface() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
-  const [chatMode, setChatMode] = useState<"ask" | "agent" | "plan">("agent");
-
-
+  const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
+  const [strategy, setStrategy] = useState<AgentStrategy | null>(null);
   const [agentThoughts, setAgentThoughts] = useState<AgentThinking[]>([]);
   const [agentReflections, setAgentReflections] = useState<AgentReflection[]>([]);
 
@@ -189,14 +188,14 @@ export function ChatInterface() {
       const trimmed = userMsg.trim();
       if (!trimmed || !currentTeamId || !activeSessionId || isStreaming) return;
 
-      const mode = chatMode;
-
       setIsStreaming(true);
-      setStatus("Connecting...");
+      setStatus("Analyzing mission...");
       setAgentThoughts([]);
       setAgentReflections([]);
+      setAgentSteps([]);
+      setStrategy(null);
       
-      const userMsgObj: ChatMessage = { role: "user", content: trimmed, id: `u-${Date.now()}`, metadata: { mode } };
+      const userMsgObj: ChatMessage = { role: "user", content: trimmed, id: `u-${Date.now()}` };
       setMessages((prev) => [...prev, userMsgObj]);
 
       const auth = await getApiAuthHeaders();
@@ -206,7 +205,8 @@ export function ChatInterface() {
         content: "",
         citations: [],
         id: assistantId,
-        toolSteps: mode === "agent" || mode === "plan" ? [] : undefined,
+        toolSteps: [],
+        agentSteps: [],
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
@@ -217,7 +217,7 @@ export function ChatInterface() {
             method: "POST",
             headers: { "Content-Type": "application/json", ...auth },
             credentials: "include",
-            body: JSON.stringify({ message: trimmed, mode }),
+            body: JSON.stringify({ message: trimmed }),
           },
         );
 
@@ -247,6 +247,9 @@ export function ChatInterface() {
                 const data = JSON.parse(dataStr) as Record<string, unknown>;
                 if (currentEvent === "status") {
                   setStatus(String(data.status ?? ""));
+                } else if (currentEvent === "agent_strategy") {
+                  const strat = data as unknown as AgentStrategy;
+                  setStrategy(strat);
                 } else if (currentEvent === "chunk") {
                   setStatus("");
                   const token = String((data as { token?: string }).token ?? "");
@@ -285,6 +288,32 @@ export function ChatInterface() {
                   }
                   if (li >= 0) steps[li] = { ...steps[li], ok, result };
                   working = { ...working, toolSteps: steps };
+                  setMessages((prev) => {
+                    const next = [...prev];
+                    next[next.length - 1] = { ...working };
+                    return next;
+                  });
+                } else if (currentEvent === "agent_step") {
+                  const name = String((data as { name?: string }).name ?? "");
+                  const arg = String((data as { arguments?: string }).arguments ?? "");
+                  const steps = [...(working.agentSteps ?? []), { name, arguments: arg }];
+                  working = { ...working, agentSteps: steps };
+                  setMessages((prev) => {
+                    const next = [...prev];
+                    next[next.length - 1] = { ...working };
+                    return next;
+                  });
+                } else if (currentEvent === "agent_result") {
+                  const name = String((data as { name?: string }).name ?? "");
+                  const ok = Boolean((data as { ok?: boolean }).ok);
+                  const result = (data as { result?: unknown }).result;
+                  const steps = [...(working.agentSteps ?? [])];
+                  let li = -1;
+                  for (let i = steps.length - 1; i >= 0; i--) {
+                    if (steps[i].name === name && steps[i].ok === undefined) { li = i; break; }
+                  }
+                  if (li >= 0) steps[li] = { ...steps[li], ok, result };
+                  working = { ...working, agentSteps: steps };
                   setMessages((prev) => {
                     const next = [...prev];
                     next[next.length - 1] = { ...working };
@@ -430,7 +459,12 @@ export function ChatInterface() {
                 {!isUser && <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] shadow-md"><Bot className="h-5 w-5 text-[var(--accent)]" /></div>}
                 <div className={cn("flex max-w-[85%] flex-col gap-3", isUser ? "items-end" : "items-start")}>
                   {!isUser && i === messages.length - 1 && isStreaming && (agentThoughts.length > 0 || agentReflections.length > 0) && (
-                    <AgentThinkingPane thoughts={agentThoughts} reflections={agentReflections} isActive={isStreaming} />
+                    <AgentThinkingPane 
+                      thoughts={agentThoughts} 
+                      reflections={agentReflections} 
+                      steps={agentSteps}
+                      isActive={isStreaming} 
+                    />
                   )}
                   {!isUser && agentStepsForMessage(m).length > 0 && <ChatAgentToolTimeline steps={agentStepsForMessage(m)} />}
                   <div className="relative group/msg-content">
@@ -503,26 +537,41 @@ export function ChatInterface() {
 
         <div className="shrink-0 bg-[var(--bg-950)] px-4 pt-2 w-full z-20">
           <div className="relative mx-auto flex w-full max-w-4xl flex-col gap-2">
-            <div className="flex items-center gap-1.5 mb-1 px-1">
-              {([
-                { key: "ask" as const, icon: Search, label: "Ask", desc: "Quick knowledge lookup" },
-                { key: "agent" as const, icon: BrainCircuit, label: "Agent", desc: "Multi-step tool execution" },
-                { key: "plan" as const, icon: Calendar, label: "Plan", desc: "Project planning mode" },
-              ]).map(({ key, icon: Icon, label }) => (
-                <button
-                  key={key}
-                  onClick={() => setChatMode(key)}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all",
-                    chatMode === key
-                      ? "bg-[var(--accent-subtle)] text-[var(--accent)] border border-[var(--accent)]/20"
-                      : "text-[var(--text-dim)] hover:text-[var(--text-muted)] hover:bg-white/5"
-                  )}
+            <div className="flex items-center gap-2 mb-1 px-1 min-h-[30px]">
+              {strategy ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--accent-subtle)]/30 border border-[var(--accent)]/10"
                 >
-                  <Icon className="w-3.5 h-3.5" />
-                  {label}
-                </button>
-              ))}
+                  <div className="flex items-center gap-1.5">
+                    {strategy.primary_agent === "lightweight" && <Search className="w-3.5 h-3.5 text-[var(--accent)]" />}
+                    {strategy.primary_agent === "wiki" && <Bot className="w-3.5 h-3.5 text-[var(--accent)]" />}
+                    {strategy.primary_agent === "plan" && <BrainCircuit className="w-3.5 h-3.5 text-[var(--accent)]" />}
+                    {strategy.primary_agent === "strategic_planner" && <Calendar className="w-3.5 h-3.5 text-[var(--accent)]" />}
+                    {strategy.primary_agent === "analyst" && <BrainCircuit className="w-3.5 h-3.5 text-[var(--accent)]" />}
+                    
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[var(--accent)]">
+                      {strategy.primary_agent === "strategic_planner" ? "Architecting Strategy" : 
+                       strategy.primary_agent === "lightweight" ? "Knowledge Lookup" :
+                       "Operational Execution"}
+                    </span>
+                  </div>
+                  
+                  <div className="h-3 w-[1px] bg-[var(--accent)]/20" />
+                  
+                  <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-tight">
+                    {strategy.reasoning_depth} Reasoning
+                  </span>
+                </motion.div>
+              ) : (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5">
+                  <BrainCircuit className="w-3.5 h-3.5 text-[var(--text-dim)]" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)]">
+                    Universal Intelligence
+                  </span>
+                </div>
+              )}
             </div>
             <div className="relative group w-full">
               <div className="absolute -inset-0.5 bg-gradient-to-r from-[var(--accent)] to-purple-600 rounded-[1.5rem] opacity-0 group-focus-within:opacity-15 blur-md transition-opacity duration-500" />

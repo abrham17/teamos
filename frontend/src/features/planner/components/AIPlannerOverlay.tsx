@@ -52,6 +52,8 @@ const STEP_LABELS: Record<string, string> = {
   reasoning_finalize: "Inferring dependencies & scheduling",
   // Entity creation
   plan_generate_draft: "Generating plan draft",
+  plan_search: "Searching plans & tasks",
+  plan_read_entity: "Loading plan details",
   plan_create_project: "Creating project",
   plan_update_project: "Updating project",
   plan_update_task: "Updating task",
