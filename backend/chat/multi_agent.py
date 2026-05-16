@@ -15,7 +15,9 @@ class AgentRole(Enum):
     COORDINATOR = "coordinator"
     WIKI = "wiki"
     PLAN = "plan"
+    STRATEGIC_PLANNER = "strategic_planner"  # Deep reasoning pipeline
     ANALYST = "analyst"
+    LIGHTWEIGHT = "lightweight"  # Quick RAG lookup
 
 
 @dataclass
@@ -34,6 +36,7 @@ class Classification:
     requires_multiple: bool = False
     subtasks: list[tuple[AgentRole, str]] = field(default_factory=list)
     confidence: float = 1.0
+    reasoning_depth: str = "standard"  # "lightweight", "standard", "deep"
 
 
 SPECIALIST_SYSTEM_PROMPTS = {
@@ -45,9 +48,16 @@ SPECIALIST_SYSTEM_PROMPTS = {
     ),
     AgentRole.PLAN: (
         "You are the PlanAgent — a project planning specialist. "
-        "Your expertise: project planning, task breakdown, scheduling, "
-        "resource allocation, risk assessment, milestone tracking. "
-        "Use plan_* tools. Focus on realistic timelines and dependencies."
+        "Your expertise: project management, task tracking, scheduling, "
+        "resource allocation, status updates. "
+        "Use project_query / task_query / milestone_query on write tools (casual names, not UUIDs). "
+        "Focus on maintaining and updating existing plans."
+    ),
+    AgentRole.STRATEGIC_PLANNER: (
+        "You are the Strategic Planner — a deep-reasoning project architect. "
+        "Your expertise: building comprehensive project roadmaps from scratch, "
+        "complex mission decomposition, multi-source research, and risk mitigation. "
+        "You use a structured 5-stage reasoning pipeline: Decompose -> Research -> Draft -> Critique -> Finalize."
     ),
     AgentRole.ANALYST: (
         "You are the AnalystAgent — a data analysis specialist. "
@@ -55,26 +65,37 @@ SPECIALIST_SYSTEM_PROMPTS = {
         "knowledge gap identification. Use memory_* and analytics tools. "
         "Focus on actionable insights from data."
     ),
+    AgentRole.LIGHTWEIGHT: (
+        "You are a Lightweight Assistant. You provide quick, accurate answers from existing knowledge "
+        "without using complex tools or planning loops. Focus on speed and directness."
+    ),
 }
 
 SPECIALIST_TOOLS = {
     AgentRole.WIKI: [
-        "wiki_search_pages", "wiki_read_full_page", "wiki_create_page",
+        "wiki_search_pages", "wiki_list_pages", "wiki_team_overview",
+        "wiki_read_full_page", "wiki_create_page",
         "wiki_update_page", "wiki_delete_page", "wiki_list_pages",
         "graph_add_edge", "graph_remove_edge", "graph_traverse_neighbors",
         "graph_add_typed_relation", "knowledge_gap_analysis",
     ],
     AgentRole.PLAN: [
+        "plan_search", "plan_read_entity", "plan_list_projects",
         "plan_create_project", "plan_update_project", "plan_delete_project",
         "plan_create_task", "plan_update_task", "plan_delete_task",
         "plan_create_milestone", "plan_update_milestone",
-        "plan_list_projects", "plan_list_tasks", "plan_detect_conflicts",
-        "plan_sync_wiki", "risk_assessment",
+        "plan_detect_conflicts", "plan_sync_wiki", "plan_risk_assessment",
+        "plan_check_overdue",
+    ],
+    AgentRole.STRATEGIC_PLANNER: [
+        "plan_generate_draft", "plan_detect_conflicts", "plan_risk_assessment",
+        "plan_sync_wiki", "wiki_search_pages", "graph_traverse_neighbors",
     ],
     AgentRole.ANALYST: [
         "memory_search", "memory_store", "memory_delete",
         "plan_get_analytics", "wiki_get_analytics",
     ],
+    AgentRole.LIGHTWEIGHT: [],  # No tools, just RAG
 }
 
 
@@ -92,20 +113,23 @@ class AgentOrchestrator:
 User message: "{user_message}"
 
 Available specialists:
-- wiki: knowledge management, wiki pages, documentation, knowledge graph
-- plan: project planning, tasks, milestones, scheduling, resource allocation
-- analyst: data analysis, retrospectives, trends, performance metrics
+- lightweight: Quick lookup, factual answer, no tools needed. Choose this for simple questions.
+- wiki: knowledge management, wiki edits, linking strategy.
+- plan: project management, listing tasks, minor schedule updates.
+- strategic_planner: Building a new project plan from scratch, complex roadmapping, deep reasoning.
+- analyst: data analysis, retrospectives, trends.
 
 Return JSON:
 {{
-  "primary_agent": "wiki|plan|analyst",
+  "primary_agent": "lightweight|wiki|plan|strategic_planner|analyst",
+  "reasoning_depth": "lightweight|standard|deep",
   "requires_multiple": true/false,
   "subtasks": [["agent_name", "subtask description"], ...],
   "confidence": 0.0-1.0
 }}
 
-If the request spans multiple domains, set requires_multiple=true and list subtasks.
-Otherwise, route to the single best agent."""
+If the user wants to "create a plan", "architect a project", or "build a roadmap", use strategic_planner and deep reasoning.
+If the user asks a simple question like "Who is...", use lightweight."""
 
         resp, _, _ = llm_call(
             messages=[
@@ -117,7 +141,7 @@ Otherwise, route to the single best agent."""
         try:
             import json
             data = json.loads(resp.choices[0].message.content if resp else "{}")
-            primary = AgentRole(data.get("primary_agent", "wiki"))
+            primary = AgentRole(data.get("primary_agent", "lightweight"))
             return Classification(
                 primary_agent=primary,
                 requires_multiple=data.get("requires_multiple", False),
@@ -126,9 +150,10 @@ Otherwise, route to the single best agent."""
                     for st in data.get("subtasks", [])
                 ],
                 confidence=data.get("confidence", 0.8),
+                reasoning_depth=data.get("reasoning_depth", "standard"),
             )
         except (json.JSONDecodeError, AttributeError, ValueError):
-            return Classification(primary_agent=AgentRole.WIKI)
+            return Classification(primary_agent=AgentRole.LIGHTWEIGHT)
 
     def classify_sync(self, user_message: str, team) -> Classification:
         """Synchronous classification with team budget awareness."""
@@ -138,32 +163,32 @@ Otherwise, route to the single best agent."""
 User message: "{user_message}"
 
 Available specialists:
-- wiki: knowledge management, wiki pages, documentation, knowledge graph
-- plan: project planning, tasks, milestones, scheduling, resource allocation
-- analyst: data analysis, retrospectives, trends, performance metrics
+- lightweight: Quick lookup, factual answer, no tools needed.
+- wiki: knowledge management, wiki edits.
+- plan: project management, minor updates.
+- strategic_planner: New project creation, roadmapping, deep reasoning.
+- analyst: data analysis.
 
 Return JSON:
 {{
-  "primary_agent": "wiki|plan|analyst",
+  "primary_agent": "lightweight|wiki|plan|strategic_planner|analyst",
+  "reasoning_depth": "lightweight|standard|deep",
   "requires_multiple": true/false,
   "subtasks": [["agent_name", "subtask description"], ...],
   "confidence": 0.0-1.0
-}}
-
-If the request spans multiple domains, set requires_multiple=true and list subtasks.
-Otherwise, route to the single best agent."""
+}}"""
 
         try:
             resp, _, _ = llm_call(
                 team=team,
-                operation="query_expansion",  # cheap nano/mini operation
+                operation="query_expansion",
                 messages=[
                     {"role": "system", "content": "You are a request router. Return only valid JSON."},
                     {"role": "user", "content": prompt},
                 ],
             )
             data = _json.loads(resp.choices[0].message.content if resp else "{}")
-            primary = AgentRole(data.get("primary_agent", "wiki"))
+            primary = AgentRole(data.get("primary_agent", "lightweight"))
             return Classification(
                 primary_agent=primary,
                 requires_multiple=data.get("requires_multiple", False),
@@ -172,9 +197,10 @@ Otherwise, route to the single best agent."""
                     for st in data.get("subtasks", [])
                 ],
                 confidence=data.get("confidence", 0.8),
+                reasoning_depth=data.get("reasoning_depth", "standard"),
             )
         except Exception:
-            return Classification(primary_agent=AgentRole.WIKI)
+            return Classification(primary_agent=AgentRole.LIGHTWEIGHT)
 
     def get_system_prompt(self, role: AgentRole) -> str:
         return SPECIALIST_SYSTEM_PROMPTS.get(role, "")

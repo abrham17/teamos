@@ -40,13 +40,63 @@ def openai_tool_schemas() -> list[dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "wiki_search_pages",
-                "description": "Search wiki pages by title or content substring. Use before updates to find slugs.",
+                "name": "wiki_list_pages",
+                "description": (
+                    "List wiki pages for the team with title, slug, page_type, and summary. "
+                    "Use for overview questions: what is in the wiki, knowledge base inventory, all pages."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query": {"type": "string", "description": "Search string"},
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max pages to return (default 50, max 150)",
+                            "default": 50,
+                        },
+                        "page_type": {
+                            "type": "string",
+                            "description": "Optional filter: standard, decision, meeting, brief, incident, sop",
+                        },
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "wiki_team_overview",
+                "description": (
+                    "Get a structured overview of the team's entire wiki/knowledge base: page counts, "
+                    "types, titles, summaries, ingest sources, and graph stats. Use before answering "
+                    "'what do we have in the wiki' or 'explain our knowledge base'."
+                ),
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "wiki_search_pages",
+                "description": (
+                    "Search wiki pages (hybrid semantic + keyword). Returns slug, score, and snippet. "
+                    "Use before updates; prefer wiki_read_full_page before editing content."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Search string or topic description"},
                         "limit": {"type": "integer", "description": "Max results", "default": 15},
+                        "mode": {
+                            "type": "string",
+                            "enum": ["hybrid", "semantic", "keyword"],
+                            "description": "hybrid (default), semantic only, or keyword substring only",
+                            "default": "hybrid",
+                        },
+                        "expand_queries": {
+                            "type": "boolean",
+                            "description": "LLM query expansion + HyDE for deeper semantic recall (slower)",
+                            "default": False,
+                        },
                     },
                     "required": ["query"],
                 },
@@ -80,15 +130,32 @@ def openai_tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "wiki_update_page",
-                "description": "Update an existing wiki page by slug or page_id.",
+                "description": (
+                    "Update a wiki page by page_id, slug, or resolve query. "
+                    "Call wiki_read_full_page before replace edits. content_mode: replace (default), append, prepend."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "slug": {"type": "string"},
                         "page_id": {"type": "string"},
+                        "query": {
+                            "type": "string",
+                            "description": "Natural-language page finder when slug/page_id unknown",
+                        },
                         "title": {"type": "string"},
                         "content": {"type": "string"},
+                        "content_mode": {
+                            "type": "string",
+                            "enum": ["replace", "append", "prepend"],
+                            "description": "How to apply content when provided",
+                            "default": "replace",
+                        },
                         "page_type": {"type": "string"},
+                        "expected_updated_at": {
+                            "type": "string",
+                            "description": "ISO timestamp from wiki_read_full_page; rejects stale concurrent edits",
+                        },
                     },
                     "required": [],
                 },
@@ -151,19 +218,131 @@ def openai_tool_schemas() -> list[dict[str, Any]]:
     ] + openai_plan_tool_schemas() + openai_agent_tool_schemas()
 
 
+_PLAN_PROJECT_LOCATOR = {
+    "project_id": {"type": "string", "description": "Project UUID if known"},
+    "project_query": {
+        "type": "string",
+        "description": "Natural language project reference (name, topic), e.g. 'Q2 launch'",
+    },
+}
+_PLAN_TASK_LOCATOR = {
+    "task_id": {"type": "string", "description": "Task UUID if known"},
+    "task_query": {
+        "type": "string",
+        "description": "Natural language task reference, e.g. 'deploy', 'standup', 'what I finished'",
+    },
+}
+_PLAN_MILESTONE_LOCATOR = {
+    "milestone_id": {"type": "string", "description": "Milestone UUID if known"},
+    "milestone_query": {
+        "type": "string",
+        "description": "Natural language milestone reference, e.g. 'beta launch', 'go live'",
+    },
+}
+_PLAN_MUTATE_NOTE = (
+    "Use *_query when the user speaks casually (no UUID). "
+    "Status: 'achieved'/'done' → completed for tasks; 'achieved'/'done' → reached for milestones."
+)
+
+
 def openai_plan_tool_schemas() -> list[dict[str, Any]]:
     return [
         {
             "type": "function",
             "function": {
                 "name": "plan_list_projects",
-                "description": "List projects for this team.",
+                "description": "List projects for this team (name/description substring only).",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "query": {"type": "string"},
                         "limit": {"type": "integer", "default": 20},
                     },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_search",
+                "description": (
+                    "Hybrid semantic search across projects, tasks, milestones, and project members. "
+                    "Finds day-to-day work by dates, assignee, status, and natural-language intent. "
+                    "Use plan_read_entity for full details on a hit."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "What to find (topic, person, date YYYY-MM-DD, status, etc.)",
+                        },
+                        "limit": {"type": "integer", "default": 20},
+                        "mode": {
+                            "type": "string",
+                            "enum": ["hybrid", "semantic", "keyword"],
+                            "default": "hybrid",
+                        },
+                        "expand_queries": {
+                            "type": "boolean",
+                            "description": "LLM query expansion for deeper semantic recall",
+                            "default": False,
+                        },
+                        "project_id": {
+                            "type": "string",
+                            "description": "Limit search to one project",
+                        },
+                        "source_kinds": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": ["project", "task", "milestone", "member"],
+                            },
+                            "description": "Filter result types",
+                        },
+                        "assignee_id": {
+                            "type": "string",
+                            "description": "Filter tasks by assignee user id",
+                        },
+                        "date_from": {
+                            "type": "string",
+                            "description": "Tasks/milestones on or after YYYY-MM-DD",
+                        },
+                        "date_to": {
+                            "type": "string",
+                            "description": "Tasks/milestones on or before YYYY-MM-DD",
+                        },
+                        "status": {
+                            "type": "string",
+                            "description": "Filter tasks (todo, in-progress, ...) or milestones (pending, reached, ...)",
+                        },
+                    },
+                    "required": ["query"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_read_entity",
+                "description": (
+                    "Read full project, task, or milestone after plan_search. "
+                    "Pass source_kind + ids from search results."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "source_kind": {
+                            "type": "string",
+                            "enum": ["project", "task", "milestone"],
+                        },
+                        "project_id": {"type": "string"},
+                        "source_ref_id": {
+                            "type": "string",
+                            "description": "task or milestone id; omit for project-only read",
+                        },
+                    },
+                    "required": ["source_kind", "project_id"],
                 },
             },
         },
@@ -187,13 +366,16 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "plan_generate_draft",
-                "description": "Use the Plan Architect to generate a detailed project draft (tasks, milestones, roles) based on a mission prompt and wiki context.",
+                "description": (
+                    "Generate a project draft from a mission prompt and wiki context. "
+                    + _PLAN_MUTATE_NOTE
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "prompt": {"type": "string", "description": "The mission or objective for the project."},
                         "mode": {"type": "string", "enum": ["create", "manage"], "default": "create"},
-                        "project_id": {"type": "string", "description": "ID of existing project if updating."},
+                        **_PLAN_PROJECT_LOCATOR,
                     },
                     "required": ["prompt"],
                 },
@@ -203,16 +385,15 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "plan_update_project",
-                "description": "Update a planning project by id.",
+                "description": "Update a project by id or natural-language project_query. " + _PLAN_MUTATE_NOTE,
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "project_id": {"type": "string"},
+                        **_PLAN_PROJECT_LOCATOR,
                         "name": {"type": "string"},
                         "description": {"type": "string"},
                         "status": {"type": "string"},
                     },
-                    "required": ["project_id"],
                 },
             },
         },
@@ -220,11 +401,13 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "plan_create_task",
-                "description": "Create a task inside a project.",
+                "description": (
+                    "Create a task in a project (project_id or project_query). " + _PLAN_MUTATE_NOTE
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "project_id": {"type": "string"},
+                        **_PLAN_PROJECT_LOCATOR,
                         "title": {"type": "string"},
                         "description": {"type": "string"},
                         "status": {"type": "string"},
@@ -238,7 +421,7 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                             "description": "List of task IDs this task depends on",
                         },
                     },
-                    "required": ["project_id", "title"],
+                    "required": ["title"],
                 },
             },
         },
@@ -246,14 +429,21 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "plan_update_task",
-                "description": "Update a task by id.",
+                "description": (
+                    "Update a task by task_id or task_query (e.g. user says they finished/achieved work). "
+                    + _PLAN_MUTATE_NOTE
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "task_id": {"type": "string"},
+                        **_PLAN_TASK_LOCATOR,
+                        **_PLAN_PROJECT_LOCATOR,
                         "title": {"type": "string"},
                         "description": {"type": "string"},
-                        "status": {"type": "string"},
+                        "status": {
+                            "type": "string",
+                            "description": "todo | in-progress | completed | blocked; aliases: done, achieved",
+                        },
                         "priority": {"type": "string"},
                         "assignee_id": {"type": "string"},
                         "start_date": {"type": "string", "description": "YYYY-MM-DD"},
@@ -261,10 +451,8 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                         "dependency_ids": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "List of task IDs this task depends on",
                         },
                     },
-                    "required": ["task_id"],
                 },
             },
         },
@@ -272,17 +460,19 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "plan_create_milestone",
-                "description": "Create a milestone inside a project.",
+                "description": (
+                    "Create a milestone in a project (project_id or project_query). " + _PLAN_MUTATE_NOTE
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "project_id": {"type": "string"},
+                        **_PLAN_PROJECT_LOCATOR,
                         "title": {"type": "string"},
                         "description": {"type": "string"},
                         "status": {"type": "string"},
                         "target_date": {"type": "string", "description": "YYYY-MM-DD"},
                     },
-                    "required": ["project_id", "title"],
+                    "required": ["title"],
                 },
             },
         },
@@ -290,17 +480,20 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "plan_update_milestone",
-                "description": "Update a milestone by id.",
+                "description": "Update a milestone by id or milestone_query. " + _PLAN_MUTATE_NOTE,
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "milestone_id": {"type": "string"},
+                        **_PLAN_MILESTONE_LOCATOR,
+                        **_PLAN_PROJECT_LOCATOR,
                         "title": {"type": "string"},
                         "description": {"type": "string"},
-                        "status": {"type": "string"},
+                        "status": {
+                            "type": "string",
+                            "description": "pending | reached | missed; aliases: done, achieved",
+                        },
                         "target_date": {"type": "string", "description": "YYYY-MM-DD"},
                     },
-                    "required": ["milestone_id"],
                 },
             },
         },
@@ -308,13 +501,10 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "plan_delete_task",
-                "description": "Delete a task by ID.",
+                "description": "Delete a task by task_id or task_query. " + _PLAN_MUTATE_NOTE,
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "task_id": {"type": "string"},
-                    },
-                    "required": ["task_id"],
+                    "properties": {**_PLAN_TASK_LOCATOR, **_PLAN_PROJECT_LOCATOR},
                 },
             },
         },
@@ -322,13 +512,10 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "plan_delete_project",
-                "description": "Delete a project by ID.",
+                "description": "Delete a project by project_id or project_query. " + _PLAN_MUTATE_NOTE,
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "project_id": {"type": "string"},
-                    },
-                    "required": ["project_id"],
+                    "properties": dict(_PLAN_PROJECT_LOCATOR),
                 },
             },
         },
@@ -336,12 +523,10 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "plan_detect_conflicts",
-                "description": "Detect scheduling conflicts (overlapping tasks, milestone clashes, same-assignee overlaps) within a team or project.",
+                "description": "Detect scheduling conflicts for the team or one project (id or project_query).",
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "project_id": {"type": "string", "description": "Optional project ID to scope conflict detection."},
-                    },
+                    "properties": dict(_PLAN_PROJECT_LOCATOR),
                 },
             },
         },
@@ -349,13 +534,10 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "plan_sync_wiki",
-                "description": "Sync a project's current state to its associated wiki page, creating one if it doesn't exist.",
+                "description": "Sync a project to its wiki page (project_id or project_query).",
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "project_id": {"type": "string"},
-                    },
-                    "required": ["project_id"],
+                    "properties": dict(_PLAN_PROJECT_LOCATOR),
                 },
             },
         },
@@ -363,13 +545,10 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "plan_risk_assessment",
-                "description": "Assess timeline risk for a project plan. Returns a risk score (0-100), risk factors, and mitigation suggestions.",
+                "description": "Assess timeline risk for a project (project_id or project_query).",
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "project_id": {"type": "string"},
-                    },
-                    "required": ["project_id"],
+                    "properties": dict(_PLAN_PROJECT_LOCATOR),
                 },
             },
         },
@@ -566,6 +745,10 @@ def execute_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, Any]:
     """
     args = _parse_args(arguments)
     try:
+        if name == "wiki_list_pages":
+            return _wiki_list_pages(ctx, args)
+        if name == "wiki_team_overview":
+            return _wiki_team_overview(ctx, args)
         if name == "wiki_search_pages":
             return _wiki_search_pages(ctx, args)
         if name == "wiki_create_page":
@@ -615,6 +798,10 @@ def execute_plan_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, 
     try:
         if name == "plan_list_projects":
             return _plan_list_projects(ctx, args)
+        if name == "plan_search":
+            return _plan_search(ctx, args)
+        if name == "plan_read_entity":
+            return _plan_read_entity(ctx, args)
         if name == "plan_create_project":
             return _plan_create_project(ctx, args)
         if name == "plan_update_project":
@@ -645,24 +832,54 @@ def execute_plan_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, 
         return {"ok": False, "error": str(e), "tool": name}
 
 
-def _wiki_search_pages(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
-    q = (args.get("query") or "").strip()
-    if not q:
-        return {"ok": False, "error": "query_required"}
-    limit = min(int(args.get("limit") or 15), 30)
-    qs = WikiPage.objects.filter(team_id=ctx.team_id, is_deleted=False).filter(
-        Q(title__icontains=q) | Q(content__icontains=q)
-    )[:limit]
-    rows = [
-        {
+def _wiki_list_pages(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    limit = min(int(args.get("limit") or 50), 150)
+    page_type = (args.get("page_type") or "").strip()
+    qs = WikiPage.objects.filter(team_id=ctx.team_id, is_deleted=False).order_by("-updated_at")
+    if page_type:
+        qs = qs.filter(page_type=page_type)
+    total = qs.count()
+    rows = []
+    for p in qs[:limit]:
+        fm = p.frontmatter if isinstance(p.frontmatter, dict) else {}
+        rows.append({
             "id": str(p.id),
             "title": p.title,
             "slug": p.slug,
             "page_type": p.page_type,
-        }
-        for p in qs
-    ]
-    return {"ok": True, "pages": rows, "count": len(rows)}
+            "summary": fm.get("ingest_summary") or p.summary,
+            "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+        })
+    return {"ok": True, "pages": rows, "count": len(rows), "total": total}
+
+
+def _wiki_team_overview(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from chat.wiki_context import build_team_wiki_overview
+
+    overview = build_team_wiki_overview(ctx.team_id)
+    total = WikiPage.objects.filter(team_id=ctx.team_id, is_deleted=False).count()
+    return {"ok": True, "overview": overview, "page_count": total}
+
+
+def _wiki_search_pages(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from chat.wiki_search import search_wiki_pages
+
+    q = (args.get("query") or "").strip()
+    if not q:
+        return {"ok": False, "error": "query_required"}
+    limit = min(int(args.get("limit") or 15), 30)
+    mode = (args.get("mode") or "hybrid").strip().lower()
+    expand = bool(args.get("expand_queries"))
+    team = ctx.membership.team if expand else None
+    rows = search_wiki_pages(
+        ctx.team_id,
+        q,
+        limit=limit,
+        mode=mode,
+        expand_queries=expand,
+        team=team,
+    )
+    return {"ok": True, "pages": rows, "count": len(rows), "mode": mode}
 
 
 def _wiki_create_page(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -712,40 +929,113 @@ def _wiki_create_page(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _wiki_update_page(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from chat.wiki_search import resolve_wiki_page
+
     slug = (args.get("slug") or "").strip()
     page_id = (args.get("page_id") or "").strip()
+    resolve_q = (args.get("query") or "").strip()
+    previous_slug = None
+    resolve_candidates: list[dict[str, Any]] = []
+
     try:
         if page_id:
             page = WikiPage.objects.get(id=page_id, team_id=ctx.team_id, is_deleted=False)
         elif slug:
             page = WikiPage.objects.get(team_id=ctx.team_id, slug=slug, is_deleted=False)
+        elif resolve_q:
+            page, resolve_candidates, resolve_err = resolve_wiki_page(
+                ctx.team_id,
+                resolve_q,
+                team=ctx.membership.team,
+            )
+            if resolve_err:
+                out: dict[str, Any] = {"ok": False, "error": resolve_err}
+                if resolve_candidates:
+                    out["candidates"] = resolve_candidates
+                return out
         else:
-            return {"ok": False, "error": "slug_or_page_id_required"}
+            return {"ok": False, "error": "slug_page_id_or_query_required"}
     except WikiPage.DoesNotExist:
         return {"ok": False, "error": "wiki_page_not_found"}
+
+    expected = (args.get("expected_updated_at") or "").strip()
+    if expected and page.updated_at:
+        from django.utils import timezone
+        from django.utils.dateparse import parse_datetime
+
+        expected_dt = parse_datetime(expected.replace("Z", "+00:00"))
+        if expected_dt:
+            if timezone.is_naive(expected_dt):
+                expected_dt = timezone.make_aware(expected_dt)
+            current = page.updated_at
+            if timezone.is_naive(current):
+                current = timezone.make_aware(current)
+            if current > expected_dt:
+                return {
+                    "ok": False,
+                    "error": "wiki_version_conflict",
+                    "expected_updated_at": expected,
+                    "current_updated_at": page.updated_at.isoformat(),
+                    "page_id": str(page.id),
+                    "slug": page.slug,
+                }
 
     if "title" in args and args["title"] is not None:
         new_title = str(args["title"]).strip()
         if new_title and new_title != page.title:
+            previous_slug = page.slug
             page.title = new_title
             page.slug = unique_slug(page.team, new_title, exclude_id=page.id)
     if "content" in args and args["content"] is not None:
-        page.content = str(args["content"])
+        new_content = str(args["content"])
+        mode = (args.get("content_mode") or "replace").strip().lower()
+        if mode == "append":
+            base = (page.content or "").rstrip()
+            page.content = f"{base}\n\n{new_content}" if base else new_content
+        elif mode == "prepend":
+            base = (page.content or "").lstrip()
+            page.content = f"{new_content}\n\n{base}" if base else new_content
+        else:
+            page.content = new_content
     if "page_type" in args and args["page_type"]:
         page.page_type = str(args["page_type"])
     if "frontmatter" in args and isinstance(args["frontmatter"], dict):
         page.frontmatter = args["frontmatter"]
     page.save()
 
+    chunks_reindexed = 0
+    reindex_ok = True
     try:
         from wiki.services.reindex import reindex_wiki_page
 
-        reindex_wiki_page(page, queue_graph=True)
+        chunks_reindexed = reindex_wiki_page(page, queue_graph=True)
     except Exception as e:
         logger.exception("reindex after wiki_update_page")
-        return {"ok": False, "error": f"reindex_failed:{e}", "page_id": str(page.id), "slug": page.slug}
+        reindex_ok = False
+        return {
+            "ok": False,
+            "error": f"reindex_failed:{e}",
+            "page_id": str(page.id),
+            "slug": page.slug,
+            "title": page.title,
+            "saved": True,
+            "reindex_ok": False,
+        }
 
-    return {"ok": True, "page_id": str(page.id), "slug": page.slug, "title": page.title}
+    result: dict[str, Any] = {
+        "ok": True,
+        "page_id": str(page.id),
+        "slug": page.slug,
+        "title": page.title,
+        "updated_at": page.updated_at.isoformat() if page.updated_at else None,
+        "reindex_ok": reindex_ok,
+        "chunks_reindexed": chunks_reindexed,
+    }
+    if previous_slug:
+        result["previous_slug"] = previous_slug
+    if resolve_candidates:
+        result["resolved_from_query"] = True
+    return result
 
 
 ALLOWED_EDGE_TYPES = frozenset(
@@ -838,6 +1128,157 @@ def _plan_list_projects(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any
     return {"ok": True, "projects": rows, "count": len(rows)}
 
 
+def _plan_search(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from chat.plan_search import search_planning
+
+    q = (args.get("query") or "").strip()
+    if not q:
+        return {"ok": False, "error": "query_required"}
+    limit = min(int(args.get("limit") or 20), 40)
+    mode = (args.get("mode") or "hybrid").strip().lower()
+    expand = bool(args.get("expand_queries"))
+    kinds = args.get("source_kinds")
+    if kinds is not None and not isinstance(kinds, list):
+        kinds = None
+
+    results = search_planning(
+        ctx.team_id,
+        q,
+        limit=limit,
+        mode=mode,
+        expand_queries=expand,
+        team=ctx.membership.team if expand else None,
+        source_kinds=kinds,
+        project_id=(args.get("project_id") or "").strip() or None,
+        assignee_id=(args.get("assignee_id") or "").strip() or None,
+        date_from=(args.get("date_from") or "").strip() or None,
+        date_to=(args.get("date_to") or "").strip() or None,
+        status=(args.get("status") or "").strip() or None,
+    )
+    return {"ok": True, "results": results, "count": len(results), "mode": mode}
+
+
+def _plan_read_entity(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from planning.services import get_project_or_none
+
+    kind = (args.get("source_kind") or "").strip().lower()
+    project_id = (args.get("project_id") or "").strip()
+    ref_id = (args.get("source_ref_id") or "").strip()
+
+    if kind not in ("project", "task", "milestone"):
+        return {"ok": False, "error": "invalid_source_kind"}
+    if not project_id:
+        return {"ok": False, "error": "project_id_required"}
+
+    project = get_project_or_none(ctx.team_id, project_id)
+    if not project:
+        return {"ok": False, "error": "project_not_found"}
+
+    if kind == "project":
+        members = [
+            {
+                "user_id": str(m.user_id),
+                "email": m.user.email,
+                "role": m.role,
+            }
+            for m in project.members.select_related("user").all()
+        ]
+        tasks = [
+            {
+                "id": str(t.id),
+                "title": t.title,
+                "status": t.status,
+                "priority": t.priority,
+                "assignee_email": t.assignee.email if t.assignee else None,
+                "start_date": t.start_date.isoformat() if t.start_date else None,
+                "end_date": t.end_date.isoformat() if t.end_date else None,
+                "description": t.description,
+            }
+            for t in project.tasks.select_related("assignee").order_by("order_index", "created_at")
+        ]
+        milestones = [
+            {
+                "id": str(m.id),
+                "title": m.title,
+                "status": m.status,
+                "target_date": m.target_date.isoformat() if m.target_date else None,
+                "description": m.description,
+            }
+            for m in project.milestones.order_by("order_index", "target_date", "created_at")
+        ]
+        return {
+            "ok": True,
+            "source_kind": "project",
+            "project": {
+                "id": str(project.id),
+                "name": project.name,
+                "description": project.description,
+                "status": project.status,
+                "updated_at": project.updated_at.isoformat() if project.updated_at else None,
+            },
+            "members": members,
+            "tasks": tasks,
+            "milestones": milestones,
+        }
+
+    if not ref_id:
+        return {"ok": False, "error": "source_ref_id_required"}
+
+    if kind == "task":
+        try:
+            task = Task.objects.select_related("assignee", "project").get(
+                id=ref_id, project_id=project_id, project__team_id=ctx.team_id
+            )
+        except Task.DoesNotExist:
+            return {"ok": False, "error": "task_not_found"}
+        dep_ids = [str(d.id) for d in task.dependencies.all()]
+        subtasks = [
+            {"id": str(s.id), "title": s.title, "status": s.status}
+            for s in task.subtasks.all().order_by("order_index")
+        ]
+        return {
+            "ok": True,
+            "source_kind": "task",
+            "task": {
+                "id": str(task.id),
+                "project_id": str(task.project_id),
+                "project_name": task.project.name,
+                "title": task.title,
+                "description": task.description,
+                "status": task.status,
+                "priority": task.priority,
+                "assignee_id": str(task.assignee_id) if task.assignee_id else None,
+                "assignee_email": task.assignee.email if task.assignee else None,
+                "start_date": task.start_date.isoformat() if task.start_date else None,
+                "end_date": task.end_date.isoformat() if task.end_date else None,
+                "dependency_ids": dep_ids,
+                "subtasks": subtasks,
+                "updated_at": task.updated_at.isoformat() if task.updated_at else None,
+            },
+        }
+
+    try:
+        milestone = Milestone.objects.select_related("project").get(
+            id=ref_id, project_id=project_id, project__team_id=ctx.team_id
+        )
+    except Milestone.DoesNotExist:
+        return {"ok": False, "error": "milestone_not_found"}
+    return {
+        "ok": True,
+        "source_kind": "milestone",
+        "milestone": {
+            "id": str(milestone.id),
+            "project_id": str(milestone.project_id),
+            "project_name": milestone.project.name,
+            "title": milestone.title,
+            "description": milestone.description,
+            "status": milestone.status,
+            "target_date": milestone.target_date.isoformat() if milestone.target_date else None,
+            "updated_at": milestone.updated_at.isoformat() if milestone.updated_at else None,
+        },
+    }
+
+
 def _plan_create_project(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     from planning.services import create_project as srv_create_project
 
@@ -859,24 +1300,30 @@ def _plan_create_project(ctx: ToolContext, args: dict[str, Any]) -> dict[str, An
 
 
 def _plan_update_project(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
-    from planning.services import get_project_or_none, update_project as srv_update_project
+    from chat.plan_resolve import require_project
+    from planning.services import update_project as srv_update_project
 
-    project_id = (args.get("project_id") or "").strip()
-    if not project_id:
-        return {"ok": False, "error": "project_id_required"}
-    
-    project = get_project_or_none(ctx.team_id, project_id)
-    if not project:
-        return {"ok": False, "error": "project_not_found"}
+    project, err_resp = require_project(ctx, args)
+    if err_resp:
+        return err_resp
 
     payload = {}
-    if "name" in args: payload["name"] = args["name"]
-    if "description" in args: payload["description"] = args["description"]
-    if "status" in args: payload["status"] = args["status"]
-    
+    if "name" in args:
+        payload["name"] = args["name"]
+    if "description" in args:
+        payload["description"] = args["description"]
+    if "status" in args:
+        payload["status"] = args["status"]
+
     updated = srv_update_project(project, payload)
     reindex_project(updated)
-    return {"ok": True, "project_id": str(updated.id), "name": updated.name, "status": updated.status}
+    return {
+        "ok": True,
+        "project_id": str(updated.id),
+        "name": updated.name,
+        "status": updated.status,
+        "resolved_from_query": bool((args.get("project_query") or "").strip()),
+    }
 
 
 def _resolve_assignee(team_id: str, assignee_id: Any) -> User | None:
@@ -890,26 +1337,26 @@ def _resolve_assignee(team_id: str, assignee_id: Any) -> User | None:
 
 
 def _plan_create_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
-    from planning.services import get_project_or_none, create_task as srv_create_task
+    from chat.plan_resolve import normalize_task_status, require_project
+    from planning.services import create_task as srv_create_task
 
-    project_id = (args.get("project_id") or "").strip()
     title = (args.get("title") or "").strip()
-    if not project_id or not title:
-        return {"ok": False, "error": "project_id_and_title_required"}
+    if not title:
+        return {"ok": False, "error": "title_required"}
 
-    project = get_project_or_none(ctx.team_id, project_id)
-    if not project:
-        return {"ok": False, "error": "project_not_found"}
+    project, err_resp = require_project(ctx, args)
+    if err_resp:
+        return err_resp
 
-    # Resolve assignee - default to current user if not provided or not found
     assignee = _resolve_assignee(ctx.team_id, args.get("assignee_id"))
     if not assignee:
         assignee = ctx.user
 
+    status = normalize_task_status(args.get("status")) or "todo"
     payload = {
         "title": title,
         "description": (args.get("description") or "").strip(),
-        "status": args.get("status") or "todo",
+        "status": status,
         "priority": args.get("priority") or "medium",
         "assignee": assignee,
         "start_date": args.get("start_date") or None,
@@ -919,122 +1366,148 @@ def _plan_create_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 
     task = srv_create_task(project=project, user=ctx.user, payload=payload)
     reindex_project(project)
-    return {"ok": True, "task_id": str(task.id), "project_id": str(project.id), "title": task.title}
+    return {
+        "ok": True,
+        "task_id": str(task.id),
+        "project_id": str(project.id),
+        "title": task.title,
+        "resolved_from_query": bool((args.get("project_query") or "").strip()),
+    }
 
 
 def _plan_update_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
-    from planning.services import get_task_or_none, update_task as srv_update_task
+    from chat.plan_resolve import apply_task_payload, require_task
+    from planning.services import update_task as srv_update_task
 
-    task_id = (args.get("task_id") or "").strip()
-    if not task_id:
-        return {"ok": False, "error": "task_id_required"}
-    
-    # We need project_id for get_task_or_none, or we can use Task.objects.get directly if we have team_id
-    try:
-        task = Task.objects.select_related("project").get(id=task_id, project__team_id=ctx.team_id)
-    except Task.DoesNotExist:
-        return {"ok": False, "error": "task_not_found"}
+    task, err_resp = require_task(ctx, args)
+    if err_resp:
+        return err_resp
 
-    payload = {}
-    for field in ["title", "description", "status", "priority", "start_date", "end_date", "dependency_ids"]:
-        if field in args:
-            payload[field] = args[field]
-    
+    payload: dict[str, Any] = {}
+    apply_task_payload(args, payload)
+
     if "assignee_id" in args:
         assignee = _resolve_assignee(ctx.team_id, args["assignee_id"])
-        # Default to current user if assignee not found
         if not assignee:
             assignee = ctx.user
         payload["assignee"] = assignee
 
     updated = srv_update_task(task, payload)
     reindex_project(updated.project)
-    return {"ok": True, "task_id": str(updated.id), "title": updated.title, "status": updated.status}
+    return {
+        "ok": True,
+        "task_id": str(updated.id),
+        "project_id": str(updated.project_id),
+        "title": updated.title,
+        "status": updated.status,
+        "resolved_from_query": bool((args.get("task_query") or "").strip()),
+    }
 
 
 def _plan_create_milestone(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
-    from planning.services import get_project_or_none, create_milestone as srv_create_milestone
+    from chat.plan_resolve import normalize_milestone_status, require_project
+    from planning.services import create_milestone as srv_create_milestone
 
-    project_id = (args.get("project_id") or "").strip()
     title = (args.get("title") or "").strip()
-    if not project_id or not title:
-        return {"ok": False, "error": "project_id_and_title_required"}
-    
-    project = get_project_or_none(ctx.team_id, project_id)
-    if not project:
-        return {"ok": False, "error": "project_not_found"}
+    if not title:
+        return {"ok": False, "error": "title_required"}
 
+    project, err_resp = require_project(ctx, args)
+    if err_resp:
+        return err_resp
+
+    status = normalize_milestone_status(args.get("status")) or "pending"
     milestone = srv_create_milestone(
         project=project,
         user=ctx.user,
         payload={
             "title": title,
             "description": (args.get("description") or "").strip(),
-            "status": args.get("status") or "pending",
+            "status": status,
             "target_date": args.get("target_date") or None,
-        }
+        },
     )
     reindex_project(project)
-    return {"ok": True, "milestone_id": str(milestone.id), "project_id": str(project.id), "title": milestone.title}
+    return {
+        "ok": True,
+        "milestone_id": str(milestone.id),
+        "project_id": str(project.id),
+        "title": milestone.title,
+        "resolved_from_query": bool((args.get("project_query") or "").strip()),
+    }
 
 
 def _plan_update_milestone(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from chat.plan_resolve import apply_milestone_payload, require_milestone
     from planning.services import update_milestone as srv_update_milestone
 
-    milestone_id = (args.get("milestone_id") or "").strip()
-    if not milestone_id:
-        return {"ok": False, "error": "milestone_id_required"}
-    
-    try:
-        milestone = Milestone.objects.select_related("project").get(id=milestone_id, project__team_id=ctx.team_id)
-    except Milestone.DoesNotExist:
-        return {"ok": False, "error": "milestone_not_found"}
+    milestone, err_resp = require_milestone(ctx, args)
+    if err_resp:
+        return err_resp
 
-    payload = {}
-    for field in ["title", "description", "status", "target_date"]:
-        if field in args:
-            payload[field] = args[field]
-    
+    payload: dict[str, Any] = {}
+    apply_milestone_payload(args, payload)
+
     updated = srv_update_milestone(milestone, payload)
     reindex_project(updated.project)
-    return {"ok": True, "milestone_id": str(updated.id), "title": updated.title, "status": updated.status}
+    return {
+        "ok": True,
+        "milestone_id": str(updated.id),
+        "project_id": str(updated.project_id),
+        "title": updated.title,
+        "status": updated.status,
+        "resolved_from_query": bool((args.get("milestone_query") or "").strip()),
+    }
 
 
 def _plan_delete_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from chat.plan_resolve import require_task
     from planning.services import delete_task as srv_delete_task
-    task_id = args.get("task_id")
-    try:
-        task = Task.objects.select_related("project").get(id=task_id, project__team_id=ctx.team_id)
-        project = task.project
-        srv_delete_task(task)
-        reindex_project(project)
-        return {"ok": True, "task_id": task_id}
-    except Task.DoesNotExist:
-        return {"ok": False, "error": "task_not_found"}
+
+    task, err_resp = require_task(ctx, args)
+    if err_resp:
+        return err_resp
+    project = task.project
+    task_id = str(task.id)
+    srv_delete_task(task)
+    reindex_project(project)
+    return {
+        "ok": True,
+        "task_id": task_id,
+        "resolved_from_query": bool((args.get("task_query") or "").strip()),
+    }
 
 
 def _plan_delete_project(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
-    from planning.services import get_project_or_none, delete_project as srv_delete_project
-    project_id = args.get("project_id")
-    project = get_project_or_none(ctx.team_id, project_id)
-    if project:
-        srv_delete_project(project)
-        return {"ok": True, "project_id": project_id}
-    return {"ok": False, "error": "project_not_found"}
+    from chat.plan_resolve import require_project
+    from planning.services import delete_project as srv_delete_project
+
+    project, err_resp = require_project(ctx, args)
+    if err_resp:
+        return err_resp
+    project_id = str(project.id)
+    srv_delete_project(project)
+    return {
+        "ok": True,
+        "project_id": project_id,
+        "resolved_from_query": bool((args.get("project_query") or "").strip()),
+    }
+
+
 def _plan_generate_draft(ctx: ToolContext, args: dict) -> dict:
+    from chat.plan_resolve import require_project
     from planning.agent_sync import generate_plan_with_wiki_context
-    from planning.services import get_project_or_none
     from planning.serializers import ProjectDetailSerializer
 
     prompt = args.get("prompt")
     mode = args.get("mode", "create")
-    project_id = args.get("project_id")
 
     project_context = None
-    if project_id:
-        project = get_project_or_none(team_id=ctx.team_id, project_id=project_id)
-        if project:
-            project_context = ProjectDetailSerializer(project).data
+    if mode == "manage" or (args.get("project_id") or "").strip() or (args.get("project_query") or "").strip():
+        project, err_resp = require_project(ctx, args)
+        if err_resp:
+            return err_resp
+        project_context = ProjectDetailSerializer(project).data
 
     try:
         draft = generate_plan_with_wiki_context(
@@ -1049,9 +1522,15 @@ def _plan_generate_draft(ctx: ToolContext, args: dict) -> dict:
 
 
 def _plan_detect_conflicts(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from chat.plan_resolve import require_project
     from planning.agent_sync import detect_date_conflicts
 
-    project_id = args.get("project_id")
+    project_id = (args.get("project_id") or "").strip() or None
+    if (args.get("project_query") or "").strip():
+        project, err_resp = require_project(ctx, args)
+        if err_resp:
+            return err_resp
+        project_id = str(project.id)
     try:
         conflicts = detect_date_conflicts(ctx.team_id, project_id=project_id)
         return {"ok": True, "conflict_count": len(conflicts), "conflicts": conflicts[:10]}
@@ -1060,34 +1539,34 @@ def _plan_detect_conflicts(ctx: ToolContext, args: dict[str, Any]) -> dict[str, 
 
 
 def _plan_sync_wiki(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from chat.plan_resolve import require_project
     from planning.agent_sync import sync_project_to_wiki
-    from planning.services import get_project_or_none
 
-    project_id = (args.get("project_id") or "").strip()
-    if not project_id:
-        return {"ok": False, "error": "project_id_required"}
-    project = get_project_or_none(ctx.team_id, project_id)
-    if not project:
-        return {"ok": False, "error": "project_not_found"}
+    project, err_resp = require_project(ctx, args)
+    if err_resp:
+        return err_resp
     try:
         page = sync_project_to_wiki(project)
-        return {"ok": True, "wiki_slug": page.slug if page else None}
+        return {
+            "ok": True,
+            "wiki_slug": page.slug if page else None,
+            "project_id": str(project.id),
+            "resolved_from_query": bool((args.get("project_query") or "").strip()),
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
 def _plan_risk_assessment(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from chat.plan_resolve import require_project
     from planning.agent_executor import _assess_plan_risk
-    from planning.services import get_project_or_none
     from planning.serializers import ProjectDetailSerializer
     from accounts.models import Team
 
-    project_id = (args.get("project_id") or "").strip()
-    if not project_id:
-        return {"ok": False, "error": "project_id_required"}
-    project = get_project_or_none(ctx.team_id, project_id)
-    if not project:
-        return {"ok": False, "error": "project_not_found"}
+    project, err_resp = require_project(ctx, args)
+    if err_resp:
+        return err_resp
+    project_id = str(project.id)
     try:
         team = Team.objects.get(id=ctx.team_id)
         draft = ProjectDetailSerializer(project).data
@@ -1160,6 +1639,7 @@ def _wiki_read_full_page(ctx: ToolContext, args: dict[str, Any]) -> dict[str, An
         "page_type": page.page_type,
         "content": page.content,
         "frontmatter": page.frontmatter,
+        "updated_at": page.updated_at.isoformat() if page.updated_at else None,
         "source_citations": citations,
     }
 

@@ -59,6 +59,6 @@ else:
     USE_DETERMINISTIC_EMBEDDINGS = not bool((OPENAI_API_KEY or "").strip())
 
 # Tighter RAG budget in dev (override via env).
-CHAT_RAG_MAX_CONTEXT_CHARS = int(os.environ.get("CHAT_RAG_MAX_CONTEXT_CHARS", "5000"))
+CHAT_RAG_MAX_CONTEXT_CHARS = int(os.environ.get("CHAT_RAG_MAX_CONTEXT_CHARS", "20000"))
 CHAT_RAG_RESULT_LIMIT = int(os.environ.get("CHAT_RAG_RESULT_LIMIT", "10"))
 

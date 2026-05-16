@@ -52,9 +52,13 @@ class Reflection:
 # Tools that are trivial and don't need reflection
 SKIP_REFLECTION_TOOLS = {
     "wiki_search_pages",
+    "wiki_list_pages",
+    "wiki_team_overview",
     "wiki_read_full_page",
     "agent_memory_read",
     "plan_list_projects",
+    "plan_search",
+    "plan_read_entity",
     "graph_traverse_neighbors",
     "graph_find_contradictions",
     "knowledge_gap_analysis",

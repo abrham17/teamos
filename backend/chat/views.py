@@ -43,11 +43,13 @@ def _build_ask_system_prompt(context_str: str) -> str:
         )
     return (
         "You are the TeamOS AI, a deep-reasoning specialist. Answer based exclusively on the provided team knowledge context. "
+        "Context includes wiki pages and planning data (projects, tasks, milestones, schedules, assignees). "
+        "Understand casual questions the way a teammate would: 'what's due this week', 'who owns deploy', "
+        "'did we hit the beta milestone' — connect snippets across sources. "
         "INFERENCE RULE: If the answer is not literal, use the provided context to INFER the answer through semantic connection. "
-        "Connect related concepts across different source snippets to provide a comprehensive explanation. "
         "STRICT RULE: If no logical inference can be made from the context, state that the information is missing. "
         "Never use outside knowledge. "
-        "CITATION RULE: Cite sources as [Source Title]. "
+        "CITATION RULE: Cite sources as [Source Title] or [Project Name / Task Title]. "
         "Format in GitHub Markdown with ### headings and tables for data. "
         "Use Mermaid diagrams for workflows. "
         "Context:\n" + context_str
@@ -62,41 +64,16 @@ def _retrieve_wiki_citations(team_id, user_message: str, team_obj=None) -> tuple
     limit = int(getattr(settings, "CHAT_RAG_RESULT_LIMIT", 10) or 10)
     max_chars = int(getattr(settings, "CHAT_RAG_MAX_CONTEXT_CHARS", 5000) or 5000)
 
-    # 1. Query Expansion & HyDE (Deep Semantics)
-    search_queries = [user_message]
-    if team_obj:
-        try:
-            # Multi-query generation
-            expansion_prompt = (
-                f"Given the user query: '{user_message}', generate 3 diverse search queries that capture the underlying "
-                f"intent and semantic meaning, even if they use different words. "
-                f"Return as a simple JSON list of strings."
-            )
-            expanded = llm_json_call(
-                team=team_obj,
-                operation="query_expansion",
-                messages=[{"role": "user", "content": expansion_prompt}],
-                default_on_error=[]
-            )
-            if isinstance(expanded, list):
-                search_queries.extend(expanded[:3])
-            
-            # HyDE: Hypothetical Document Embedding
-            hyde_prompt = (
-                f"Write a short, professional paragraph that would perfectly answer the query: '{user_message}'. "
-                f"Focus on factual, relevant technical or team information."
-            )
-            hyde_resp, _, _ = llm_call(
-                team=team_obj,
-                operation="hyde_generation",
-                messages=[{"role": "user", "content": hyde_prompt}],
-            )
-            hyde_answer = hyde_resp.choices[0].message.content if hyde_resp and hyde_resp.choices else None
-            if hyde_answer:
-                search_queries.append(hyde_answer)
-                
-        except Exception:
-            logger.warning("Query expansion/HyDE failed, falling back to original query.")
+    from chat.wiki_search import expand_search_queries
+
+    search_queries = (
+        expand_search_queries(user_message, team_obj)
+        if team_obj
+        else [(user_message or "").strip()]
+    )
+    search_queries = [q for q in search_queries if q]
+    if not search_queries:
+        search_queries = [(user_message or "").strip()]
 
     all_results = []
     seen_ids = set()
@@ -200,6 +177,15 @@ def _retrieve_wiki_citations(team_id, user_message: str, team_obj=None) -> tuple
     context_str = "\n\n".join(context_blocks)
     if len(context_str) > max_chars:
         context_str = context_str[:max_chars]
+
+    from chat.wiki_context import merge_chat_context
+
+    context_str = merge_chat_context(
+        user_message=user_message,
+        rag_context=context_str,
+        team_id=str(team_id),
+        max_chars=max_chars,
+    )
     return citations, context_str
 
 
@@ -351,53 +337,40 @@ class ChatQueryStreamView(APIView):
         membership = request.team_membership
 
         def event_stream():
-            yield f"event: status\ndata: {json.dumps({'status': 'Searching team knowledge...'})}\n\n"
-
+            from chat.universal_stream import iter_universal_intelligence_events
+            
             try:
-                citations, context_str = _retrieve_wiki_citations(team_id, user_message, team_obj=session.team)
-                yield f"event: citations\ndata: {json.dumps({'citations': citations})}\n\n"
-                yield f"event: status\ndata: {json.dumps({'status': 'Thinking...'})}\n\n"
+                agent_state: dict = {}
+                
+                # Run the universal intelligence stream (handles classification, RAG, and execution)
+                for line in iter_universal_intelligence_events(
+                    team=session.team,
+                    user=request.user,
+                    session=session,
+                    prompt=user_message,
+                    state=agent_state
+                ):
+                    yield line
 
-                tool_trace_for_done: list = []
-
-                if mode == "ask":
-                    # Lightweight RAG-only: no tools, just context + LLM stream
-                    from llm_orchestrator.orchestrator import llm_call
-
-                    history = list(session.messages.order_by("-created_at")[:12])
-                    msgs: list[dict] = [
-                        {"role": "system", "content": (
-                            "You are TeamOS — a knowledgeable assistant. "
-                            "Answer the user's question using the retrieved team knowledge below.\n\n"
-                            + (context_str if context_str.strip() else "No retrieval snippets were returned for this query.")
-                        )}
-                    ]
-                    for msg in reversed(history):
-                        if msg.role in ("user", "assistant"):
-                            msgs.append({"role": msg.role, "content": msg.content})
-
-                    stream_resp, model_used, _ = llm_call(
-                        team=session.team,
-                        operation="chat_ask",
-                        messages=msgs,
-                        user=request.user,
-                        stream=True,
-                    )
-                    full_text = ""
-                    for chunk in stream_resp:
-                        if chunk.choices and chunk.choices[0].delta.content:
-                            piece = chunk.choices[0].delta.content
-                            full_text += piece
-                            yield f"event: chunk\ndata: {json.dumps({'token': piece})}\n\n"
-
-                    ChatMessage.objects.create(
-                        session=session,
-                        role="assistant",
-                        content=full_text,
-                        citations=citations,
-                        metadata={"mode": "ask"},
-                    )
-                    approx = estimate_tokens(context_str) + estimate_tokens(user_message) + estimate_tokens(full_text)
+                # Post-stream persistence and tracking
+                if agent_state.get("ok"):
+                    full_content = agent_state.get("full_text") or ""
+                    tool_trace = agent_state.get("tool_trace") or []
+                    citations = agent_state.get("citations") or []
+                    model_used = agent_state.get("model_used", "gpt-4o")
+                    
+                    # Store assistant message if one was generated (Lightweight or Agent modes)
+                    if full_content:
+                        ChatMessage.objects.create(
+                            session=session,
+                            role="assistant",
+                            content=full_content,
+                            citations=citations,
+                            metadata={"mode": "universal", "tool_trace": tool_trace},
+                        )
+                    
+                    # Track token usage
+                    approx = estimate_tokens(user_message) + estimate_tokens(full_content) + 1000 # Add buffer for RAG context
                     ChatTokenUsage.objects.create(
                         team=session.team,
                         user=request.user,
@@ -405,60 +378,23 @@ class ChatQueryStreamView(APIView):
                         prompt_tokens=max(approx // 2, 1),
                         completion_tokens=max(approx // 2, 1),
                         total_tokens=approx,
-                        metadata={"model": model_used, "mode": "ask"},
+                        metadata={"model": model_used, "mode": "universal"},
                     )
-                else:
-                    # Agent or Plan mode: full tool loop
-                    from chat.agent_stream import iter_agent_core_events, iter_plan_agent_core_events
-                    from chat.tools import ToolContext
-
-                    ctx = ToolContext(user=request.user, team_id=str(team_id), membership=membership)
-                    agent_state: dict = {}
-
-                    if mode == "plan":
-                        for line in iter_plan_agent_core_events(session, context_str, ctx, agent_state):
-                            yield line
-                    else:
-                        for line in iter_agent_core_events(session, context_str, ctx, agent_state):
-                            yield line
-
-                    if agent_state.get("ok"):
-                        full_content = agent_state.get("full_text") or ""
-                        tool_trace = agent_state.get("tool_trace") or []
-                        tool_trace_for_done = list(tool_trace)
-                        ChatMessage.objects.create(
-                            session=session,
-                            role="assistant",
-                            content=full_content,
-                            citations=citations,
-                            metadata={"mode": mode, "tool_trace": tool_trace},
-                        )
-                        model_used = agent_state.get("model_used", "gpt-4o")
-                        approx = estimate_tokens(context_str) + estimate_tokens(user_message) + estimate_tokens(
-                            json.dumps(tool_trace)
-                        ) + estimate_tokens(full_content)
-                        ChatTokenUsage.objects.create(
-                            team=session.team,
-                            user=request.user,
-                            session=session,
-                            prompt_tokens=max(approx // 2, 1),
-                            completion_tokens=max(approx // 2, 1),
-                            total_tokens=approx,
-                            metadata={"model": model_used, "mode": mode},
-                        )
 
                 if ChatMessage.objects.filter(session__team=session.team, role="assistant").count() == 1:
                     record_first_once(
                         event_name="first_chat_answer_received",
                         team=session.team,
                         user=request.user,
-                        properties={"session_id": str(session.id), "mode": mode},
+                        properties={"session_id": str(session.id), "mode": "universal"},
                     )
-                yield f"event: done\ndata: {json.dumps({'status': 'done', 'mode': mode, 'tool_trace': tool_trace_for_done})}\n\n"
+                
+                yield f"event: done\ndata: {json.dumps({'status': 'done', 'mode': 'universal'})}\n\n"
 
             except Exception as e:
-                logger.error("Chat stream failed: %s", e)
+                logger.exception("Universal chat stream failed")
                 yield f"event: error\ndata: {json.dumps({'detail': str(e)})}\n\n"
+
 
         response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
         response["Cache-Control"] = "no-cache"

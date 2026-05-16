@@ -12,11 +12,20 @@ from wiki.services.reindex import reindex_wiki_page
 
 
 def _chunk_lines(project: Project) -> Iterable[dict]:
+    member_lines = []
+    for m in project.members.select_related("user").all():
+        member_lines.append(f"- {m.user.email} ({m.role})")
+    members_block = "\n".join(member_lines) if member_lines else "No members listed."
+
     yield {
         "source_kind": "project",
         "source_ref_id": None,
         "title": project.name,
-        "content": f"Project: {project.name}\nStatus: {project.status}\nDescription: {project.description or 'No description.'}",
+        "content": (
+            f"Project: {project.name}\nStatus: {project.status}\n"
+            f"Description: {project.description or 'No description.'}\n"
+            f"Team members:\n{members_block}"
+        ),
     }
 
     for task in project.tasks.order_by("order_index", "created_at").all():

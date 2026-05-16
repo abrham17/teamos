@@ -8,6 +8,7 @@ from rest_framework.test import APITestCase
 from accounts.models import Team, TeamMember, User
 from chat.models import ChatMessage, ChatSession, ChatTokenUsage
 from chat.views import _build_ask_system_prompt, _retrieve_wiki_citations
+from planning.models import Milestone, Project, Task
 from wiki.models import WikiPage
 
 
@@ -209,6 +210,14 @@ class ChatApiTests(APITestCase):
 class WikiCitationAssemblyTests(APITestCase):
     """RAG context assembly limits (settings-driven)."""
 
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="rag-user",
+            email="rag-user@example.com",
+            password="test-password",
+        )
+        self.team = Team.objects.create(name="RAG Team", slug="rag-team", created_by=self.user)
+
     @patch("chat.views.vector_store.search_similar_pages")
     def test_retrieve_passes_result_limit_to_vector_store(self, mock_search):
         mock_search.return_value = []
@@ -295,8 +304,27 @@ class WikiCitationAssemblyTests(APITestCase):
 
     def test_build_ask_prompt_with_context_is_rag_mode(self):
         p = _build_ask_system_prompt("SOURCE: Foo\nCONTENT: bar")
-        self.assertIn("Answer based ONLY and EXCLUSIVELY on the provided team knowledge context", p)
+        self.assertIn("Answer based exclusively on the provided team knowledge context", p)
         self.assertIn("Foo", p)
+
+    @patch("chat.views.vector_store.search_similar_pages")
+    def test_catalog_intent_injects_wiki_overview(self, mock_search):
+        mock_search.return_value = []
+        WikiPage.objects.create(
+            team=self.team,
+            title="Plant Diversity",
+            slug="plant-diversity",
+            content="## Plants\n\nMany types.",
+            page_type="standard",
+            created_by=self.user,
+        )
+        _citations, ctx = _retrieve_wiki_citations(
+            str(self.team.id),
+            "What do we have in our wiki?",
+            team_obj=self.team,
+        )
+        self.assertIn("TEAM WIKI CATALOG", ctx)
+        self.assertIn("Plant Diversity", ctx)
 
 
 class ChatToolTests(APITestCase):
@@ -320,6 +348,233 @@ class ChatToolTests(APITestCase):
             created_by=self.user,
         )
         ctx = ToolContext(user=self.user, team_id=str(self.team.id), membership=self.member)
-        out = execute_tool("wiki_search_pages", '{"query": "Alpha", "limit": 5}', ctx)
+        out = execute_tool(
+            'wiki_search_pages',
+            '{"query": "Alpha", "limit": 5, "mode": "keyword"}',
+            ctx,
+        )
         self.assertTrue(out.get("ok"))
         self.assertGreaterEqual(out.get("count", 0), 1)
+        self.assertIn("score", out["pages"][0])
+        self.assertIn("snippet", out["pages"][0])
+        self.assertEqual(out["pages"][0]["match"], "keyword")
+
+    def test_wiki_search_hybrid_mode(self):
+        from chat.tools import ToolContext, execute_tool
+
+        WikiPage.objects.create(
+            team=self.team,
+            title="Incident Runbook",
+            slug="incident-runbook",
+            content="on-call escalation steps",
+            created_by=self.user,
+        )
+        ctx = ToolContext(user=self.user, team_id=str(self.team.id), membership=self.member)
+        out = execute_tool(
+            "wiki_search_pages",
+            '{"query": "runbook", "limit": 5, "mode": "hybrid"}',
+            ctx,
+        )
+        self.assertTrue(out.get("ok"))
+        self.assertGreaterEqual(out.get("count", 0), 1)
+
+    def test_wiki_update_append_content(self):
+        from chat.tools import ToolContext, execute_tool
+
+        WikiPage.objects.create(
+            team=self.team,
+            title="Append Me",
+            slug="append-me",
+            content="Line one.",
+            created_by=self.user,
+        )
+        ctx = ToolContext(user=self.user, team_id=str(self.team.id), membership=self.member)
+        with patch("wiki.services.reindex.reindex_wiki_page", return_value=1):
+            out = execute_tool(
+                "wiki_update_page",
+                '{"slug": "append-me", "content": "Line two.", "content_mode": "append"}',
+                ctx,
+            )
+        self.assertTrue(out.get("ok"))
+        page = WikiPage.objects.get(slug="append-me", team=self.team)
+        self.assertIn("Line one.", page.content)
+        self.assertIn("Line two.", page.content)
+
+    def test_wiki_update_resolve_by_query(self):
+        from chat.tools import ToolContext, execute_tool
+
+        WikiPage.objects.create(
+            team=self.team,
+            title="Unique Zebra Doc",
+            slug="unique-zebra-doc",
+            content="zebra stripes protocol",
+            created_by=self.user,
+        )
+        ctx = ToolContext(user=self.user, team_id=str(self.team.id), membership=self.member)
+        with patch("wiki.services.reindex.reindex_wiki_page", return_value=1):
+            out = execute_tool(
+                "wiki_update_page",
+                '{"query": "zebra stripes", "content": "updated body"}',
+                ctx,
+            )
+        self.assertTrue(out.get("ok"))
+        page = WikiPage.objects.get(slug="unique-zebra-doc", team=self.team)
+        self.assertEqual(page.content, "updated body")
+
+    def test_wiki_list_pages_tool(self):
+        from chat.tools import ToolContext, execute_tool
+
+        WikiPage.objects.create(
+            team=self.team,
+            title="Beta Notes",
+            slug="beta-notes",
+            content="content",
+            created_by=self.user,
+        )
+        ctx = ToolContext(user=self.user, team_id=str(self.team.id), membership=self.member)
+        out = execute_tool("wiki_list_pages", '{"limit": 10}', ctx)
+        self.assertTrue(out.get("ok"))
+        self.assertGreaterEqual(out.get("total", 0), 1)
+
+    def test_wiki_search_resolve_ambiguous(self):
+        from chat.wiki_search import resolve_wiki_page
+
+        WikiPage.objects.create(
+            team=self.team,
+            title="Policy Alpha",
+            slug="policy-alpha",
+            content="shared topic alpha",
+            created_by=self.user,
+        )
+        WikiPage.objects.create(
+            team=self.team,
+            title="Policy Beta",
+            slug="policy-beta",
+            content="shared topic beta",
+            created_by=self.user,
+        )
+        page, candidates, err = resolve_wiki_page(str(self.team.id), "shared topic")
+        self.assertIsNone(page)
+        self.assertEqual(err, "wiki_resolve_ambiguous")
+        self.assertGreaterEqual(len(candidates), 2)
+
+    def test_wiki_team_overview_tool(self):
+        from chat.tools import ToolContext, execute_tool
+
+        WikiPage.objects.create(
+            team=self.team,
+            title="Overview Page",
+            slug="overview-page",
+            content="Body",
+            created_by=self.user,
+        )
+        ctx = ToolContext(user=self.user, team_id=str(self.team.id), membership=self.member)
+        out = execute_tool("wiki_team_overview", "{}", ctx)
+        self.assertTrue(out.get("ok"))
+        self.assertIn("TEAM WIKI CATALOG", out.get("overview", ""))
+
+    def test_plan_search_keyword_finds_task(self):
+        from chat.tools import ToolContext, execute_tool
+
+        project = Project.objects.create(
+            team=self.team, name="Launch", description="Q2 launch", created_by=self.user
+        )
+        Task.objects.create(
+            project=project,
+            title="Daily standup notes",
+            description="sync blockers",
+            created_by=self.user,
+        )
+        ctx = ToolContext(user=self.user, team_id=str(self.team.id), membership=self.member)
+        out = execute_tool(
+            "plan_search",
+            '{"query": "standup", "mode": "keyword", "source_kinds": ["task"]}',
+            ctx,
+        )
+        self.assertTrue(out.get("ok"))
+        self.assertGreaterEqual(out.get("count", 0), 1)
+        hit = out["results"][0]
+        self.assertEqual(hit["source_kind"], "task")
+        self.assertIn("standup", hit["title"].lower())
+
+    def test_plan_read_entity_project(self):
+        from chat.tools import ToolContext, execute_tool
+
+        project = Project.objects.create(
+            team=self.team, name="Roadmap", description="Annual", created_by=self.user
+        )
+        Task.objects.create(
+            project=project, title="Milestone prep", created_by=self.user
+        )
+        ctx = ToolContext(user=self.user, team_id=str(self.team.id), membership=self.member)
+        out = execute_tool(
+            "plan_read_entity",
+            f'{{"source_kind": "project", "project_id": "{project.id}"}}',
+            ctx,
+        )
+        self.assertTrue(out.get("ok"))
+        self.assertEqual(out["project"]["name"], "Roadmap")
+        self.assertEqual(len(out["tasks"]), 1)
+
+    def test_plan_create_milestone_with_project_query(self):
+        from chat.tools import ToolContext, execute_tool
+
+        project = Project.objects.create(
+            team=self.team, name="Q2 Launch", created_by=self.user
+        )
+        ctx = ToolContext(user=self.user, team_id=str(self.team.id), membership=self.member)
+        with patch("planning.reindex.reindex_project", return_value=1):
+            out = execute_tool(
+                "plan_create_milestone",
+                '{"project_query": "Q2 Launch", "title": "Go live"}',
+                ctx,
+            )
+        self.assertTrue(out.get("ok"), out)
+        self.assertTrue(
+            Milestone.objects.filter(project=project, title="Go live").exists()
+        )
+
+    def test_plan_update_task_achieved_via_query(self):
+        from chat.tools import ToolContext, execute_tool
+
+        project = Project.objects.create(team=self.team, name="Ops", created_by=self.user)
+        task = Task.objects.create(
+            project=project,
+            title="Deploy API",
+            status="in-progress",
+            created_by=self.user,
+        )
+        ctx = ToolContext(user=self.user, team_id=str(self.team.id), membership=self.member)
+        with patch("planning.reindex.reindex_project", return_value=1):
+            out = execute_tool(
+                "plan_update_task",
+                '{"task_query": "Deploy API", "status": "achieved"}',
+                ctx,
+            )
+        self.assertTrue(out.get("ok"), out)
+        task.refresh_from_db()
+        self.assertEqual(task.status, "completed")
+
+    def test_plan_search_by_date_in_query(self):
+        from chat.plan_search import search_planning
+        from datetime import date
+
+        project = Project.objects.create(
+            team=self.team, name="Sprint", created_by=self.user
+        )
+        d = date(2026, 5, 20)
+        Task.objects.create(
+            project=project,
+            title="Deploy",
+            start_date=d,
+            end_date=d,
+            created_by=self.user,
+        )
+        hits = search_planning(
+            str(self.team.id),
+            "2026-05-20",
+            mode="keyword",
+            source_kinds=["task"],
+        )
+        self.assertGreaterEqual(len(hits), 1)
+        self.assertEqual(hits[0]["source_kind"], "task")
