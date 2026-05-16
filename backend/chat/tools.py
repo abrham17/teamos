@@ -35,9 +35,12 @@ class ToolContext:
     session_id: str | None = None
 
 
-def openai_tool_schemas() -> list[dict[str, Any]]:
-    """OpenAI-compatible `tools` list for chat.completions."""
-    return [
+def openai_tool_schemas(whitelist: list[str] | None = None) -> list[dict[str, Any]]:
+    """
+    OpenAI-compatible `tools` list for chat.completions.
+    If whitelist is provided, only tools in the whitelist are returned.
+    """
+    all_tools = [
         {
             "type": "function",
             "function": {
@@ -217,6 +220,11 @@ def openai_tool_schemas() -> list[dict[str, Any]]:
             },
         },
     ] + openai_plan_tool_schemas() + openai_agent_tool_schemas()
+
+    if whitelist is not None:
+        whitelist_set = set(whitelist)
+        return [t for t in all_tools if t["function"]["name"] in whitelist_set]
+    return all_tools
 
 
 _PLAN_PROJECT_LOCATOR = {
