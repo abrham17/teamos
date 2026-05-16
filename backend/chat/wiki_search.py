@@ -259,8 +259,130 @@ def resolve_wiki_page(
     if len(candidates) > 1 and (top["score"] - second_score) < _RESOLVE_MIN_GAP:
         return None, candidates, "wiki_resolve_ambiguous"
 
-    try:
-        page = WikiPage.objects.get(id=top["id"], team_id=team_id, is_deleted=False)
     except WikiPage.DoesNotExist:
         return None, candidates, "wiki_page_not_found"
     return page, candidates, None
+
+
+def _retrieve_wiki_citations(team_id, user_message: str, team_obj=None) -> tuple[list, str]:
+    """
+    Multi-query expansion → Vector search → wiki + plan citation payloads.
+    Generates multiple variations of the query to ensure deep semantic coverage.
+    """
+    from django.conf import settings
+    limit = int(getattr(settings, "CHAT_RAG_RESULT_LIMIT", 10) or 10)
+    max_chars = int(getattr(settings, "CHAT_RAG_MAX_CONTEXT_CHARS", 5000) or 5000)
+
+    search_queries = (
+        expand_search_queries(user_message, team_obj)
+        if team_obj
+        else [(user_message or "").strip()]
+    )
+    search_queries = [q for q in search_queries if q]
+    if not search_queries:
+        search_queries = [(user_message or "").strip()]
+
+    all_results = []
+    seen_ids = set()
+
+    try:
+        for q in search_queries:
+            # Fetch more for broader coverage, then we'll deduplicate
+            results = vector_store.search_similar_pages(team_id, q, limit=limit)
+            for res in results:
+                if res.id not in seen_ids:
+                    all_results.append(res)
+                    seen_ids.add(res.id)
+    except Exception:
+        logger.exception("Wiki citation search failed (team_id=%s)", team_id)
+        return [], ""
+
+    # Sort all expanded results by score
+    all_results.sort(key=lambda x: x.score, reverse=True)
+    results = all_results[:limit]
+
+    citations = []
+    context_blocks = []
+    for res in results:
+        payload = res.payload or {}
+        source_type = payload.get("source_type") or "wiki"
+        snippet = payload.get("content", "")
+        chunk_id = payload.get("chunk_id")
+
+        if source_type == "plan":
+            project_id = payload.get("project_id")
+            project_name = payload.get("project_name", "Untitled Project")
+            source_kind = payload.get("source_kind", "project")
+            source_ref_id = payload.get("source_ref_id")
+            title = payload.get("title") or f"{source_kind.title()} — {project_name}"
+
+            citations.append(
+                {
+                    "source": "plan",
+                    "project_id": project_id,
+                    "project_name": project_name,
+                    "source_kind": source_kind,
+                    "source_ref_id": source_ref_id,
+                    "title": title,
+                    "snippet": snippet[:200],
+                    "score": float(res.score),
+                    "chunk_id": chunk_id,
+                }
+            )
+            context_blocks.append(
+                f"SOURCE: {title} (Plan: {project_name})\nCONTENT: {snippet}"
+            )
+            continue
+
+        page_id = payload.get("page_id")
+        title = payload.get("page_title", "Untitled")
+        anchor_hint = payload.get("heading") or payload.get("section") or ""
+        slug = "unknown"
+        try:
+            if page_id:
+                p = WikiPage.objects.only("slug").get(id=page_id)
+                slug = p.slug
+        except Exception:
+            pass
+
+        citations.append(
+            {
+                "source": "wiki",
+                "page_id": page_id,
+                "page_title": title,
+                "page_slug": slug,
+                "snippet": snippet[:200],
+                "score": float(res.score),
+                "chunk_id": chunk_id,
+                "anchor_hint": anchor_hint,
+            }
+        )
+        context_blocks.append(f"SOURCE: {title}\nCONTENT: {snippet}")
+
+    # Drop lowest-ranked tail chunks until under character budget (results are best-first).
+    while context_blocks:
+        candidate = "\n\n".join(context_blocks)
+        if len(candidate) <= max_chars:
+            break
+        if len(context_blocks) > 1:
+            context_blocks.pop()
+            citations.pop()
+        else:
+            block = context_blocks[0]
+            sep = "\nCONTENT: "
+            idx = block.find(sep)
+            if idx == -1:
+                context_blocks[0] = block[:max_chars]
+            else:
+                head = block[: idx + len(sep)]
+                body = block[idx + len(sep) :]
+                keep = max(0, max_chars - len(head))
+                context_blocks[0] = head + body[:keep]
+                citations[0]["snippet"] = body[: min(200, keep)]
+            break
+
+    context_str = "\n\n".join(context_blocks)
+    if len(context_str) > max_chars:
+        context_str = context_str[:max_chars]
+
+    return citations, context_str

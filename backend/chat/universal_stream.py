@@ -9,7 +9,7 @@ from chat.agent_core import AgentConfig, AgentCore
 from chat.models import ChatMessage, ChatSession
 from chat.multi_agent import AgentRole, get_orchestrator
 from chat.tools import ToolContext, execute_tool, openai_tool_schemas
-from chat.agent_stream import _retrieve_wiki_citations
+from chat.wiki_search import _retrieve_wiki_citations
 
 logger = logging.getLogger(__name__)
 
