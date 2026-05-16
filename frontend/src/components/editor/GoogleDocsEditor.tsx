@@ -55,27 +55,19 @@ interface Props {
   provider?: unknown;
 }
 
-type MarkdownStorage = {
-  markdown?: {
-    getMarkdown: () => string;
-    setContent: (markdown: string) => void;
-  };
-};
+function getEditorMarkdown(editor: NonNullable<ReturnType<typeof useEditor>>): string {
+  if (typeof editor.getMarkdown === "function") {
+    return editor.getMarkdown();
+  }
+  return "";
+}
 
 function setEditorMarkdownContent(editor: NonNullable<ReturnType<typeof useEditor>>, markdown: string) {
   const value = markdown || "";
-
-  // Use the Markdown extension's storage to properly parse markdown content.
-  // This ensures headings, lists, code blocks, etc. are rendered correctly.
-  const mdStorage = (editor.storage as unknown as MarkdownStorage).markdown;
-  if (mdStorage?.setContent) {
-    mdStorage.setContent(value);
-  } else {
-    editor.commands.setContent(value, {
-      emitUpdate: false,
-      parseOptions: { preserveWhitespace: "full" },
-    });
-  }
+  editor.commands.setContent(value, {
+    contentType: "markdown",
+    emitUpdate: false,
+  });
 }
 
 export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(function GoogleDocsEditor(
@@ -182,8 +174,7 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
     onUpdate: ({ editor }) => {
       if (updateTimeoutRef.current) clearTimeout(updateTimeoutRef.current);
       updateTimeoutRef.current = setTimeout(() => {
-        const markdown = ((editor.storage as unknown) as MarkdownStorage).markdown?.getMarkdown?.() || "";
-        onChange(markdown);
+        onChange(getEditorMarkdown(editor));
       }, 500);
     },
   });
@@ -191,17 +182,14 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
   useImperativeHandle(
     ref,
     () => ({
-      getMarkdown: () => {
-        if (!editor) return "";
-        return ((editor.storage as unknown) as MarkdownStorage).markdown?.getMarkdown?.() || "";
-      },
+      getMarkdown: () => (editor ? getEditorMarkdown(editor) : ""),
     }),
     [editor],
   );
 
   useEffect(() => {
     if (editor && !ydoc) {
-      const current = ((editor.storage as unknown) as MarkdownStorage).markdown?.getMarkdown?.() || "";
+      const current = getEditorMarkdown(editor);
       if (initialText !== current) {
         setEditorMarkdownContent(editor, initialText);
       }

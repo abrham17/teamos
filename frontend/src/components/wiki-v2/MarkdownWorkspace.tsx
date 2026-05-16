@@ -197,7 +197,7 @@ export function MarkdownWorkspace() {
   };
 
   useEffect(() => {
-    if (loading || (!page && !isNew) || !currentTeamId) return;
+    if (loading || (!page && !isNew) || !currentTeamId || !isNew) return;
 
     const flushedBody = editorRef.current?.getMarkdown() ?? content;
 
@@ -455,6 +455,7 @@ export function MarkdownWorkspace() {
               <FrontmatterPanel frontmatter={frontmatter} onChange={setFrontmatter} />
               <div className="mt-6">
                 <GoogleDocsEditor
+                  key={page?.slug ?? (isNew ? "new" : slug ?? "wiki")}
                   ref={editorRef}
                   initialText={content}
                   onChange={setContent}
