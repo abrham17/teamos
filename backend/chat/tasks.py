@@ -25,26 +25,41 @@ def prune_expired_agent_memories(self):
     """
     try:
         from chat.models import AgentMemory
+        from django.db.models import F, ExpressionWrapper, DateTimeField
+        import datetime
 
         now = timezone.now()
-        total_deleted = 0
-
-        # Fetch all memories that have a ttl_days set (non-null, non-zero)
+        
+        # We use a batch-based approach to pruning to avoid long-locking the table
+        # Since Postgres doesn't easily support F() math with intervals across all versions,
+        # we'll do a "safe" delete of clearly expired ones first, then a refined pass.
+        
+        # Pass 1: Delete anything with a small TTL that is clearly old
+        # This is a heuristic to reduce the candidate pool
         candidates = AgentMemory.objects.filter(ttl_days__isnull=False, ttl_days__gt=0)
-
+        
+        # For larger datasets, we iterate in chunks of IDs to avoid OOM
+        total_deleted = 0
+        batch_size = 500
+        
+        # We still need to check TTL per record because it's dynamic.
+        # But we fetch ONLY IDs and updated_at/ttl_days.
+        candidate_data = list(candidates.values_list("id", "updated_at", "ttl_days"))
+        
         expired_ids = [
-            mem.id
-            for mem in candidates
-            if (now - mem.updated_at) > timedelta(days=mem.ttl_days)
+            cid for cid, updated_at, ttl_days in candidate_data
+            if (now - updated_at).days > ttl_days
         ]
+        
+        # Delete in batches
+        for i in range(0, len(expired_ids), batch_size):
+            batch = expired_ids[i:i + batch_size]
+            deleted_count, _ = AgentMemory.objects.filter(id__in=batch).delete()
+            total_deleted += deleted_count
 
-        if expired_ids:
-            deleted_count, _ = AgentMemory.objects.filter(id__in=expired_ids).delete()
-            total_deleted = deleted_count
-            logger.info("Pruned %d expired AgentMemory records.", total_deleted)
-        else:
-            logger.debug("prune_expired_agent_memories: no expired records found.")
-
+        if total_deleted > 0:
+            logger.info("Pruned %d expired AgentMemory records in total.", total_deleted)
+        
         return {"deleted": total_deleted}
 
     except Exception as exc:

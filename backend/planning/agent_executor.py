@@ -82,6 +82,38 @@ def _resolve_team_user_id(data: dict[str, Any], valid_user_ids: set[str]) -> str
     return None
 
 
+def get_slim_project_context(project: Project) -> dict[str, Any]:
+    """
+    Returns a lightweight project context for LLM consumption.
+    Limits tasks and milestones to avoid context bloat and memory pressure.
+    """
+    return {
+        "id": str(project.id),
+        "name": project.name,
+        "description": project.description,
+        "status": project.status,
+        "tasks": [
+            {
+                "id": str(t.id),
+                "title": t.title,
+                "status": t.status,
+                "priority": t.priority,
+                "start_date": t.start_date.isoformat() if t.start_date else None,
+                "end_date": t.end_date.isoformat() if t.end_date else None,
+            }
+            for t in project.tasks.order_by("-updated_at")[:20]
+        ],
+        "milestones": [
+            {
+                "id": str(m.id),
+                "title": m.title,
+                "target_date": m.target_date.isoformat() if m.target_date else None,
+            }
+            for m in project.milestones.order_by("-updated_at")[:10]
+        ],
+    }
+
+
 def _apply_project_members(
     *,
     project: Project,
@@ -141,8 +173,7 @@ def run_planner_agent(
     if project_id:
         project = get_project_or_none(team_id=team_id, project_id=project_id)
         if project:
-            from planning.serializers import ProjectDetailSerializer
-            project_context = ProjectDetailSerializer(project).data
+            project_context = get_slim_project_context(project)
 
     # ── Phase 1: Generate draft ──────────────────────────────────
     yield _sse("agent_status", {"status": "Generating plan draft with wiki context..."})
@@ -473,8 +504,7 @@ def run_planner_agent_v2(
     if project_id:
         project = get_project_or_none(team_id=team_id, project_id=project_id)
         if project:
-            from planning.serializers import ProjectDetailSerializer
-            project_context = ProjectDetailSerializer(project).data
+            project_context = get_slim_project_context(project)
 
     # ── Run reasoning pipeline (stages 1-5) ───────────────────────
     pipeline = PlanningReasoningPipeline(team=team, user=user)

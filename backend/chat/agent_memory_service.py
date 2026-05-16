@@ -73,18 +73,30 @@ def get_agent_context_block(team_id: str) -> str:
     """
     Build a context block from all agent memories for injection into
     the agent system prompt. Gives the agent persistent awareness.
+    
+    Optimized to minimize heap usage by limiting fields and using efficient filtering.
     """
     from django.utils import timezone
-    from datetime import timedelta
+    from django.db.models import F
 
     now = timezone.now()
-    memories = AgentMemory.objects.filter(team_id=team_id).order_by("-updated_at")
+    
+    # Initial broad filter to avoid loading ancient records unnecessarily
+    # We assume memories older than 90 days are not needed if not refreshed
+    cutoff = now - timezone.timedelta(days=90)
+    
+    # Only pull fields we actually need for the summary block
+    memories = AgentMemory.objects.filter(
+        team_id=team_id,
+        updated_at__gt=cutoff
+    ).only("category", "key", "summary", "value", "updated_at", "ttl_days").order_by("-updated_at")
     
     valid_memories = []
     category_counts = {}
     
     for m in memories:
-        # Check TTL
+        # Check TTL (Python side because per-record ttl_days math is tricky across DB backends)
+        # But we're only iterating over light objects now due to .only()
         if m.ttl_days and (now - m.updated_at).days > m.ttl_days:
             continue
             
@@ -94,6 +106,8 @@ def get_agent_context_block(team_id: str) -> str:
             continue
             
         valid_memories.append(m)
+        if len(valid_memories) > 30: # Hard cap on total memories in context
+            break
 
     if not valid_memories:
         return ""

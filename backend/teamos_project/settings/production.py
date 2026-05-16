@@ -45,7 +45,16 @@ DATABASES = {
 # Redis for Channels / Celery (Upstash or native)
 REDIS_URL = os.environ.get("REDIS_URL", "")
 
-# Heroku Redis SSL compatibility (Gevent/Daphne friendly)
+# Upstash REST fallback to RESP conversion
+UPSTASH_REDIS_REST_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
+UPSTASH_REDIS_REST_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
+
+if not REDIS_URL and UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN:
+    # Convert https://host -> host
+    host = UPSTASH_REDIS_REST_URL.replace("https://", "").replace("http://", "").strip("/")
+    REDIS_URL = f"rediss://default:{UPSTASH_REDIS_REST_TOKEN}@{host}:6379"
+
+# Heroku/Upstash Redis SSL compatibility (Gevent/Daphne friendly)
 import ssl
 
 redis_ssl_options = {

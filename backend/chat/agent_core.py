@@ -168,14 +168,17 @@ class AgentCore:
                 # Execute with timeout
                 result = self._execute_tool(name, arguments)
 
-                entry = {"name": name, "arguments": arguments, "result": result}
+                # Truncate result for LLM context and trace protection
+                truncated_result = self._truncate_tool_result(result)
+
+                entry = {"name": name, "arguments": arguments, "result": truncated_result}
                 tool_trace.append(entry)
                 round_results.append(entry)
 
                 yield _sse("tool_result", {
                     "name": name,
                     "ok": result.get("ok"),
-                    "result": result,
+                    "result": truncated_result,
                 })
 
                 # Track in working memory scratchpad
@@ -184,7 +187,7 @@ class AgentCore:
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
-                    "content": json.dumps(result),
+                    "content": json.dumps(truncated_result),
                 })
 
             # ── Reflection on this round ──────────────────────────
@@ -298,6 +301,34 @@ class AgentCore:
             except Exception as e:
                 logger.exception("Tool %s failed", name)
                 return {"ok": False, "error": str(e)}
+
+    def _truncate_tool_result(self, result: dict[str, Any], max_chars: int = 4000) -> dict[str, Any]:
+        """
+        Truncate large tool result fields to protect the heap and context window.
+        """
+        if not result or not isinstance(result, dict):
+            return result
+            
+        new_result = result.copy()
+        
+        # Primary content fields to check
+        for field in ["content", "text", "markdown", "output", "data"]:
+            if field in new_result and isinstance(new_result[field], str):
+                if len(new_result[field]) > max_chars:
+                    new_result[field] = (
+                        new_result[field][:max_chars] + 
+                        f"\n... [Truncated: {len(new_result[field]) - max_chars} chars removed]"
+                    )
+                    new_result["_is_truncated"] = True
+                    
+        # If it's a list (e.g. search results), limit the number of items
+        for field in ["results", "items", "pages", "tasks"]:
+            if field in new_result and isinstance(new_result[field], list):
+                if len(new_result[field]) > 10:
+                    new_result[field] = new_result[field][:10]
+                    new_result[f"_{field}_truncated"] = True
+                    
+        return new_result
 
     def _stream_final_answer(
         self,
