@@ -42,6 +42,7 @@ export function PlannerWorkspace() {
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
   const [prefilledDate, setPrefilledDate] = useState<string | undefined>();
   const [prefilledStatus, setPrefilledStatus] = useState<string | undefined>();
+  const [prefilledParentTaskId, setPrefilledParentTaskId] = useState<string | undefined>();
   const [editMemberId, setEditMemberId] = useState<string | null>(null);
   const [editMemberRole, setEditMemberRole] = useState<string | undefined>();
 
@@ -245,9 +246,10 @@ export function PlannerWorkspace() {
                 setIsAIOverlayOpen(true);
               }}
               onRefreshDetail={refreshProjectDetail}
-              onOpenAddTask={() => {
+              onOpenAddTask={(parentTaskId) => {
                 setPrefilledDate(undefined);
                 setPrefilledStatus(undefined);
+                setPrefilledParentTaskId(parentTaskId);
                 setIsAddTaskOpen(true);
               }}
               onOpenAddMilestone={() => setIsAddMilestoneOpen(true)}
@@ -261,6 +263,7 @@ export function PlannerWorkspace() {
               onAddTask={(status) => {
                 setPrefilledDate(undefined);
                 setPrefilledStatus(status);
+                setPrefilledParentTaskId(undefined);
                 setIsAddTaskOpen(true);
               }}
             />
@@ -271,6 +274,7 @@ export function PlannerWorkspace() {
               onAddEvent={(date) => {
                 setPrefilledDate(date.toISOString().split('T')[0]);
                 setPrefilledStatus("todo");
+                setPrefilledParentTaskId(undefined);
                 setIsAddTaskOpen(true);
               }}
             />
@@ -281,6 +285,7 @@ export function PlannerWorkspace() {
               onAddTask={() => {
                 setPrefilledDate(undefined);
                 setPrefilledStatus(undefined);
+                setPrefilledParentTaskId(undefined);
                 setIsAddTaskOpen(true);
               }}
               onAddMilestone={() => setIsAddMilestoneOpen(true)}
@@ -335,6 +340,7 @@ export function PlannerWorkspace() {
         teamMembers={teamMembers}
         initialStartDate={prefilledDate}
         initialStatus={prefilledStatus}
+        initialParentTaskId={prefilledParentTaskId}
       />
 
       <AddMilestoneModal

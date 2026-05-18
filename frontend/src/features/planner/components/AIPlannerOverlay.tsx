@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   X,
@@ -8,7 +8,6 @@ import {
   Wand2,
   BrainCircuit,
   Loader2,
-  Check,
   CheckCircle2,
   AlertCircle,
   ArrowRight,
@@ -18,6 +17,12 @@ import {
   AlertTriangle,
   Shield,
   FileText,
+  Send,
+  Bot,
+  User,
+  Check,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { getApiAuthHeaders } from "@/lib/api";
 
@@ -31,8 +36,6 @@ interface AIPlannerOverlayProps {
   onPlanGenerated: (plan: { projectName: string; description: string; tasks: unknown[]; milestones: unknown[] }) => Promise<void> | void;
 }
 
-type Phase = "input" | "executing" | "review" | "manual";
-
 interface AgentStepEntry {
   name: string;
   label: string;
@@ -40,14 +43,36 @@ interface AgentStepEntry {
   result?: Record<string, unknown>;
 }
 
+interface PlanResult {
+  projectId?: string;
+  projectName?: string;
+  taskCount?: number;
+  milestoneCount?: number;
+  conflictCount?: number;
+  risk?: { score: number; factors: string[]; suggestions: string[] };
+  wikiPageUrl?: string;
+  knowledgeGaps?: string[];
+  critiqueScore?: number;
+}
+
+interface ChatMessage {
+  id: string;
+  sender: "user" | "architect";
+  text?: string;
+  isStreaming?: boolean;
+  planningState?: {
+    statusText: string;
+    agentSteps: AgentStepEntry[];
+    planResult?: PlanResult | null;
+  };
+}
+
 const STEP_LABELS: Record<string, string> = {
-  // Reasoning pipeline stages
   reasoning_decompose: "Decomposing mission into sub-goals",
   reasoning_research: "Researching wiki knowledge per sub-goal",
   reasoning_draft: "Drafting plan with reasoning traces",
   reasoning_critique: "Self-critiquing plan for issues",
   reasoning_finalize: "Inferring dependencies & scheduling",
-  // Entity creation
   plan_generate_draft: "Generating plan draft",
   plan_search: "Searching plans & tasks",
   plan_read_entity: "Loading plan details",
@@ -62,7 +87,6 @@ const STEP_LABELS: Record<string, string> = {
   plan_risk_assessment: "Assessing timeline risk",
   plan_sync_wiki: "Syncing project to wiki",
   plan_check_overdue: "Checking for overdue items",
-  // Fallbacks
   wiki_search_pages: "Searching wiki",
   wiki_create_page: "Creating wiki page",
 };
@@ -109,23 +133,43 @@ export function AIPlannerOverlay({
   onClose,
   onPlanGenerated,
 }: AIPlannerOverlayProps) {
-  const [phase, setPhase] = useState<Phase>("input");
-  const [prompt, setPrompt] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Agent execution state
-  const [agentSteps, setAgentSteps] = useState<AgentStepEntry[]>([]);
-  const [statusText, setStatusText] = useState("");
-
-  // Manual fields
+  // Manual Setup State
+  const [isManualMode, setIsManualMode] = useState(false);
   const [manualName, setManualName] = useState("");
   const [manualDesc, setManualDesc] = useState("");
 
+  // Initialize introductory message
+  useEffect(() => {
+    const greetText = mode === "manage"
+      ? "Hello! I am your AI Planner Architect. I have deep semantic access to your team's Wiki, active projects, team availability, and timeline risks. Ask me questions about active projects, request a complete project plan, or assign tasks!"
+      : "Welcome to the AI Plan Architect! Let's build a new strategic project plan together. Tell me what you'd like to build, or suggest a mission!";
+    
+    setMessages([
+      {
+        id: "greet",
+        sender: "architect",
+        text: greetText,
+      }
+    ]);
+  }, [mode]);
+
+  // Scroll to bottom of chat
+  const scrollToBottom = useCallback(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
+
   const startVoiceMode = () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("Speech recognition is not supported in this browser.");
@@ -144,13 +188,13 @@ export function AIPlannerOverlay({
     recognition.lang = "en-US";
 
     recognition.onstart = () => setIsListening(true);
-    recognition.onerror = (event: { error: unknown }) => {
+    recognition.onerror = (event: any) => {
       console.error(event.error);
       setIsListening(false);
     };
     recognition.onend = () => setIsListening(false);
 
-    recognition.onresult = (event: { resultIndex: number; results: { length: number; [key: number]: { isFinal: boolean; [key: number]: { transcript: string } } } }) => {
+    recognition.onresult = (event: any) => {
       let finalTranscript = "";
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
@@ -158,7 +202,7 @@ export function AIPlannerOverlay({
         }
       }
       if (finalTranscript) {
-        setPrompt((prev) => prev + " " + finalTranscript);
+        setInputText((prev) => prev + (prev ? " " : "") + finalTranscript);
       }
     };
 
@@ -166,48 +210,44 @@ export function AIPlannerOverlay({
     recognitionRef.current = recognition;
   };
 
-  // Plan result data from agent_done
-  const [planResult, setPlanResult] = useState<{
-    projectId?: string;
-    projectName?: string;
-    taskCount?: number;
-    milestoneCount?: number;
-    conflictCount?: number;
-    risk?: { score: number; factors: string[]; suggestions: string[] };
-    wikiPageUrl?: string;
-    knowledgeGaps?: string[];
-    critiqueScore?: number;
-  } | null>(null);
-
-  const resetExecutionState = useCallback(() => {
-    setAgentSteps([]);
-    setStatusText("");
-    setPlanResult(null);
-  }, []);
-
-  const handleGenerate = async () => {
-    if (!prompt.trim()) return;
+  const handleSend = async (textToSend?: string) => {
+    const text = (textToSend || inputText).trim();
+    if (!text) return;
     if (mode === "manage" && !projectId) {
-      alert("No project is selected. Open a project and use Ask AI from the overview.");
+      alert("No project is selected. Open a project and use AI Architect from the overview.");
       return;
     }
+
+    setInputText("");
     setLoading(true);
-    resetExecutionState();
-    setPhase("executing");
+
+    const userMsgId = Date.now().toString();
+    setMessages((prev) => [...prev, { id: userMsgId, sender: "user", text }]);
+
+    const assistantMsgId = (Date.now() + 1).toString();
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: assistantMsgId,
+        sender: "architect",
+        text: "",
+        isStreaming: true,
+        planningState: { statusText: "Analyzing intent...", agentSteps: [], planResult: null }
+      }
+    ]);
 
     try {
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
-      const headers: Record<string, string> = {
+      const headers = {
         "Content-Type": "application/json",
         ...(await getApiAuthHeaders()),
       };
 
-      const streamBody: { prompt: string; mode: string; project_id?: string } = { prompt, mode };
+      const streamBody: Record<string, any> = { prompt: text, mode };
       if (mode === "manage" && projectId) {
         streamBody.project_id = projectId;
       }
 
-      // Call the dedicated planning agent endpoint (create vs manage must match backend).
       const response = await fetch(`${API_BASE}/planning/${teamId}/assist/stream/`, {
         method: "POST",
         headers,
@@ -238,63 +278,81 @@ export function AIPlannerOverlay({
             try {
               const data = JSON.parse(dataStr);
 
-              if (currentEvent === "agent_status") {
-                setStatusText(data.status || "");
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.id !== assistantMsgId) return msg;
 
-              } else if (currentEvent === "agent_step") {
-                const name = data.name || "";
-                const label = getStepLabel(name, JSON.stringify(data.arguments || {}));
-                setAgentSteps((prev) => [...prev, { name, label, status: "running" }]);
-
-              } else if (currentEvent === "agent_result") {
-                const name = data.name || "";
-                setAgentSteps((prev) => {
-                  const next = [...prev];
-                  for (let i = next.length - 1; i >= 0; i--) {
-                    if (next[i].name === name && next[i].status === "running") {
-                      next[i] = { ...next[i], status: data.ok ? "done" : "error", result: data.result };
-                      break;
-                    }
+                  // Handle QA Streaming Chat branch
+                  if (currentEvent === "agent_chat_chunk") {
+                    return {
+                      ...msg,
+                      text: (msg.text || "") + data.text,
+                      planningState: undefined // Clear planning state since it's normal chat
+                    };
                   }
-                  return next;
-                });
+                  if (currentEvent === "agent_chat_done") {
+                    return { ...msg, isStreaming: false, planningState: undefined };
+                  }
 
-              } else if (currentEvent === "reasoning_done") {
-                // Pipeline finished reasoning — entity creation follows
-                setStatusText("Reasoning complete. Creating project entities...");
+                  // Handle planning agent progress branch
+                  const planState = msg.planningState || { statusText: "", agentSteps: [], planResult: null };
 
-              } else if (currentEvent === "agent_done") {
-                setPlanResult({
-                  projectId: data.project_id,
-                  projectName: data.project_name,
-                  taskCount: data.task_count,
-                  milestoneCount: data.milestone_count,
-                  conflictCount: data.conflict_count,
-                  risk: data.risk,
-                  wikiPageUrl: data.wiki_page_url,
-                  knowledgeGaps: data.knowledge_gaps,
-                  critiqueScore: data.critique_score,
-                });
-                setPhase("review");
+                  if (currentEvent === "agent_status") {
+                    planState.statusText = data.status || "";
+                  } else if (currentEvent === "agent_step") {
+                    const name = data.name || "";
+                    const label = getStepLabel(name, JSON.stringify(data.arguments || {}));
+                    planState.agentSteps = [...planState.agentSteps, { name, label, status: "running" }];
+                  } else if (currentEvent === "agent_result") {
+                    const name = data.name || "";
+                    planState.agentSteps = planState.agentSteps.map((step) =>
+                      step.name === name && step.status === "running"
+                        ? { ...step, status: data.ok ? "done" : "error", result: data.result }
+                        : step
+                    );
+                  } else if (currentEvent === "reasoning_done") {
+                    planState.statusText = "Reasoning complete. Creating project entities...";
+                  } else if (currentEvent === "agent_done") {
+                    planState.planResult = {
+                      projectId: data.project_id,
+                      projectName: data.project_name,
+                      taskCount: data.task_count,
+                      milestoneCount: data.milestone_count,
+                      conflictCount: data.conflict_count,
+                      risk: data.risk,
+                      wikiPageUrl: data.wiki_page_url,
+                      knowledgeGaps: data.knowledge_gaps,
+                      critiqueScore: data.critique_score,
+                    };
+                    return { ...msg, isStreaming: false, planningState: planState };
+                  } else if (currentEvent === "agent_error") {
+                    throw new Error(data.detail || "Planning agent error");
+                  }
 
-              } else if (currentEvent === "agent_error") {
-                throw new Error(data.detail || "Planning agent error");
-              }
+                  return { ...msg, planningState: planState };
+                })
+              );
             } catch (parseErr) {
               if (parseErr instanceof Error && parseErr.message.startsWith("Planning agent error")) throw parseErr;
-              /* skip parse errors */
             }
             currentEvent = "";
           }
         }
       }
-      // If we finished streaming without agent_done, transition anyway
-      if (phase === "executing") setPhase("review");
 
-    } catch (error: unknown) {
+      // Cleanup streaming flag if complete
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === assistantMsgId ? { ...msg, isStreaming: false } : msg))
+      );
+    } catch (error: any) {
       console.error(error);
-      alert(error instanceof Error ? error.message : "Failed to generate plan. Please try again.");
-      setPhase("input");
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMsgId
+            ? { ...msg, isStreaming: false, text: `⚠️ Error: ${error?.message || "Failed to communicate with AI Architect."}` }
+            : msg
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -325,113 +383,56 @@ export function AIPlannerOverlay({
       <motion.div
         initial={{ scale: 0.9, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="w-full max-w-3xl bg-[var(--surface-1)] rounded-[32px] overflow-hidden flex flex-col max-h-[85vh] shadow-2xl border border-[var(--border-subtle)]"
+        className="w-full max-w-4xl bg-[var(--surface-1)] rounded-[32px] overflow-hidden flex flex-col h-[85vh] shadow-2xl border border-[var(--border-subtle)]"
       >
-        <header className="p-8 pb-4 flex items-center justify-between border-b border-[var(--border-subtle)]">
+        {/* Header */}
+        <header className="p-6 pb-4 flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--surface-2)]">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl bg-[var(--accent-subtle)] flex items-center justify-center">
               <BrainCircuit className="w-7 h-7 text-[var(--accent)]" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">
-                Plan Architect AI
+              <h2 className="text-xl font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-2">
+                AI Planner Architect
+                <span className="text-[10px] uppercase font-bold tracking-widest px-2.5 py-1 rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
+                  {mode === "manage" ? "Manage Mode" : "Create Mode"}
+                </span>
               </h2>
-              <p className="text-[10px] uppercase font-bold tracking-widest text-[var(--text-muted)]">
-                {mode === "manage" ? "Update Current Project" : "Agentic Planning Engine"}
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                Cooperative Multi-Agent Scheduling & Strategy Co-pilot
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-[var(--bg-700)] rounded-xl transition-colors"
-          >
-            <X className="w-5 h-5 text-[var(--text-muted)]" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsManualMode(!isManualMode)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all bg-[var(--surface-3)] shadow-sm"
+            >
+              <PenTool className="w-3 h-3" />
+              {isManualMode ? "AI Chat" : "Manual Setup"}
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-[var(--bg-700)] rounded-xl transition-colors"
+            >
+              <X className="w-5 h-5 text-[var(--text-muted)]" />
+            </button>
+          </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-8 bg-[var(--bg-950)]/50">
+        {/* Content Area */}
+        <div className="flex-1 overflow-hidden flex flex-col bg-[var(--bg-950)]/50 relative">
           <AnimatePresence mode="wait">
-            {phase === "input" && (
-              <motion.div
-                key="input"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="space-y-8"
-              >
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                      Project Mission
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setPhase("manual")}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all bg-[var(--surface-2)] shadow-sm"
-                      >
-                        <PenTool className="w-3 h-3" />
-                        Manual Setup
-                      </button>
-                      <button
-                        onClick={startVoiceMode}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${
-                          isListening
-                            ? "bg-[var(--danger)] text-white animate-pulse"
-                            : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                        }`}
-                      >
-                        {isListening ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
-                        {isListening ? "Stop Voice" : "Voice Mode"}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="relative">
-                    <textarea
-                      value={prompt}
-                      onChange={(e) => setPrompt(e.target.value)}
-                      placeholder="e.g., 'Architect a migration strategy for a high-traffic platform...'"
-                      className="w-full h-44 bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-2xl p-5 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-subtle)] focus:border-[var(--accent)] transition-all resize-none leading-relaxed text-sm shadow-inner"
-                    />
-                    <div className="absolute bottom-4 right-4 flex items-center gap-2 text-[10px] font-bold text-[var(--text-dim)]">
-                      <Sparkles className="w-3 h-3" />
-                      Powered by TeamOS LLM
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {["Product Launch", "Event Planning", "SaaS MVP"].map((tag) => (
-                      <button
-                        key={tag}
-                        onClick={() =>
-                          setPrompt(`Generate a 3-month strategic plan for a ${tag}`)
-                        }
-                        className="text-[10px] font-bold uppercase tracking-widest px-4 py-2 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-muted)] dark:text-[var(--text-secondary)] transition-all border border-[var(--border-subtle)] shadow-sm active:scale-95"
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleGenerate}
-                  disabled={!prompt.trim() || loading}
-                  className="w-full h-14 bg-[var(--accent)] text-white font-bold rounded-2xl flex items-center justify-center gap-3 hover:opacity-90 disabled:opacity-50 transition-all shadow-xl shadow-[var(--accent-glow)]"
-                >
-                  <Wand2 className="w-5 h-5" />
-                  {mode === "manage" ? "Update Plan with Agent" : "Build Plan with Agent"}
-                </button>
-              </motion.div>
-            )}
-
-            {phase === "manual" && (
+            {isManualMode ? (
+              /* Manual Setup Mode */
               <motion.div
                 key="manual"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="space-y-8"
+                className="flex-1 p-8 space-y-6 overflow-y-auto"
               >
-                <div className="space-y-6">
+                <div className="max-w-2xl mx-auto space-y-6">
                   <div className="space-y-2">
                     <label className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">
                       Project Name
@@ -441,7 +442,7 @@ export function AIPlannerOverlay({
                       value={manualName}
                       onChange={(e) => setManualName(e.target.value)}
                       placeholder="Enter project name..."
-                      className="w-full bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-subtle)] transition-all"
+                      className="w-full bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-subtle)] transition-all shadow-inner"
                     />
                   </div>
                   <div className="space-y-2">
@@ -452,210 +453,237 @@ export function AIPlannerOverlay({
                       value={manualDesc}
                       onChange={(e) => setManualDesc(e.target.value)}
                       placeholder="Optional details..."
-                      className="w-full h-32 bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-subtle)] transition-all resize-none"
+                      className="w-full h-36 bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-subtle)] transition-all resize-none shadow-inner"
                     />
                   </div>
-                </div>
-
-                <div className="flex gap-4">
-                  <button
-                    onClick={() => setPhase("input")}
-                    className="flex-1 h-14 rounded-2xl bg-[var(--surface-2)] text-[var(--text-secondary)] font-bold transition-all border border-[var(--border-subtle)]"
-                  >
-                    Back to AI
-                  </button>
-                  <button
-                    onClick={handleManualSubmit}
-                    disabled={!manualName.trim() || loading}
-                    className="flex-[2] h-14 bg-[var(--accent)] text-white font-bold rounded-2xl flex items-center justify-center gap-3 hover:opacity-90 disabled:opacity-50 transition-all shadow-xl shadow-[var(--accent-glow)]"
-                  >
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Create Blank Project"}
-                    {!loading && <ArrowRight className="w-5 h-5" />}
-                  </button>
+                  <div className="flex gap-4 pt-4">
+                    <button
+                      onClick={() => setIsManualMode(false)}
+                      className="flex-1 h-14 rounded-2xl bg-[var(--surface-2)] text-[var(--text-secondary)] font-bold transition-all border border-[var(--border-subtle)]"
+                    >
+                      Back to AI Chat
+                    </button>
+                    <button
+                      onClick={handleManualSubmit}
+                      disabled={!manualName.trim() || loading}
+                      className="flex-[2] h-14 bg-[var(--accent)] text-white font-bold rounded-2xl flex items-center justify-center gap-3 hover:opacity-90 disabled:opacity-50 transition-all shadow-xl shadow-[var(--accent-glow)]"
+                    >
+                      {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Create Blank Project"}
+                      {!loading && <ArrowRight className="w-5 h-5" />}
+                    </button>
+                  </div>
                 </div>
               </motion.div>
-            )}
-
-            {phase === "executing" && (
+            ) : (
+              /* Conversational AI Chat Mode */
               <motion.div
-                key="executing"
+                key="chat"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="py-12 flex flex-col items-center justify-center space-y-8"
+                className="flex-1 flex flex-col overflow-hidden"
               >
-                {/* Progress bar */}
-                <div className="w-full max-w-md">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                      {statusText || "Initializing agent..."}
-                    </span>
-                    <span className="text-[10px] font-mono text-[var(--text-dim)]">
-                      {agentSteps.filter((s) => s.status === "done").length}/{agentSteps.length} steps
-                    </span>
-                  </div>
-                  <div className="h-1.5 bg-[var(--bg-700)] rounded-full overflow-hidden">
-                    <motion.div
-                      className="h-full bg-[var(--accent)] rounded-full"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${agentSteps.length > 0 ? (agentSteps.filter((s) => s.status === "done").length / agentSteps.length) * 100 : 0}%` }}
-                      transition={{ duration: 0.3 }}
-                    />
-                  </div>
-                </div>
-
-                {/* Step list */}
-                <div className="w-full max-w-md space-y-2">
-                  {agentSteps.map((step, idx) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.05 }}
-                      className="flex items-center gap-3 text-sm"
+                {/* Message list */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                  {messages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`flex gap-4 ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
                     >
-                      <div className={`
-                        w-5 h-5 rounded-full flex items-center justify-center shrink-0 border transition-all
-                        ${step.status === "done" ? "bg-[var(--success-bg)] border-[var(--success)]/30 text-[var(--success)]" :
-                          step.status === "error" ? "bg-[var(--danger-bg)] border-[var(--danger)]/30 text-[var(--danger)]" :
-                          "bg-[var(--surface-1)] border-[var(--border-subtle)] text-[var(--text-muted)]"}
-                      `}>
-                        {step.status === "done" && <CheckCircle2 className="w-3 h-3" />}
-                        {step.status === "error" && <AlertCircle className="w-3 h-3" />}
-                        {step.status === "running" && <Loader2 className="w-3 h-3 animate-spin" />}
+                      {msg.sender === "architect" && (
+                        <div className="w-10 h-10 rounded-xl bg-[var(--accent-subtle)]/20 border border-[var(--accent)]/10 flex items-center justify-center shrink-0">
+                          <Bot className="w-5 h-5 text-[var(--accent)]" />
+                        </div>
+                      )}
+                      <div className="space-y-3 max-w-[80%]">
+                        {/* Text Message Bubble */}
+                        {(msg.text || msg.isStreaming) && (
+                          <div className={`p-4 rounded-2xl leading-relaxed text-sm ${
+                            msg.sender === "user"
+                              ? "bg-[var(--accent)] text-white shadow-md rounded-tr-none"
+                              : "bg-[var(--surface-2)] text-[var(--text-primary)] border border-[var(--border-subtle)] rounded-tl-none"
+                          }`}>
+                            {msg.text || (
+                              <span className="flex items-center gap-2 text-[var(--text-muted)] animate-pulse">
+                                <Loader2 className="w-4 h-4 animate-spin text-[var(--accent)]" />
+                                Architect is typing...
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Inline Planning Steps / Results Bubble */}
+                        {msg.planningState && (
+                          <div className="bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-2xl p-5 space-y-4 rounded-tl-none shadow-md">
+                            {/* Header Status */}
+                            <div className="flex items-center justify-between pb-3 border-b border-[var(--border-subtle)]">
+                              <span className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                                {msg.planningState.statusText || "Agent executing..."}
+                              </span>
+                              <span className="text-[10px] font-mono text-[var(--text-dim)]">
+                                {msg.planningState.agentSteps.filter((s) => s.status === "done").length}/{msg.planningState.agentSteps.length} Steps
+                              </span>
+                            </div>
+
+                            {/* Live Steps Sequence */}
+                            {msg.planningState.agentSteps.length > 0 && (
+                              <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                                {msg.planningState.agentSteps.map((step, idx) => (
+                                  <div key={idx} className="flex items-center gap-2.5 text-xs">
+                                    <div className={`
+                                      w-4.5 h-4.5 rounded-full flex items-center justify-center shrink-0 border transition-all
+                                      ${step.status === "done" ? "bg-[var(--success-bg)] border-[var(--success)]/30 text-[var(--success)]" :
+                                        step.status === "error" ? "bg-[var(--danger-bg)] border-[var(--danger)]/30 text-[var(--danger)]" :
+                                        "bg-[var(--surface-1)] border-[var(--border-subtle)] text-[var(--text-muted)]"}
+                                    `}>
+                                      {step.status === "done" && <Check className="w-2.5 h-2.5" />}
+                                      {step.status === "error" && <AlertCircle className="w-2.5 h-2.5" />}
+                                      {step.status === "running" && <Loader2 className="w-2.5 h-2.5 animate-spin text-[var(--accent)]" />}
+                                    </div>
+                                    <span className={step.status === "running" ? "font-semibold text-[var(--text-primary)]" : "text-[var(--text-secondary)]"}>
+                                      {step.label}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Plan Results Dashboard */}
+                            {msg.planningState.planResult && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="space-y-4 pt-3 border-t border-[var(--border-subtle)]"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                                    <CheckCircle2 className="w-4 h-4 text-[var(--success)]" />
+                                    {msg.planningState.planResult.projectName || "Plan Created"}
+                                  </h4>
+                                  {msg.planningState.planResult.wikiPageUrl && (
+                                    <a href={msg.planningState.planResult.wikiPageUrl} target="_blank" rel="noopener noreferrer"
+                                      className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-[var(--accent)] hover:underline">
+                                      <FileText className="w-3 h-3" /> Wiki Brief
+                                    </a>
+                                  )}
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div className="bg-[var(--bg-950)] rounded-xl p-2.5 text-center border border-[var(--border-subtle)]">
+                                    <div className="text-xl font-black text-[var(--text-primary)]">{msg.planningState.planResult.taskCount ?? 0}</div>
+                                    <div className="text-[9px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">Tasks</div>
+                                  </div>
+                                  <div className="bg-[var(--bg-950)] rounded-xl p-2.5 text-center border border-[var(--border-subtle)]">
+                                    <div className="text-xl font-black text-[var(--text-primary)]">{msg.planningState.planResult.milestoneCount ?? 0}</div>
+                                    <div className="text-[9px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">Milestones</div>
+                                  </div>
+                                  <div className={`rounded-xl p-2.5 text-center border border-[var(--border-subtle)] ${msg.planningState.planResult.risk ? riskBg(msg.planningState.planResult.risk.score) : "bg-[var(--bg-950)]"}`}>
+                                    <div className={`text-xl font-black ${msg.planningState.planResult.risk ? riskColor(msg.planningState.planResult.risk.score) : "text-[var(--text-primary)]"}`}>
+                                      {msg.planningState.planResult.risk?.score ?? "—"}
+                                    </div>
+                                    <div className="text-[9px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">Risk Score</div>
+                                  </div>
+                                </div>
+
+                                {msg.planningState.planResult.risk?.suggestions && msg.planningState.planResult.risk.suggestions.length > 0 && (
+                                  <div className="space-y-1">
+                                    <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Risk Mitigations</p>
+                                    {msg.planningState.planResult.risk.suggestions.slice(0, 2).map((s, i) => (
+                                      <div key={i} className="flex items-start gap-1.5 text-xs text-[var(--text-secondary)]">
+                                        <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--accent)]" />
+                                        {s}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                <div className="pt-2">
+                                  <button
+                                    onClick={() => {
+                                      onPlanGenerated({
+                                        projectName: msg.planningState?.planResult?.projectName || "AI Plan",
+                                        description: `${msg.planningState?.planResult?.taskCount ?? 0} tasks · ${msg.planningState?.planResult?.milestoneCount ?? 0} milestones`,
+                                        tasks: [],
+                                        milestones: [],
+                                      });
+                                    }}
+                                    className="w-full h-11 bg-[var(--accent)] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-95 transition-all shadow-md"
+                                  >
+                                    Open Generated Project Plan
+                                    <ArrowRight className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </motion.div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <span className={`${
-                        step.status === "done" ? "text-[var(--text-secondary)]" :
-                        step.status === "error" ? "text-[var(--danger)]" :
-                        "text-[var(--text-primary)] font-medium"
-                      }`}>
-                        {step.label}
-                      </span>
-                    </motion.div>
-                  ))}
-                </div>
-
-                {/* Spinner */}
-                <div className="relative">
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-                    className="w-16 h-16 rounded-2xl border-2 border-dashed border-[var(--accent-subtle)] flex items-center justify-center"
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Loader2 className="w-6 h-6 text-[var(--accent)] animate-spin" />
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            {phase === "review" && (
-              <motion.div
-                key="review"
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="space-y-6"
-              >
-                {/* Plan summary card */}
-                {planResult && (
-                  <div className="bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-2xl p-6 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-[var(--success)]" />
-                        {planResult.projectName || "Plan Created"}
-                      </h3>
-                      {planResult.wikiPageUrl && (
-                        <a href={planResult.wikiPageUrl} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--accent)] hover:underline">
-                          <FileText className="w-3 h-3" /> Wiki Page
-                        </a>
+                      {msg.sender === "user" && (
+                        <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/10 flex items-center justify-center shrink-0">
+                          <User className="w-5 h-5 text-[var(--accent)]" />
+                        </div>
                       )}
                     </div>
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="bg-[var(--surface-2)] rounded-xl p-3 text-center">
-                        <div className="text-2xl font-black text-[var(--text-primary)]">{planResult.taskCount ?? 0}</div>
-                        <div className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">Tasks</div>
-                      </div>
-                      <div className="bg-[var(--surface-2)] rounded-xl p-3 text-center">
-                        <div className="text-2xl font-black text-[var(--text-primary)]">{planResult.milestoneCount ?? 0}</div>
-                        <div className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">Milestones</div>
-                      </div>
-                      <div className={`rounded-xl p-3 text-center ${planResult.risk ? riskBg(planResult.risk.score) : "bg-[var(--surface-2)]"}`}>
-                        <div className={`text-2xl font-black ${planResult.risk ? riskColor(planResult.risk.score) : "text-[var(--text-primary)]"}`}>
-                          {planResult.risk?.score ?? "—"}
-                        </div>
-                        <div className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">Risk Score</div>
-                      </div>
+                  ))}
+                  <div ref={chatEndRef} />
+                </div>
+
+                {/* Suggestions / Starters list */}
+                {messages.length === 1 && (
+                  <div className="p-6 pt-0 space-y-3">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                      Suggested Starters
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        "Create a marketing launch strategy for our KYC feature",
+                        "Analyze our team timeline risks and draft a mitigation roadmap",
+                        "List our active wiki pages and suggest strategic updates"
+                      ].map((starter, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleSend(starter)}
+                          className="text-[11px] px-4 py-2.5 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-secondary)] text-left transition-all border border-[var(--border-subtle)] active:scale-98 shadow-sm max-w-md block"
+                        >
+                          {starter}
+                        </button>
+                      ))}
                     </div>
-                    {(planResult.conflictCount ?? 0) > 0 && (
-                      <div className="flex items-center gap-2 text-sm text-[var(--warning)] bg-[var(--warning)]/10 rounded-xl px-4 py-2">
-                        <AlertTriangle className="w-4 h-4 shrink-0" />
-                        {planResult.conflictCount} scheduling conflict{planResult.conflictCount! > 1 ? "s" : ""} detected — review in the Planner.
-                      </div>
-                    )}
-                    {planResult.risk?.suggestions && planResult.risk.suggestions.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Risk Mitigations</p>
-                        {planResult.risk.suggestions.slice(0, 3).map((s, i) => (
-                          <div key={i} className="flex items-start gap-2 text-sm text-[var(--text-secondary)]">
-                            <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--accent)]" />
-                            {s}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {planResult.knowledgeGaps && planResult.knowledgeGaps.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Knowledge Gaps Identified</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {planResult.knowledgeGaps.slice(0, 5).map((gap, i) => (
-                            <span key={i} className="text-[10px] px-2 py-1 rounded-lg bg-[var(--warning)]/10 text-[var(--warning)] border border-[var(--warning)]/20">{gap}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
 
-                {/* Agent execution log (collapsible) */}
-                <details className="group">
-                  <summary className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] cursor-pointer hover:text-[var(--text-muted)] transition-colors">
-                    Agent Execution Log ({agentSteps.length} steps)
-                  </summary>
-                  <div className="mt-2 space-y-1">
-                    {agentSteps.map((step, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-[11px]">
-                        {step.status === "done" && <Check className="w-3 h-3 text-[var(--success)]" />}
-                        {step.status === "error" && <AlertCircle className="w-3 h-3 text-[var(--danger)]" />}
-                        {step.status === "running" && <Loader2 className="w-3 h-3 animate-spin text-[var(--accent)]" />}
-                        <span className="text-[var(--text-muted)] font-mono">{step.name}</span>
-                        <span className="text-[var(--text-dim)]">— {step.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-
-                {/* Action buttons */}
-                <div className="flex gap-4 pt-4 sticky bottom-0 bg-[var(--surface-1)] py-4 border-t border-[var(--border-subtle)]">
+                {/* Chat Input Box */}
+                <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--surface-2)] flex items-end gap-3">
                   <button
-                    onClick={() => { resetExecutionState(); setPhase("input"); }}
-                    className="flex-1 h-14 rounded-2xl bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-secondary)] font-bold transition-all border border-[var(--border-subtle)] shadow-sm"
+                    onClick={startVoiceMode}
+                    className={`p-3.5 rounded-xl transition-all ${
+                      isListening
+                        ? "bg-[var(--danger)] text-white animate-pulse"
+                        : "bg-[var(--surface-3)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    }`}
                   >
-                    Modify Prompt
+                    {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                   </button>
+                  <div className="flex-1 relative">
+                    <textarea
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSend();
+                        }
+                      }}
+                      placeholder="Ask a question or request a strategic plan..."
+                      className="w-full bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl px-4 py-3.5 pr-12 text-[var(--text-primary)] text-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)] resize-none h-12 max-h-24 shadow-inner"
+                    />
+                  </div>
                   <button
-                    onClick={() => {
-                      onPlanGenerated({
-                        projectName: planResult?.projectName || "AI Generated Plan",
-                        description: `${planResult?.taskCount ?? 0} tasks · ${planResult?.milestoneCount ?? 0} milestones`,
-                        tasks: [],
-                        milestones: [],
-                      });
-                    }}
-                    className="flex-[2] h-14 rounded-2xl bg-[var(--accent)] text-white font-bold flex items-center justify-center gap-2 hover:opacity-95 transition-all shadow-xl shadow-[var(--accent-glow)]"
+                    onClick={() => handleSend()}
+                    disabled={!inputText.trim() || loading}
+                    className="p-3.5 bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 text-white rounded-xl transition-all shadow-md"
                   >
-                    Open in Planner
-                    <ArrowRight className="w-5 h-5" />
+                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                   </button>
                 </div>
               </motion.div>

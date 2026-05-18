@@ -17,14 +17,18 @@ import {
   Users,
   Shield,
   Trash2,
+  Layers,
+  ListPlus,
+  CornerDownRight,
+  Loader2
 } from "lucide-react";
 import { motion } from "motion/react";
 import { updatePlanTask, updatePlanMilestone, getTeamOverdue } from "../api";
 import { useWikiStore } from "@/stores/useWikiStore";
+import { getApiAuthHeaders } from "@/lib/api";
 import { ConflictPanel } from "./ConflictPanel";
 import { RiskCard } from "./RiskCard";
 import { useEffect } from "react";
-
 
 interface ProjectOverviewPanelProps {
   activeProject: PlanProjectDetail | null;
@@ -33,7 +37,7 @@ interface ProjectOverviewPanelProps {
   teamMembers: TeamMember[];
   onAskAI: () => void;
   onRefreshDetail: () => void;
-  onOpenAddTask: () => void;
+  onOpenAddTask: (parentTaskId?: string) => void;
   onOpenAddMilestone: () => void;
   onDeleteProject: (name: string) => void;
   onDeleteTask: (taskId: string) => void;
@@ -54,6 +58,7 @@ export function ProjectOverviewPanel({
   const { currentTeamId } = useWikiStore();
   const [taskSearch, setTaskSearch] = useState("");
   const [overdue, setOverdue] = useState<{ overdue_tasks: OverdueTask[]; missed_milestones: MissedMilestone[] } | null>(null);
+  const [decomposingTaskId, setDecomposingTaskId] = useState<string | null>(null);
   const refreshKey = activeProject?.updated_at ?? "";
 
   useEffect(() => {
@@ -233,7 +238,7 @@ export function ProjectOverviewPanel({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${activeProject.name.replace(/\\s+/g, '_')}_Report.html`;
+    a.download = `${activeProject.name.replace(/\s+/g, '_')}_Report.html`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -271,9 +276,66 @@ export function ProjectOverviewPanel({
     }
   };
 
-  const filteredTasks = activeProject.tasks.filter((t) =>
-    t.title.toLowerCase().includes(taskSearch.toLowerCase())
+  const handleDecomposeDaily = async (taskId: string) => {
+    if (!currentTeamId || !activeProject) return;
+    setDecomposingTaskId(taskId);
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+      const headers = {
+        "Content-Type": "application/json",
+        ...(await getApiAuthHeaders()),
+      };
+
+      const response = await fetch(`${API_BASE}/planning/${currentTeamId}/projects/${activeProject.id}/tasks/${taskId}/decompose-daily/`, {
+        method: "POST",
+        headers,
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Failed to decompose daily task");
+      }
+
+      onRefreshDetail();
+      alert("Successfully decomposed task into sequential day-by-day sub-tasks!");
+    } catch (e: any) {
+      console.error(e);
+      alert(e.message || "Failed to decompose task");
+    } finally {
+      setDecomposingTaskId(null);
+    }
+  };
+
+  // Advanced contextual grouping logic for sub-tasks
+  const matchingTasks = activeProject.tasks.filter((t) =>
+    t.title.toLowerCase().includes(taskSearch.toLowerCase()) ||
+    (t.description || "").toLowerCase().includes(taskSearch.toLowerCase())
   );
+
+  const parentTasks = matchingTasks.filter(t => !t.parent_task_id);
+  const parentIds = new Set(parentTasks.map(t => t.id));
+
+  // Auto-resolve parenting context if children match search criteria
+  matchingTasks.forEach(t => {
+    if (t.parent_task_id && !parentIds.has(t.parent_task_id)) {
+      const parentObj = activeProject.tasks.find(p => p.id === t.parent_task_id);
+      if (parentObj) {
+        parentTasks.push(parentObj);
+        parentIds.add(parentObj.id);
+      }
+    }
+  });
+
+  const subTasksMap = activeProject.tasks.reduce((acc, t) => {
+    if (t.parent_task_id) {
+      if (!acc[t.parent_task_id]) acc[t.parent_task_id] = [];
+      const matchesSearch = !taskSearch.trim() || matchingTasks.some(mt => mt.id === t.id);
+      if (matchesSearch) {
+        acc[t.parent_task_id].push(t);
+      }
+    }
+    return acc;
+  }, {} as Record<string, PlanTask[]>);
 
   const completedTasks = activeProject.tasks.filter((t) => t.status === "completed").length;
   const progress = activeProject.tasks.length
@@ -388,7 +450,7 @@ export function ProjectOverviewPanel({
                   />
                 </div>
                 <button 
-                  onClick={onOpenAddTask}
+                  onClick={() => onOpenAddTask(undefined)}
                   className="h-10 w-10 bg-[var(--accent)] text-white rounded-xl flex items-center justify-center hover:opacity-90 transition-all shadow-lg shadow-[var(--accent-glow)]"
                 >
                   <Plus className="w-5 h-5" />
@@ -396,16 +458,49 @@ export function ProjectOverviewPanel({
               </div>
             </div>
 
-            <div className="space-y-3">
-              {filteredTasks.map((task) => (
-                <TaskItem 
-                  key={task.id} 
-                  task={task} 
-                  onToggle={() => handleToggleTask(task)} 
-                  onDelete={() => onDeleteTask(task.id)}
-                />
-              ))}
-              {filteredTasks.length === 0 && (
+            <div className="space-y-4">
+              {parentTasks.map((task) => {
+                const subtasks = subTasksMap[task.id] || [];
+                return (
+                  <div key={task.id} className="space-y-2.5">
+                    {/* Render Parent Task */}
+                    <TaskItem 
+                      task={task} 
+                      onToggle={() => handleToggleTask(task)} 
+                      onDelete={() => onDeleteTask(task.id)}
+                      onAddSubTask={() => onOpenAddTask(task.id)}
+                      onDecomposeDaily={
+                        decomposingTaskId === task.id
+                          ? undefined
+                          : () => handleDecomposeDaily(task.id)
+                      }
+                      isDecomposing={decomposingTaskId === task.id}
+                    />
+
+                    {/* Indented Subtask Hierarchy Block */}
+                    {subtasks.length > 0 && (
+                      <div className="pl-6 space-y-2 border-l border-dashed border-[var(--border-subtle)] ml-4">
+                        {subtasks.map((sub) => (
+                          <div key={sub.id} className="flex gap-2 items-start">
+                            <CornerDownRight className="w-4 h-4 text-[var(--text-dim)] mt-3.5 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <TaskItem 
+                                task={sub} 
+                                onToggle={() => handleToggleTask(sub)} 
+                                onDelete={() => onDeleteTask(sub.id)}
+                                onAddSubTask={() => onOpenAddTask(task.id)}
+                                isSubtask
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {parentTasks.length === 0 && (
                 <div className="p-12 text-center border-2 border-dashed border-[var(--border-subtle)] rounded-[32px] space-y-4">
                   <div className="w-12 h-12 bg-[var(--bg-900)] rounded-2xl flex items-center justify-center mx-auto">
                     <FileText className="w-6 h-6 text-[var(--text-dim)]" />
@@ -475,6 +570,41 @@ export function ProjectOverviewPanel({
               </div>
             </div>
 
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-[var(--accent)]" />
+                  Semantic Documents
+                </h3>
+              </div>
+              <div className="space-y-3">
+                {activeProject.related_wiki_pages?.map((doc) => (
+                  <a
+                    key={doc.id}
+                    href={`/wiki/${doc.slug}`}
+                    className="flex items-center gap-3 p-3 bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl shadow-sm hover:border-[var(--accent-subtle)] hover:bg-[var(--surface-2)] transition-all group"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center text-[var(--accent)] font-bold shrink-0">
+                      <FileText className="w-4 h-4 text-[var(--accent)]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-bold text-[var(--text-primary)] truncate group-hover:text-[var(--accent)] transition-colors">
+                        {doc.title}
+                      </p>
+                      <span className="text-[8px] font-black uppercase tracking-widest text-[var(--text-dim)]">
+                        {doc.page_type}
+                      </span>
+                    </div>
+                  </a>
+                ))}
+                {(!activeProject.related_wiki_pages || activeProject.related_wiki_pages.length === 0) && (
+                  <p className="text-[10px] text-[var(--text-dim)] font-bold uppercase tracking-widest py-6 text-center border border-dashed border-[var(--border-subtle)] rounded-2xl">
+                    No related wiki documents
+                  </p>
+                )}
+              </div>
+            </div>
+
             {currentTeamId && activeProject && (
               <RiskCard
                 teamId={currentTeamId}
@@ -524,29 +654,62 @@ function StatBox({ label, value, subValue, trend }: { label: string; value: stri
   );
 }
 
-function TaskItem({ task, onToggle, onDelete }: { task: PlanTask; onToggle: () => void; onDelete: () => void }) {
+interface TaskItemProps {
+  task: PlanTask;
+  onToggle: () => void;
+  onDelete: () => void;
+  onAddSubTask?: () => void;
+  onDecomposeDaily?: () => void;
+  isDecomposing?: boolean;
+  isSubtask?: boolean;
+}
+
+function TaskItem({
+  task,
+  onToggle,
+  onDelete,
+  onAddSubTask,
+  onDecomposeDaily,
+  isDecomposing = false,
+  isSubtask = false
+}: TaskItemProps) {
   const isDone = task.status === "completed";
   return (
-    <div className="group bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl p-4 flex items-center gap-4 hover:border-[var(--accent-subtle)] transition-all shadow-sm">
+    <div className={`
+      group border rounded-2xl flex items-start gap-4 p-4 hover:border-[var(--accent-subtle)] transition-all shadow-sm
+      ${isSubtask 
+        ? "bg-[var(--surface-1)]/40 border-[var(--border-subtle)] border-l-4 border-l-[var(--accent)]/50" 
+        : "bg-[var(--surface-1)] border-[var(--border-subtle)]"
+      }
+    `}>
       <button
         onClick={onToggle}
-        className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+        className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all shrink-0 mt-0.5 ${
           isDone
-            ? "bg-emerald-500 border-emerald-500"
+            ? "bg-emerald-500 border-emerald-500 text-white"
             : "border-[var(--border-subtle)] group-hover:border-[var(--accent-subtle)]"
         }`}
       >
         {isDone && <CheckCircle2 className="w-4 h-4 text-white" />}
       </button>
+
       <div className="flex-1 min-w-0">
-        <h4
-          className={`text-sm font-bold truncate transition-all ${
-            isDone ? "text-[var(--text-dim)] line-through" : "text-[var(--text-primary)]"
-          }`}
-        >
+        <h4 className={`text-sm font-bold truncate transition-all ${
+          isDone ? "text-[var(--text-dim)] line-through" : "text-[var(--text-primary)]"
+        }`}>
           {task.title}
         </h4>
-        <div className="flex items-center gap-3 mt-1">
+
+        {/* Dynamic Nested Subtask Descriptions list */}
+        {task.description && (
+          <p className={`text-xs mt-1 text-[var(--text-muted)] leading-relaxed whitespace-pre-wrap ${
+            isDone ? "line-through opacity-60" : ""
+          }`}>
+            {task.description}
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3 mt-2">
           <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${
             task.priority === 'high' ? 'bg-rose-500/10 text-rose-500' : 'bg-slate-500/10 text-[var(--text-dim)]'
           }`}>
@@ -558,7 +721,36 @@ function TaskItem({ task, onToggle, onDelete }: { task: PlanTask; onToggle: () =
           </span>
         </div>
       </div>
-      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+
+      {/* Actions buttons */}
+      <div className="flex items-center gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        {onDecomposeDaily && (
+          <button 
+            onClick={(e) => { e.stopPropagation(); onDecomposeDaily(); }}
+            disabled={isDecomposing}
+            className="p-1.5 text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 rounded-lg transition-all flex items-center gap-1 disabled:opacity-50"
+            title="Decompose task day-by-day"
+          >
+            {isDecomposing ? (
+              <Loader2 className="w-4 h-4 animate-spin text-[var(--accent)]" />
+            ) : (
+              <Layers className="w-4 h-4" />
+            )}
+            <span className="text-[9px] font-bold uppercase tracking-wider hidden md:inline">Split Daily</span>
+          </button>
+        )}
+
+        {onAddSubTask && !isSubtask && (
+          <button 
+            onClick={(e) => { e.stopPropagation(); onAddSubTask(); }}
+            className="p-1.5 text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 rounded-lg transition-all flex items-center gap-1"
+            title="Add hierarchical sub-task"
+          >
+            <ListPlus className="w-4 h-4" />
+            <span className="text-[9px] font-bold uppercase tracking-wider hidden md:inline">Sub-task</span>
+          </button>
+        )}
+
         <button 
           onClick={(e) => {
             e.stopPropagation();
@@ -569,7 +761,8 @@ function TaskItem({ task, onToggle, onDelete }: { task: PlanTask; onToggle: () =
         >
           <Trash2 className="w-4 h-4" />
         </button>
-        <div className="flex -space-x-1.5 shrink-0 pl-2">
+
+        <div className="flex -space-x-1.5 shrink-0 pl-1">
           {task.assignee_email ? (
              <div title={task.assignee_email} className="w-6 h-6 rounded-lg bg-[var(--accent)] flex items-center justify-center text-[7px] font-black text-white border-2 border-[var(--surface-1)]">
                 {task.assignee_email.substring(0, 2).toUpperCase()}

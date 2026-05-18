@@ -16,13 +16,15 @@ interface AddTaskModalProps {
     assignee_id: string | null;
     start_date: string | null;
     end_date: string | null;
+    parent_task_id: string | null;
   }) => void;
   teamMembers: TeamMember[];
   initialStartDate?: string;
   initialStatus?: string;
+  initialParentTaskId?: string;
 }
 
-export function AddTaskModal({ isOpen, onClose, onSubmit, teamMembers, initialStartDate, initialStatus }: AddTaskModalProps) {
+export function AddTaskModal({ isOpen, onClose, onSubmit, teamMembers, initialStartDate, initialStatus, initialParentTaskId }: AddTaskModalProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
@@ -30,13 +32,15 @@ export function AddTaskModal({ isOpen, onClose, onSubmit, teamMembers, initialSt
   const [startDate, setStartDate] = useState(initialStartDate || "");
   const [endDate, setEndDate] = useState("");
   const [status, setStatus] = useState(initialStatus || "todo");
+  const [parentTaskId, setParentTaskId] = useState(initialParentTaskId || "");
 
   React.useEffect(() => {
     if (isOpen) {
       if (initialStartDate) setStartDate(initialStartDate);
       if (initialStatus) setStatus(initialStatus);
+      if (initialParentTaskId) setParentTaskId(initialParentTaskId);
     }
-  }, [isOpen, initialStartDate, initialStatus]);
+  }, [isOpen, initialStartDate, initialStatus, initialParentTaskId]);
 
   if (!isOpen) return null;
 
@@ -51,10 +55,12 @@ export function AddTaskModal({ isOpen, onClose, onSubmit, teamMembers, initialSt
       assignee_id: assigneeId || null,
       start_date: startDate || null,
       end_date: endDate || null,
+      parent_task_id: parentTaskId || null,
     });
     // Reset
     setTitle("");
     setDescription("");
+    setParentTaskId("");
     onClose();
   };
 

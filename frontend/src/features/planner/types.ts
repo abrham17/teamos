@@ -35,6 +35,7 @@ export interface PlanTask {
   assignee_email: string | null;
   start_date: string | null;
   end_date: string | null;
+  parent_task_id?: string | null;
   dependencies: string[];
   order_index: number;
   created_by_id: string | null;
@@ -97,6 +98,12 @@ export interface PlanProjectDetail {
   milestones: PlanMilestone[];
   members: ProjectMember[];
   chunks: PlanChunk[];
+  related_wiki_pages?: Array<{
+    id: string;
+    title: string;
+    slug: string;
+    page_type: string;
+  }>;
   created_by_id: string | null;
   created_at: string;
   updated_at: string;
