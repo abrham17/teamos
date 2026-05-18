@@ -370,9 +370,12 @@ class PlanningReasoningPipeline:
                 f"Domain constraints to address: {constraints}\n\n"
             )
 
+        from django.utils import timezone
+        today_str = timezone.now().strftime("%A, %B %d, %Y")
+
         system = (
             domain_block
-            + "Decompose this project mission into SPECIFIC sub-goals.\n\n"
+            + f"Decompose this project mission into SPECIFIC sub-goals. Today is {today_str}.\n\n"
             "RULES:\n"
             "- Sub-goals must be domain-specific. Do NOT use generic phases.\n"
             "- BAD: 'Implement core features' | GOOD: 'Build KYC/AML verification pipeline'\n"
@@ -461,9 +464,12 @@ class PlanningReasoningPipeline:
                 f"Ensure these constraints are addressed: {constraints}\n\n"
             )
 
+        from django.utils import timezone
+        today_str = timezone.now().strftime("%A, %B %d, %Y")
+
         system = (
             persona_block
-            + "You are the TeamOS Plan Architect. Generate a complete, specific project plan.\n\n"
+            + f"You are the TeamOS Plan Architect. Today is {today_str}.\n\n"
             "CRITICAL RULES:\n"
             "- Task titles MUST be domain-specific and technical.\n"
             "- REJECTED: 'Implement features', 'Define requirements', 'Test the system'\n"
@@ -471,7 +477,7 @@ class PlanningReasoningPipeline:
             "- Reference wiki pages with [[Page Title]] syntax in descriptions.\n"
             "- Add a 'reasoning' field to each task explaining why it exists.\n"
             "- Assign tasks using assignee_id from Team Expertise.\n"
-            "- Every task needs startDate and endDate (YYYY-MM-DD).\n\n"
+            f"- Every task needs startDate and endDate (YYYY-MM-DD). All schedules MUST be anchored to start on or after today ({today_str}). Do NOT use old years (like 2023 or 2024).\n\n"
             "Return JSON:\n"
             "  projectName: string\n"
             "  description: string (markdown)\n"
