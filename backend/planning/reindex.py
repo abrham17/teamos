@@ -119,7 +119,7 @@ def reindex_project(project: Project) -> int:
                 
         page.content = md
         page.save(update_fields=["content", "updated_at"])
-        reindex_wiki_page(page)
+        reindex_wiki_page(page, queue_graph=False)
 
     return len(created_chunks)
 

@@ -310,14 +310,20 @@ def run_planner_agent(
                 # Apply updates to database
                 for rt in resolved_tasks:
                     try:
+                        from datetime import date as _date
                         task = get_task_or_none(team_id, created_project_id, rt["id"])
                         if task:
-                            update_task(task, {
-                                "start_date": rt.get("start_date"),
-                                "end_date": rt.get("end_date")
-                            })
+                            start_raw = rt.get("start_date")
+                            end_raw = rt.get("end_date")
+                            if not start_raw or not end_raw:
+                                continue
+                            start_d = _date.fromisoformat(str(start_raw))
+                            end_d = _date.fromisoformat(str(end_raw))
+                            if start_d > end_d:
+                                continue
+                            update_task(task, {"start_date": start_d, "end_date": end_d})
                     except Exception as e:
-                        logger.error(f"Failed to auto-update task {rt['id']}: {e}")
+                        logger.error(f"Failed to auto-update task {rt.get('id')}: {e}")
                 
                 # Re-check conflicts
                 conflicts = detect_date_conflicts(team_id, project_id=created_project_id)

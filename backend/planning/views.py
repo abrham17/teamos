@@ -46,6 +46,7 @@ from .services import (
     update_task,
 )
 from .reindex import clear_project_chunks, reindex_project
+from .tasks import reindex_project_async
 from accounts.models import User, Team
 
 logger = logging.getLogger(__name__)
@@ -129,10 +130,10 @@ class PlanningProjectListView(APIView):
             )
 
         try:
-            reindex_project(project)
+            reindex_project_async.delay(str(project.id))
         except Exception:
             logger.exception(
-                "Failed to reindex plan project after create", extra={"project_id": str(project.id)}
+                "Failed to queue reindex after project create", extra={"project_id": str(project.id)}
             )
         return ok(ProjectDetailSerializer(project).data, status_code=201)
 
@@ -223,9 +224,9 @@ class PlanningProjectDetailView(APIView):
                         pass
 
         try:
-            reindex_project(updated)
+            reindex_project_async.delay(str(updated.id))
         except Exception:
-            logger.exception("Failed to reindex plan project after update", extra={"project_id": str(updated.id)})
+            logger.exception("Failed to queue reindex after project update", extra={"project_id": str(updated.id)})
         return ok(ProjectDetailSerializer(updated).data)
 
     def delete(self, request, team_id, project_id):
@@ -258,9 +259,9 @@ class PlanningTaskListView(APIView):
         serializer.is_valid(raise_exception=True)
         task = create_task(project=project, user=request.user, payload=serializer.validated_data)
         try:
-            reindex_project(project)
+            reindex_project_async.delay(str(project.id))
         except Exception:
-            logger.exception("Failed to reindex plan project after task create", extra={"project_id": str(project.id)})
+            logger.exception("Failed to queue reindex after task create", extra={"project_id": str(project.id)})
         return ok(TaskSerializer(task).data, status_code=201)
 
 
@@ -275,10 +276,10 @@ class PlanningTaskDetailView(APIView):
         serializer.is_valid(raise_exception=True)
         updated = update_task(task, serializer.validated_data)
         try:
-            reindex_project(updated.project)
+            reindex_project_async.delay(str(updated.project_id))
         except Exception:
             logger.exception(
-                "Failed to reindex plan project after task update", extra={"project_id": str(updated.project_id)}
+                "Failed to queue reindex after task update", extra={"project_id": str(updated.project_id)}
             )
         return ok(TaskSerializer(updated).data)
 
@@ -289,9 +290,9 @@ class PlanningTaskDetailView(APIView):
         project = task.project
         delete_task(task)
         try:
-            reindex_project(project)
+            reindex_project_async.delay(str(project.id))
         except Exception:
-            logger.exception("Failed to reindex plan project after task delete", extra={"project_id": str(project.id)})
+            logger.exception("Failed to queue reindex after task delete", extra={"project_id": str(project.id)})
         return ok(status_code=204)
 
 
@@ -313,10 +314,10 @@ class PlanningMilestoneListView(APIView):
         serializer.is_valid(raise_exception=True)
         milestone = create_milestone(project=project, user=request.user, payload=serializer.validated_data)
         try:
-            reindex_project(project)
+            reindex_project_async.delay(str(project.id))
         except Exception:
             logger.exception(
-                "Failed to reindex plan project after milestone create", extra={"project_id": str(project.id)}
+                "Failed to queue reindex after milestone create", extra={"project_id": str(project.id)}
             )
         return ok(MilestoneSerializer(milestone).data, status_code=201)
 
@@ -334,10 +335,10 @@ class PlanningMilestoneDetailView(APIView):
         serializer.is_valid(raise_exception=True)
         updated = update_milestone(milestone, serializer.validated_data)
         try:
-            reindex_project(updated.project)
+            reindex_project_async.delay(str(updated.project_id))
         except Exception:
             logger.exception(
-                "Failed to reindex plan project after milestone update",
+                "Failed to queue reindex after milestone update",
                 extra={"project_id": str(updated.project_id)},
             )
         return ok(MilestoneSerializer(updated).data)
@@ -351,10 +352,10 @@ class PlanningMilestoneDetailView(APIView):
         project = milestone.project
         delete_milestone(milestone)
         try:
-            reindex_project(project)
+            reindex_project_async.delay(str(project.id))
         except Exception:
             logger.exception(
-                "Failed to reindex plan project after milestone delete", extra={"project_id": str(project.id)}
+                "Failed to queue reindex after milestone delete", extra={"project_id": str(project.id)}
             )
         return ok(status_code=204)
 
@@ -737,7 +738,7 @@ class PlanningConflictResolveView(APIView):
                         })
                         updated_count += 1
             
-            reindex_project(project)
+            reindex_project_async.delay(str(project.id))
             
             return ok({
                 "status": "resolved",
@@ -877,7 +878,7 @@ class PlanningRiskResolveApplyView(APIView):
                         update_milestone(milestone, {"target_date": action.get("target_date")})
                         applied.append({"action": action_type, "milestone_id": str(milestone.id)})
 
-            reindex_project(project)
+            reindex_project_async.delay(str(project.id))
             team = Team.objects.get(id=team_id)
             project_payload = ProjectDetailSerializer(project).data
             remaining_conflicts = detect_date_conflicts(str(team_id), project_id=str(project_id))
@@ -1006,7 +1007,7 @@ class PlanningSnapshotRestoreView(APIView):
                 }
             )
 
-        reindex_project(project)
+        reindex_project_async.delay(str(project.id))
         return ok({"restored": True})
 
 
