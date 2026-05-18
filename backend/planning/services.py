@@ -80,7 +80,6 @@ def create_project(*, team_id: str, user: User, payload: dict) -> Project:
     # Discover and link semantically relevant existing Wiki pages and documents
     try:
         from ingest.vectors import vector_store
-        from wiki.models import WikiPage
 
         query_text = f"Project: {project.name}\n\nDescription: {project.description}"
         similar_points = vector_store.search_similar_pages(team_id=team_id, query_text=query_text, limit=10)

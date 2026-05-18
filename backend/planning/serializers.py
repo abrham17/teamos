@@ -8,7 +8,7 @@ from .models import Milestone, PlanChunk, Project, Task, TaskComment, Notificati
 class TaskSerializer(serializers.ModelSerializer):
     assignee_email = serializers.SerializerMethodField()
     dependencies = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
-    parent_task_id = serializers.UUIDField(source="parent_task_id", allow_null=True, required=False)
+    parent_task_id = serializers.UUIDField(allow_null=True, required=False)
 
     class Meta:
         model = Task
