@@ -376,8 +376,10 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
             "function": {
                 "name": "plan_generate_draft",
                 "description": (
-                    "Generate a project draft from a mission prompt and wiki context. "
-                    + _PLAN_MUTATE_NOTE
+                    "Generate and ATOMICALLY create/update a complete project plan from a mission prompt. "
+                    "This tool searches the wiki, synthesizes domain expertise, generates tasks and milestones, "
+                    "performs conflict checking and risk assessments, and creates all DB entities in one call. "
+                    "It returns the finalized project_id. Do NOT call plan_create_project or plan_create_task manually after this."
                 ),
                 "parameters": {
                     "type": "object",
@@ -1504,30 +1506,78 @@ def _plan_delete_project(ctx: ToolContext, args: dict[str, Any]) -> dict[str, An
 
 
 def _plan_generate_draft(ctx: ToolContext, args: dict) -> dict:
-    from chat.plan_resolve import require_project
-    from planning.agent_sync import generate_plan_with_wiki_context
-    from planning.serializers import ProjectDetailSerializer
+    """
+    Generate and ATOMICALLY create/update a complete project plan from a mission prompt.
 
-    prompt = args.get("prompt")
-    mode = args.get("mode", "create")
+    Uses the unified PlanningEngine:
+      1. Research      — searches wiki (multi-query expansion + HyDE + hybrid + graph)
+      2. Synthesize    — LLM derives domain context from wiki results + prompt
+      3. Decompose     — domain-specific sub-goals
+      4. Draft         — wiki-grounded, domain-expert plan
+      5. Critique      — domain-aware self-evaluation
+      6. Finalize      — dependency inference + scheduling
+      7. DB Mutation   — atomic project, task, milestone creation/updates
+      8. Validation    — conflicts, risk assessment, wiki sync
+
+    Returns the created project details. No more N+1 tool calls.
+    """
+    from chat.plan_resolve import require_project
+    from planning.engine import PlanningEngine
+    from planning.serializers import ProjectDetailSerializer
+    from accounts.models import Team
+    import json as _json
+
+    prompt = (args.get("prompt") or "").strip()
+    if not prompt:
+        return {"ok": False, "error": "prompt_required"}
+
+    mode = (args.get("mode") or "create").strip().lower()
 
     project_context = None
-    if mode == "manage" or (args.get("project_id") or "").strip() or (args.get("project_query") or "").strip():
+    project_id = (args.get("project_id") or "").strip() or None
+
+    if mode == "manage" or project_id or (args.get("project_query") or "").strip():
         project, err_resp = require_project(ctx, args)
         if err_resp:
             return err_resp
         project_context = ProjectDetailSerializer(project).data
+        project_id = str(project.id)
 
     try:
-        draft = generate_plan_with_wiki_context(
-            team_id=ctx.team_id,
-            prompt=prompt,
-            mode=mode,
-            project_context=project_context
-        )
-        return {"ok": True, "draft": draft}
+        team = Team.objects.get(id=ctx.team_id)
+        engine = PlanningEngine(team=team, user=ctx.user)
+
+        final_result = None
+        for event in engine.run(prompt, mode=mode, project_id=project_id, project_context=project_context):
+            # Capture the final agent_done payload
+            if event.startswith("event: agent_done"):
+                try:
+                    data_line = event.split("data: ", 1)[1].strip()
+                    final_result = _json.loads(data_line)
+                except Exception:
+                    pass
+
+        if not final_result:
+            return {"ok": False, "error": "Planning engine did not produce a complete plan."}
+
+        return {
+            "ok": True,
+            "project_id": final_result.get("project_id"),
+            "project_name": final_result.get("project_name"),
+            "description": final_result.get("description"),
+            "task_count": final_result.get("task_count", 0),
+            "milestone_count": final_result.get("milestone_count", 0),
+            "conflict_count": final_result.get("conflict_count", 0),
+            "domain": final_result.get("domain", "general"),
+            "sub_domain": final_result.get("sub_domain", "software"),
+            "critique_score": final_result.get("critique_score", 0),
+            "wiki_page_url": final_result.get("wiki_page_url"),
+            "message": f"Successfully created/updated project '{final_result.get('project_name')}' with {final_result.get('task_count')} tasks and {final_result.get('milestone_count')} milestones.",
+        }
     except Exception as e:
+        logger.exception("plan_generate_draft tool failed")
         return {"ok": False, "error": str(e)}
+
 
 
 def _plan_detect_conflicts(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:

@@ -35,14 +35,19 @@ DEPENDENCY_PATTERNS: list[tuple[list[str], list[str]]] = [
 ]
 
 
-def infer_dependencies(tasks: list[dict[str, Any]], team_id: str) -> list[dict[str, Any]]:
+def infer_dependencies(
+    tasks: list[dict[str, Any]],
+    team_id: str,
+    domain_patterns: list[tuple[list[str], list[str]]] | None = None,
+) -> list[dict[str, Any]]:
     """
     Infer dependency_ids for tasks that don't already have them.
 
-    Applies three strategies:
+    Applies four strategies:
     1. Graph-based (wiki page relationships)
-    2. Keyword heuristic (common patterns)
-    3. Temporal ordering (start dates imply sequence)
+    2. Global keyword heuristic (common SDLC patterns)
+    3. Domain-specific keyword patterns (passed in from DomainContext)
+    4. Temporal ordering (start dates imply sequence)
 
     Returns the same task list with dependency_ids populated.
     """
@@ -55,8 +60,8 @@ def infer_dependencies(tasks: list[dict[str, Any]], team_id: str) -> list[dict[s
     # Strategy 1: Graph-based dependencies
     graph_deps = _infer_from_graph(tasks, team_id)
 
-    # Strategy 2: Keyword heuristic
-    keyword_deps = _infer_from_keywords(tasks)
+    # Strategy 2: Global keyword heuristic
+    keyword_deps = _infer_from_keywords(tasks, extra_patterns=domain_patterns)
 
     # Strategy 3: Temporal (start_date of one = end_date of another)
     temporal_deps = _infer_from_temporal(tasks)
@@ -162,11 +167,17 @@ def _infer_from_graph(tasks: list[dict[str, Any]], team_id: str) -> dict[int, se
     return deps
 
 
-def _infer_from_keywords(tasks: list[dict[str, Any]]) -> dict[int, set[int]]:
+def _infer_from_keywords(
+    tasks: list[dict[str, Any]],
+    extra_patterns: list[tuple[list[str], list[str]]] | None = None,
+) -> dict[int, set[int]]:
     """Infer dependencies from keyword patterns in task titles."""
     deps: dict[int, set[int]] = {}
+    patterns = list(DEPENDENCY_PATTERNS)
+    if extra_patterns:
+        patterns.extend(extra_patterns)
 
-    for downstream_keywords, upstream_keywords in DEPENDENCY_PATTERNS:
+    for downstream_keywords, upstream_keywords in patterns:
         downstream_tasks = []
         upstream_tasks = []
 

@@ -1,14 +1,16 @@
 """
 Multi-Stage Reasoning Pipeline for Plan Generation.
 
-Instead of a single LLM call, this pipeline runs 5 stages:
-1. DECOMPOSE — Break the mission into sub-goals and constraints
-2. RESEARCH  — Deep wiki + graph context per sub-goal
-3. DRAFT     — Generate plan with reasoning traces
-4. CRITIQUE  — Self-evaluate and revise
-5. FINALIZE  — Apply dependency inference + adaptive scheduling
+New stage order (wiki-first, domain-synthesized):
 
-Each stage yields SSE events so the frontend shows real progress.
+  1. RESEARCH   — Search wiki using the chat's full retrieval stack
+                  (multi-query expansion + HyDE + hybrid search + graph)
+  2. SYNTHESIZE — LLM reads wiki results + prompt → derives domain,
+                  expert persona, vocabulary, constraints, seed tasks
+  3. DECOMPOSE  — Domain-aware sub-goal decomposition
+  4. DRAFT      — Wiki-grounded, domain-expert plan generation
+  5. CRITIQUE   — Domain-aware self-evaluation and revision
+  6. FINALIZE   — Dependency inference + adaptive scheduling
 """
 
 from __future__ import annotations
@@ -19,13 +21,29 @@ from dataclasses import dataclass, field
 from typing import Any, Iterator
 
 from accounts.models import Team, User
-from ingest.vectors import vector_store
-from llm_orchestrator.orchestrator import llm_call, llm_json_call
+from llm_orchestrator.orchestrator import llm_json_call
 
 logger = logging.getLogger(__name__)
 
 
 # ── Data Classes ──────────────────────────────────────────────────────
+
+@dataclass
+class WikiSnippet:
+    source: str
+    content: str
+    score: float = 0.0
+    page_id: str = ""
+    match: str = "semantic"
+
+
+@dataclass
+class ResearchResult:
+    snippets: list[WikiSnippet]          # flat list, best-first
+    context_text: str                    # pre-formatted string for LLM consumption
+    wiki_is_sparse: bool = False
+    knowledge_gaps: list[str] = field(default_factory=list)
+    expertise_map: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -45,14 +63,6 @@ class DecompositionResult:
 
 
 @dataclass
-class ResearchResult:
-    context_per_goal: dict[str, list[str]]  # goal_title -> context snippets
-    knowledge_gaps: list[str] = field(default_factory=list)
-    related_projects: list[str] = field(default_factory=list)
-    expertise_map: dict[str, str] = field(default_factory=dict)  # user_id -> areas
-
-
-@dataclass
 class PlanDraft:
     project_name: str
     description: str
@@ -66,8 +76,8 @@ class PlanDraft:
 
 @dataclass
 class CritiqueResult:
-    score: int  # 0-100
-    issues: list[dict[str, str]]  # [{type, description, severity}]
+    score: int
+    issues: list[dict[str, str]]
     revised_tasks: list[dict[str, Any]]
     revised_milestones: list[dict[str, Any]]
     suggestions: list[str] = field(default_factory=list)
@@ -79,18 +89,20 @@ def _sse(event: str, data: dict[str, Any]) -> str:
 
 # ── Pipeline ──────────────────────────────────────────────────────────
 
-
 class PlanningReasoningPipeline:
     """
-    Multi-stage reasoning pipeline for high-quality plan generation.
+    Wiki-first, domain-synthesized planning pipeline.
 
-    Yields SSE events at each stage for real-time frontend feedback.
+    The pipeline searches the wiki BEFORE doing anything else.
+    The LLM then reads those results and synthesizes its own domain
+    understanding — no hardcoded domain list needed.
     """
 
     def __init__(self, team: Team, user: User):
         self.team = team
         self.user = user
         self.team_id = str(team.id)
+        self.domain_ctx = None   # Set during Stage 2
 
     def run(
         self,
@@ -98,16 +110,47 @@ class PlanningReasoningPipeline:
         mode: str = "create",
         project_context: dict | None = None,
     ) -> Iterator[str]:
-        """
-        Execute the full pipeline, yielding SSE events.
 
-        Returns the final PlanDraft via the agent_done event.
-        """
-        # ── Stage 1: Decompose ────────────────────────────────────
-        yield _sse("agent_status", {"status": "Decomposing mission into sub-goals..."})
-        yield _sse("agent_step", {"name": "reasoning_decompose", "arguments": json.dumps({"prompt": prompt[:100]})})
+        # ── Stage 1: Research (wiki-first) ────────────────────────
+        yield _sse("agent_status", {"status": "Searching wiki knowledge base..."})
+        yield _sse("agent_step", {"name": "reasoning_research", "arguments": json.dumps({"query": prompt[:80]})})
 
-        decomposition = self._decompose(prompt, mode, project_context)
+        research = self._research(prompt)
+
+        yield _sse("agent_result", {
+            "name": "reasoning_research",
+            "ok": True,
+            "result": {
+                "snippets_found": len(research.snippets),
+                "wiki_sparse": research.wiki_is_sparse,
+                "knowledge_gaps": research.knowledge_gaps[:3],
+            },
+        })
+
+        # ── Stage 2: Synthesize Domain from wiki + prompt ─────────
+        yield _sse("agent_status", {"status": "Synthesizing domain context from wiki knowledge..."})
+        yield _sse("agent_step", {"name": "reasoning_synthesize", "arguments": "{}"})
+
+        from planning.domain_classifier import synthesize_domain
+        self.domain_ctx = synthesize_domain(prompt, research.context_text, self.team)
+
+        yield _sse("agent_result", {
+            "name": "reasoning_synthesize",
+            "ok": True,
+            "result": {
+                "domain": self.domain_ctx.domain,
+                "sub_domain": self.domain_ctx.sub_domain,
+                "expert": self.domain_ctx.expert_persona[:100],
+                "vocabulary_count": len(self.domain_ctx.task_vocabulary),
+                "seed_tasks_available": len(self.domain_ctx.seed_tasks),
+            },
+        })
+
+        # ── Stage 3: Decompose ────────────────────────────────────
+        yield _sse("agent_status", {"status": f"Decomposing mission ({self.domain_ctx.sub_domain})..."})
+        yield _sse("agent_step", {"name": "reasoning_decompose", "arguments": json.dumps({"prompt": prompt[:80]})})
+
+        decomposition = self._decompose(prompt, mode, project_context, research)
 
         yield _sse("agent_result", {
             "name": "reasoning_decompose",
@@ -119,24 +162,8 @@ class PlanningReasoningPipeline:
             },
         })
 
-        # ── Stage 2: Research ─────────────────────────────────────
-        yield _sse("agent_status", {"status": "Researching wiki knowledge per sub-goal..."})
-        yield _sse("agent_step", {"name": "reasoning_research", "arguments": json.dumps({"goals": len(decomposition.goals)})})
-
-        research = self._research(decomposition)
-
-        yield _sse("agent_result", {
-            "name": "reasoning_research",
-            "ok": True,
-            "result": {
-                "sources_found": sum(len(v) for v in research.context_per_goal.values()),
-                "knowledge_gaps": research.knowledge_gaps[:3],
-                "related_projects": research.related_projects[:3],
-            },
-        })
-
-        # ── Stage 3: Draft ────────────────────────────────────────
-        yield _sse("agent_status", {"status": "Drafting plan with reasoning traces..."})
+        # ── Stage 4: Draft ────────────────────────────────────────
+        yield _sse("agent_status", {"status": "Drafting domain-specific plan..."})
         yield _sse("agent_step", {"name": "reasoning_draft", "arguments": json.dumps({"mode": mode})})
 
         draft = self._draft(prompt, decomposition, research, mode, project_context)
@@ -151,8 +178,8 @@ class PlanningReasoningPipeline:
             },
         })
 
-        # ── Stage 4: Critique ─────────────────────────────────────
-        yield _sse("agent_status", {"status": "Self-critiquing plan for issues..."})
+        # ── Stage 5: Critique ─────────────────────────────────────
+        yield _sse("agent_status", {"status": "Self-critiquing plan for domain coverage..."})
         yield _sse("agent_step", {"name": "reasoning_critique", "arguments": json.dumps({"task_count": len(draft.tasks)})})
 
         critique = self._critique(draft, decomposition)
@@ -167,13 +194,12 @@ class PlanningReasoningPipeline:
             },
         })
 
-        # Apply revisions if critique found issues
         if critique.revised_tasks:
             draft.tasks = critique.revised_tasks
         if critique.revised_milestones:
             draft.milestones = critique.revised_milestones
 
-        # ── Stage 5: Finalize (dependency + scheduling) ───────────
+        # ── Stage 6: Finalize ─────────────────────────────────────
         yield _sse("agent_status", {"status": "Inferring dependencies and scheduling..."})
         yield _sse("agent_step", {"name": "reasoning_finalize", "arguments": "{}"})
 
@@ -188,11 +214,9 @@ class PlanningReasoningPipeline:
             },
         })
 
-        # ── Emit final plan as structured dict ────────────────────
         yield _sse("agent_status", {"status": "Plan reasoning complete."})
 
-        # Return the full draft as JSON for the caller to process
-        final_data = {
+        yield _sse("reasoning_done", {
             "projectName": draft.project_name,
             "description": draft.description,
             "tasks": draft.tasks,
@@ -203,30 +227,167 @@ class PlanningReasoningPipeline:
             "reasoning_traces": draft.reasoning_traces,
             "critique_score": critique.score,
             "critique_suggestions": critique.suggestions,
-        }
-        yield _sse("reasoning_done", final_data)
+            "domain": self.domain_ctx.domain,
+            "sub_domain": self.domain_ctx.sub_domain,
+        })
 
     # ── Stage Implementations ─────────────────────────────────────────
+
+    def _research(self, prompt: str) -> ResearchResult:
+        """
+        Stage 1: Full wiki retrieval using the chat's 3-layer stack.
+
+        1. expand_search_queries — LLM generates 3 query variants + HyDE
+        2. search_wiki_pages(mode='hybrid') — semantic + keyword, score-deduped
+        3. Graph expansion from high-score hits
+
+        Returns a flat ranked list of WikiSnippets + a pre-formatted context string.
+        """
+        from chat.wiki_search import expand_search_queries, search_wiki_pages
+        from graph_engine.traversal import traverse_neighbors
+
+        # Step 1: Multi-query expansion + HyDE
+        try:
+            queries = expand_search_queries(prompt, self.team)
+        except Exception:
+            logger.warning("Query expansion failed, using raw prompt.")
+            queries = [prompt]
+
+        # Step 2: Hybrid search across all expanded queries
+        snippets: list[WikiSnippet] = []
+        seen_ids: set[str] = set()
+        seen_page_ids_for_graph: set[str] = set()
+
+        for query in queries[:4]:
+            try:
+                hits = search_wiki_pages(
+                    self.team_id,
+                    query,
+                    limit=10,
+                    mode="hybrid",
+                    expand_queries=False,
+                    team=self.team,
+                )
+                for hit in hits:
+                    pid = hit["id"]
+                    if pid in seen_ids:
+                        continue
+                    seen_ids.add(pid)
+                    snippets.append(WikiSnippet(
+                        source=hit["title"],
+                        content=hit["snippet"],
+                        score=hit["score"],
+                        page_id=pid,
+                        match=hit["match"],
+                    ))
+
+                    # Step 3: Graph expansion from high-confidence hits
+                    if hit["score"] > 0.5 and pid not in seen_page_ids_for_graph:
+                        seen_page_ids_for_graph.add(pid)
+                        try:
+                            neighbors = traverse_neighbors(
+                                pid, self.team_id,
+                                max_hops=1, include_content=True, max_results=3,
+                            )
+                            for n in neighbors:
+                                npid = n["page_id"]
+                                if npid not in seen_ids:
+                                    seen_ids.add(npid)
+                                    excerpt = n.get("content_excerpt", "")[:300]
+                                    if excerpt:
+                                        snippets.append(WikiSnippet(
+                                            source=f"→ {n['title']}",
+                                            content=excerpt,
+                                            score=0.4,
+                                            page_id=npid,
+                                            match="graph",
+                                        ))
+                        except Exception:
+                            pass
+            except Exception:
+                logger.exception("Wiki search failed for query: %s", query[:60])
+
+        # Sort best-first, cap at 15
+        snippets.sort(key=lambda s: -s.score)
+        snippets = snippets[:15]
+
+        # Build pre-formatted context string for LLM
+        context_parts = [
+            f"[{s.source}]: {s.content}"
+            for s in snippets
+        ]
+        context_text = "\n\n".join(context_parts)
+
+        # Knowledge gaps
+        knowledge_gaps: list[str] = []
+        try:
+            from graph_engine.traversal import knowledge_gap_analysis
+            gaps = knowledge_gap_analysis(self.team_id)
+            knowledge_gaps = [c["title"] for c in gaps.get("orphan_concepts", [])[:5]]
+        except Exception:
+            pass
+
+        # Team expertise map
+        expertise_map: dict[str, str] = {}
+        try:
+            from accounts.models import TeamMember
+            from wiki.models import WikiPage
+            members = TeamMember.objects.filter(team=self.team).select_related("user")
+            for tm in members:
+                pages = WikiPage.objects.filter(
+                    team=self.team, created_by=tm.user, is_deleted=False
+                ).values_list("title", flat=True)[:5]
+                expertise_map[str(tm.user.id)] = ", ".join(pages) if pages else "General"
+        except Exception:
+            pass
+
+        return ResearchResult(
+            snippets=snippets,
+            context_text=context_text,
+            wiki_is_sparse=len(snippets) < 3,
+            knowledge_gaps=knowledge_gaps,
+            expertise_map=expertise_map,
+        )
 
     def _decompose(
         self,
         prompt: str,
         mode: str,
         project_context: dict | None,
+        research: ResearchResult,
     ) -> DecompositionResult:
-        """Stage 1: Break mission into sub-goals."""
+        """Stage 3: Domain-aware decomposition using synthesized persona."""
+        ctx = self.domain_ctx
+
+        domain_block = ""
+        if ctx and not ctx.is_general:
+            vocab = ", ".join(ctx.task_vocabulary[:6])
+            constraints = ", ".join(ctx.domain_constraints) or "None"
+            domain_block = (
+                f"{ctx.expert_persona}\n\n"
+                f"Domain: {ctx.domain} / {ctx.sub_domain}\n"
+                f"Technical vocabulary for sub-goals: {vocab}\n"
+                f"Domain constraints to address: {constraints}\n\n"
+            )
+
         system = (
-            "You are a strategic planning analyst. Given a project mission, decompose it into:\n"
-            "1. Sub-goals (2-6 concrete objectives)\n"
-            "2. Constraints (limitations, deadlines, resources)\n"
-            "3. Assumptions (what we're taking for granted)\n"
-            "4. scope_summary (1-sentence scope definition)\n\n"
+            domain_block
+            + "Decompose this project mission into SPECIFIC sub-goals.\n\n"
+            "RULES:\n"
+            "- Sub-goals must be domain-specific. Do NOT use generic phases.\n"
+            "- BAD: 'Implement core features' | GOOD: 'Build KYC/AML verification pipeline'\n"
+            "- BAD: 'Analyze requirements'    | GOOD: 'Define PCI-DSS compliance scope'\n"
+            "- Each sub-goal = one concrete technical deliverable.\n"
+            "- Use vocabulary from the wiki context where it appears.\n\n"
             "Return JSON: {goals: [{title, description, constraints, assumptions}], "
             "constraints: [string], assumptions: [string], scope_summary: string}"
         )
+
         user_content = f"Mission: {prompt}"
+        if research.context_text:
+            user_content += f"\n\nRelevant wiki context:\n{research.context_text[:3000]}"
         if mode == "manage" and project_context:
-            user_content += f"\n\nExisting project context: {json.dumps(project_context)[:2000]}"
+            user_content += f"\n\nExisting project: {json.dumps(project_context)[:2000]}"
 
         result = llm_json_call(
             team=self.team,
@@ -235,7 +396,11 @@ class PlanningReasoningPipeline:
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_content},
             ],
-            default_on_error={"goals": [{"title": prompt[:80], "description": prompt, "constraints": [], "assumptions": []}], "constraints": [], "assumptions": [], "scope_summary": prompt[:120]},
+            default_on_error={
+                "goals": [{"title": prompt[:80], "description": prompt,
+                           "constraints": [], "assumptions": []}],
+                "constraints": [], "assumptions": [], "scope_summary": prompt[:120],
+            },
         )
 
         goals = [
@@ -255,84 +420,6 @@ class PlanningReasoningPipeline:
             scope_summary=result.get("scope_summary", ""),
         )
 
-    def _research(self, decomposition: DecompositionResult) -> ResearchResult:
-        """Stage 2: Deep wiki + graph context per sub-goal."""
-        from graph_engine.traversal import traverse_neighbors
-
-        context_per_goal: dict[str, list[str]] = {}
-        all_knowledge_gaps: list[str] = []
-        related_projects: list[str] = []
-        seen_page_ids: set[str] = set()
-
-        for goal in decomposition.goals:
-            query = f"{goal.title}: {goal.description}"
-            snippets: list[str] = []
-
-            # Vector search
-            try:
-                results = vector_store.search_similar_pages(self.team_id, query, limit=5)
-                for res in results:
-                    source = res.payload.get("page_title") or res.payload.get("project_name") or "Knowledge"
-                    content = res.payload.get("content", "")[:400]
-                    snippets.append(f"[{source}]: {content}")
-
-                    # Check for related projects
-                    if res.payload.get("project_name"):
-                        pname = res.payload["project_name"]
-                        if pname not in related_projects:
-                            related_projects.append(pname)
-
-                    # Graph expansion from top results
-                    pid = res.payload.get("page_id")
-                    if pid and pid not in seen_page_ids:
-                        seen_page_ids.add(pid)
-                        try:
-                            neighbors = traverse_neighbors(
-                                pid, self.team_id, max_hops=1, include_content=True, max_results=3
-                            )
-                            for n in neighbors:
-                                if n["page_id"] not in seen_page_ids:
-                                    seen_page_ids.add(n["page_id"])
-                                    excerpt = n.get("content_excerpt", "")[:200]
-                                    if excerpt:
-                                        snippets.append(f"[Graph→ {n['title']}]: {excerpt}")
-                        except Exception:
-                            pass
-            except Exception:
-                logger.exception("Research vector search failed for goal: %s", goal.title)
-
-            context_per_goal[goal.title] = snippets
-
-        # Knowledge gap analysis
-        try:
-            from graph_engine.traversal import knowledge_gap_analysis
-            gaps = knowledge_gap_analysis(self.team_id)
-            all_knowledge_gaps = [c["title"] for c in gaps.get("orphan_concepts", [])[:5]]
-        except Exception:
-            pass
-
-        # Team expertise mapping
-        expertise_map: dict[str, str] = {}
-        try:
-            from accounts.models import TeamMember
-            from wiki.models import WikiPage
-
-            members = TeamMember.objects.filter(team=self.team).select_related("user")
-            for tm in members:
-                pages = WikiPage.objects.filter(
-                    team=self.team, created_by=tm.user, is_deleted=False
-                ).values_list("title", flat=True)[:5]
-                expertise_map[str(tm.user.id)] = ", ".join(pages) if pages else "General"
-        except Exception:
-            pass
-
-        return ResearchResult(
-            context_per_goal=context_per_goal,
-            knowledge_gaps=all_knowledge_gaps,
-            related_projects=related_projects,
-            expertise_map=expertise_map,
-        )
-
     def _draft(
         self,
         prompt: str,
@@ -341,69 +428,85 @@ class PlanningReasoningPipeline:
         mode: str,
         project_context: dict | None,
     ) -> PlanDraft:
-        """Stage 3: Generate plan with reasoning traces."""
-        # Build context from research
-        context_parts = []
-        for goal_title, snippets in research.context_per_goal.items():
-            if snippets:
-                context_parts.append(f"## Context for: {goal_title}")
-                context_parts.extend(snippets[:4])
+        """Stage 4: Generate plan grounded in wiki + synthesized domain expertise."""
+        ctx = self.domain_ctx
 
-        context_text = "\n\n".join(context_parts)
+        # Seed task fallback when wiki is sparse
+        seed_block = ""
+        if research.wiki_is_sparse and ctx and ctx.seed_tasks:
+            seeds = ctx.seed_tasks[:8]
+            seed_block = (
+                "\n\nThe wiki has limited content for this project. "
+                "Use your synthesized domain expertise. "
+                "Example tasks for this domain (adapt to the specific project):\n"
+                + "\n".join(f"- {t['title']}: {t.get('description', '')}" for t in seeds)
+                + "\nGenerate tasks at this level of specificity.\n"
+            )
 
-        # Build expertise context
+        # Team expertise
         expertise_lines = [
             f"- User {uid}: expertise in {areas}"
             for uid, areas in research.expertise_map.items()
         ]
-        expertise_text = "\n".join(expertise_lines) if expertise_lines else "No expertise data available."
+        expertise_text = "\n".join(expertise_lines) or "No expertise data available."
+
+        # Domain persona block
+        persona_block = ""
+        if ctx and not ctx.is_general:
+            vocab = ", ".join(ctx.task_vocabulary[:8])
+            constraints = ", ".join(ctx.domain_constraints) or "None"
+            persona_block = (
+                f"{ctx.expert_persona}\n\n"
+                f"Use this domain vocabulary in task titles: {vocab}\n"
+                f"Ensure these constraints are addressed: {constraints}\n\n"
+            )
 
         system = (
-            "You are the TeamOS Plan Architect with deep wiki knowledge access.\n"
-            "Generate a detailed project plan grounded in the team's existing knowledge.\n\n"
-            "IMPORTANT RULES:\n"
-            "- Reference specific wiki pages using [[Page Title]] syntax in task descriptions.\n"
-            "- For EACH task, add a 'reasoning' field explaining WHY this task, priority, and deadline.\n"
-            "- Assign tasks to team members based on their expertise using assignee_id from Team Expertise.\n"
-            "- Tasks should include startDate and endDate so the timeline, board, and day-by-day calendar can be derived.\n"
-            "- Members should define project roles for assigned team members.\n"
-            "- In create mode, build a complete project: scope, tasks, timeline dates, milestones, members, and role assignments.\n"
-            "- In manage mode, update ONLY the provided existing project. Preserve project/task/milestone ids. "
-            "Do not propose a new project. For existing tasks/milestones, include their id. "
-            "Only add a new task or milestone when the user explicitly asks for more work, and mark it with action: 'create'.\n"
-            "- Tasks should cover ALL sub-goals from the decomposition while staying inside the existing project scope.\n\n"
-            "Return JSON with:\n"
+            persona_block
+            + "You are the TeamOS Plan Architect. Generate a complete, specific project plan.\n\n"
+            "CRITICAL RULES:\n"
+            "- Task titles MUST be domain-specific and technical.\n"
+            "- REJECTED: 'Implement features', 'Define requirements', 'Test the system'\n"
+            "- REQUIRED: 'Build KYC/AML verification pipeline', 'Implement settlement engine'\n"
+            "- Reference wiki pages with [[Page Title]] syntax in descriptions.\n"
+            "- Add a 'reasoning' field to each task explaining why it exists.\n"
+            "- Assign tasks using assignee_id from Team Expertise.\n"
+            "- Every task needs startDate and endDate (YYYY-MM-DD).\n\n"
+            "Return JSON:\n"
             "  projectName: string\n"
-            "  description: string (markdown, reference [[wiki pages]])\n"
-            "  tasks: [{id, action, title, description, status, priority, startDate, endDate, assignee_id, reasoning, wikiReferences: []}]\n"
-            "  milestones: [{id, action, title, date, description, status}]\n"
+            "  description: string (markdown)\n"
+            "  tasks: [{id, title, description, status, priority, startDate, endDate,"
+            "           assignee_id, reasoning, wikiReferences: []}]\n"
+            "  milestones: [{id, title, date, description, status}]\n"
             "  members: [{userId, role}]\n"
-            "  reasoning_traces: [string] (key decisions explained)\n"
-            "  wiki_references: [string] (all wiki pages referenced)\n"
+            "  reasoning_traces: [string]\n"
+            "  wiki_references: [string]\n"
         )
 
-        goals_text = "\n".join([
-            f"- {g.title}: {g.description}" + (f" (constraints: {', '.join(g.constraints)})" if g.constraints else "")
+        goals_text = "\n".join(
+            f"- {g.title}: {g.description}"
+            + (f" (constraints: {', '.join(g.constraints)})" if g.constraints else "")
             for g in decomposition.goals
-        ])
+        )
 
         user_content = (
             f"Mission: {prompt}\n\n"
-            f"Decomposed Sub-Goals:\n{goals_text}\n\n"
+            f"Sub-Goals:\n{goals_text}\n\n"
             f"Scope: {decomposition.scope_summary}\n"
-            f"Constraints: {', '.join(decomposition.constraints) or 'None specified'}\n\n"
-            f"Team Knowledge Context:\n{context_text}\n\n"
-            f"Team Expertise:\n{expertise_text}\n\n"
+            f"Constraints: {', '.join(decomposition.constraints) or 'None'}\n\n"
+            f"Team Wiki Knowledge:\n{research.context_text or 'No wiki content found.'}\n\n"
+            f"Team Expertise:\n{expertise_text}"
+            + seed_block
         )
 
         if mode == "manage" and project_context:
             user_content += (
-                "Existing Project Context (authoritative scope and IDs; update this project only):\n"
-                f"{json.dumps(project_context, default=str)[:6000]}\n"
+                "\n\nExisting Project (update only; preserve IDs):\n"
+                + json.dumps(project_context, default=str)[:5000]
             )
 
         if research.knowledge_gaps:
-            user_content += f"\nKnowledge Gaps (topics not documented): {', '.join(research.knowledge_gaps)}\n"
+            user_content += f"\n\nKnowledge Gaps: {', '.join(research.knowledge_gaps)}"
 
         result = llm_json_call(
             team=self.team,
@@ -430,42 +533,53 @@ class PlanningReasoningPipeline:
         )
 
     def _critique(self, draft: PlanDraft, decomposition: DecompositionResult) -> CritiqueResult:
-        """Stage 4: Self-evaluate the plan and suggest revisions."""
+        """Stage 5: Domain-aware self-evaluation."""
+        ctx = self.domain_ctx
+
+        domain_criteria = ""
+        if ctx and not ctx.is_general:
+            domain_criteria = (
+                f"\nDomain Evaluation ({ctx.domain}/{ctx.sub_domain}):\n"
+                f"- Do tasks use domain vocabulary: {', '.join(ctx.task_vocabulary[:5])}?\n"
+                f"- Are domain constraints addressed: {', '.join(ctx.domain_constraints)}?\n"
+                f"- Any generic task titles that must be rewritten? "
+                f"  (e.g. 'Define requirements', 'Implement features' → REJECTED)\n"
+            )
+
         system = (
-            "You are a senior project management reviewer. Evaluate this plan for:\n"
-            "1. Coverage: Does it address ALL sub-goals?\n"
-            "2. Realism: Are timelines achievable? Are there resource conflicts?\n"
-            "3. Dependencies: Are task orderings logical?\n"
-            "4. Risks: Missing contingencies? Single points of failure?\n"
-            "5. Completeness: Missing milestones, unclear ownership?\n\n"
-            "Return JSON:\n"
-            "  score: 0-100 (overall quality)\n"
-            "  issues: [{type: 'coverage'|'realism'|'dependency'|'risk'|'completeness', description, severity: 'low'|'medium'|'high'}]\n"
-            "  revised_tasks: [...] (return ONLY if changes needed, otherwise empty array; preserve id, action, assignee_id, dates)\n"
-            "  revised_milestones: [...] (return ONLY if changes needed, otherwise empty array; preserve id, action, dates)\n"
-            "  suggestions: [string] (improvement recommendations)\n"
+            "You are a senior project management reviewer. Evaluate this plan:\n"
+            "1. Coverage: All sub-goals addressed?\n"
+            "2. Realism: Timelines achievable?\n"
+            "3. Dependencies: Task ordering logical?\n"
+            "4. Risks: Missing contingencies?\n"
+            "5. Completeness: Missing milestones, unclear ownership?\n"
+            + domain_criteria
+            + "\nReturn JSON:\n"
+            "  score: 0-100\n"
+            "  issues: [{type, description, severity: low|medium|high}]\n"
+            "  revised_tasks: [...] (only if changes needed; preserve id, dates)\n"
+            "  revised_milestones: [...] (only if changes needed)\n"
+            "  suggestions: [string]\n"
         )
 
-        goals_text = ", ".join([g.title for g in decomposition.goals])
-        plan_summary = json.dumps({
+        goals_text = ", ".join(g.title for g in decomposition.goals)
+        plan_json = json.dumps({
             "projectName": draft.project_name,
-            "tasks": draft.tasks[:15],  # Limit to avoid token overflow
+            "tasks": draft.tasks[:15],
             "milestones": draft.milestones[:8],
         })
-
-        user_content = (
-            f"Sub-goals to cover: {goals_text}\n\n"
-            f"Plan to review:\n{plan_summary}\n"
-        )
 
         result = llm_json_call(
             team=self.team,
             operation="plan_critique",
             messages=[
                 {"role": "system", "content": system},
-                {"role": "user", "content": user_content},
+                {"role": "user", "content": f"Sub-goals: {goals_text}\n\nPlan:\n{plan_json}"},
             ],
-            default_on_error={"score": 70, "issues": [], "revised_tasks": [], "revised_milestones": [], "suggestions": []},
+            default_on_error={
+                "score": 70, "issues": [], "revised_tasks": [],
+                "revised_milestones": [], "suggestions": [],
+            },
         )
 
         return CritiqueResult(
@@ -477,17 +591,22 @@ class PlanningReasoningPipeline:
         )
 
     def _finalize(self, draft: PlanDraft) -> PlanDraft:
-        """Stage 5: Apply dependency inference and adaptive scheduling."""
+        """Stage 6: Dependency inference + scheduling with domain patterns."""
         try:
             from planning.dependency_inference import infer_dependencies
-            draft.tasks = infer_dependencies(draft.tasks, self.team_id)
+            domain_patterns = (
+                self.domain_ctx.dependency_patterns
+                if self.domain_ctx and not self.domain_ctx.is_general
+                else None
+            )
+            draft.tasks = infer_dependencies(draft.tasks, self.team_id, domain_patterns=domain_patterns)
         except Exception:
-            logger.exception("Dependency inference failed during finalization")
+            logger.exception("Dependency inference failed")
 
         try:
             from planning.adaptive_scheduler import adjust_schedule
             draft.tasks = adjust_schedule(draft.tasks, self.team_id)
         except Exception:
-            logger.exception("Adaptive scheduling failed during finalization")
+            logger.exception("Adaptive scheduling failed")
 
         return draft
