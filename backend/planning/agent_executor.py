@@ -20,6 +20,7 @@ from planning.agent_sync import (
     generate_plan_with_wiki_context,
     sync_project_to_wiki,
 )
+from .engine import _auto_resolve_conflicts
 from planning.models import Project, Task, Milestone
 from planning.services import (
     create_milestone,
