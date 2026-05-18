@@ -298,9 +298,10 @@ export function ProjectOverviewPanel({
 
       onRefreshDetail();
       alert("Successfully decomposed task into sequential day-by-day sub-tasks!");
-    } catch (e: any) {
-      console.error(e);
-      alert(e.message || "Failed to decompose task");
+    } catch (e) {
+      const err = e as Error;
+      console.error(err);
+      alert(err.message || "Failed to decompose task");
     } finally {
       setDecomposingTaskId(null);
     }

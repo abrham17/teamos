@@ -4,8 +4,6 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   X,
-  Sparkles,
-  Wand2,
   BrainCircuit,
   Loader2,
   CheckCircle2,
@@ -14,15 +12,12 @@ import {
   Mic,
   MicOff,
   PenTool,
-  AlertTriangle,
   Shield,
   FileText,
   Send,
   Bot,
   User,
-  Check,
-  ChevronDown,
-  ChevronUp
+  Check
 } from "lucide-react";
 import { getApiAuthHeaders } from "@/lib/api";
 
@@ -137,6 +132,7 @@ export function AIPlannerOverlay({
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -170,6 +166,7 @@ export function AIPlannerOverlay({
   }, [messages, scrollToBottom]);
 
   const startVoiceMode = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("Speech recognition is not supported in this browser.");
@@ -188,12 +185,14 @@ export function AIPlannerOverlay({
     recognition.lang = "en-US";
 
     recognition.onstart = () => setIsListening(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (event: any) => {
       console.error(event.error);
       setIsListening(false);
     };
     recognition.onend = () => setIsListening(false);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
       let finalTranscript = "";
       for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -243,6 +242,7 @@ export function AIPlannerOverlay({
         ...(await getApiAuthHeaders()),
       };
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const streamBody: Record<string, any> = { prompt: text, mode };
       if (mode === "manage" && projectId) {
         streamBody.project_id = projectId;
@@ -344,12 +344,13 @@ export function AIPlannerOverlay({
       setMessages((prev) =>
         prev.map((msg) => (msg.id === assistantMsgId ? { ...msg, isStreaming: false } : msg))
       );
-    } catch (error: any) {
-      console.error(error);
+    } catch (error) {
+      const err = error as Error;
+      console.error(err);
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantMsgId
-            ? { ...msg, isStreaming: false, text: `⚠️ Error: ${error?.message || "Failed to communicate with AI Architect."}` }
+            ? { ...msg, isStreaming: false, text: `⚠️ Error: ${err?.message || "Failed to communicate with AI Architect."}` }
             : msg
         )
       );

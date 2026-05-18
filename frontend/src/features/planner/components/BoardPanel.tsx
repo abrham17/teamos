@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { PlanTask, TeamMember } from "../types";
+import { PlanTask } from "../types";
 import {
   Plus,
   MoreHorizontal,
