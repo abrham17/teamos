@@ -374,318 +374,366 @@ export function AIPlannerOverlay({
     }
   };
 
+  /* Derive the latest planning state from the last architect message */
+  const latestPlanState = [...messages].reverse().find(m => m.sender === "architect" && m.planningState)?.planningState ?? null;
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
     >
       <motion.div
-        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        initial={{ scale: 0.94, opacity: 0, y: 16 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="w-full max-w-4xl bg-[var(--surface-1)] rounded-[32px] overflow-hidden flex flex-col h-[85vh] shadow-2xl border border-[var(--border-subtle)]"
+        className="w-full max-w-5xl bg-[var(--surface-1)] rounded-[28px] overflow-hidden flex flex-col h-[90vh] shadow-2xl border border-[var(--border-subtle)]"
       >
-        {/* Header */}
-        <header className="p-6 pb-4 flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--surface-2)]">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-[var(--accent-subtle)] flex items-center justify-center">
-              <BrainCircuit className="w-7 h-7 text-[var(--accent)]" />
+        {/* ── Header ── */}
+        <header className="px-6 py-4 flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--surface-2)] shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-600 flex items-center justify-center shadow-md">
+              <BrainCircuit className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-2">
+              <h2 className="text-base font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-2">
                 AI Planner Architect
-                <span className="text-[10px] uppercase font-bold tracking-widest px-2.5 py-1 rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
-                  {mode === "manage" ? "Manage Mode" : "Create Mode"}
+                <span className="text-[9px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
+                  {mode === "manage" ? "Manage" : "Create"}
                 </span>
               </h2>
-              <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                Cooperative Multi-Agent Scheduling & Strategy Co-pilot
-              </p>
+              <p className="text-[11px] text-[var(--text-muted)]">Multi-agent scheduling & strategy co-pilot</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsManualMode(!isManualMode)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all bg-[var(--surface-3)] shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all bg-[var(--surface-3)] border border-[var(--border-subtle)]"
             >
               <PenTool className="w-3 h-3" />
-              {isManualMode ? "AI Chat" : "Manual Setup"}
+              {isManualMode ? "AI Chat" : "Manual"}
             </button>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-[var(--bg-700)] rounded-xl transition-colors"
-            >
-              <X className="w-5 h-5 text-[var(--text-muted)]" />
+            <button onClick={onClose} className="p-2 hover:bg-[var(--surface-3)] rounded-xl transition-colors">
+              <X className="w-4.5 h-4.5 text-[var(--text-muted)]" />
             </button>
           </div>
         </header>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-hidden flex flex-col bg-[var(--bg-950)]/50 relative">
+        {/* ── Body ── */}
+        <div className="flex-1 overflow-hidden flex">
           <AnimatePresence mode="wait">
             {isManualMode ? (
-              /* Manual Setup Mode */
+              /* Manual Setup */
               <motion.div
                 key="manual"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="flex-1 p-8 space-y-6 overflow-y-auto"
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                className="flex-1 p-8 overflow-y-auto"
               >
-                <div className="max-w-2xl mx-auto space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                      Project Name
-                    </label>
+                <div className="max-w-xl mx-auto space-y-5">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Project Name</label>
                     <input
                       type="text"
                       value={manualName}
                       onChange={(e) => setManualName(e.target.value)}
                       placeholder="Enter project name..."
-                      className="w-full bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-subtle)] transition-all shadow-inner"
+                      className="w-full bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 transition-all"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                      Description
-                    </label>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Description</label>
                     <textarea
                       value={manualDesc}
                       onChange={(e) => setManualDesc(e.target.value)}
                       placeholder="Optional details..."
-                      className="w-full h-36 bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-subtle)] transition-all resize-none shadow-inner"
+                      className="w-full h-32 bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 transition-all resize-none"
                     />
                   </div>
-                  <div className="flex gap-4 pt-4">
-                    <button
-                      onClick={() => setIsManualMode(false)}
-                      className="flex-1 h-14 rounded-2xl bg-[var(--surface-2)] text-[var(--text-secondary)] font-bold transition-all border border-[var(--border-subtle)]"
-                    >
+                  <div className="flex gap-3 pt-2">
+                    <button onClick={() => setIsManualMode(false)} className="flex-1 h-12 rounded-2xl bg-[var(--surface-2)] text-[var(--text-secondary)] font-semibold border border-[var(--border-subtle)] transition-all hover:bg-[var(--surface-3)]">
                       Back to AI Chat
                     </button>
                     <button
                       onClick={handleManualSubmit}
                       disabled={!manualName.trim() || loading}
-                      className="flex-[2] h-14 bg-[var(--accent)] text-white font-bold rounded-2xl flex items-center justify-center gap-3 hover:opacity-90 disabled:opacity-50 transition-all shadow-xl shadow-[var(--accent-glow)]"
+                      className="flex-[2] h-12 bg-[var(--accent)] text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 transition-all shadow-lg"
                     >
-                      {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Create Blank Project"}
-                      {!loading && <ArrowRight className="w-5 h-5" />}
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><span>Create Blank Project</span><ArrowRight className="w-4 h-4" /></>}
                     </button>
                   </div>
                 </div>
               </motion.div>
             ) : (
-              /* Conversational AI Chat Mode */
+              /* Two-panel AI Chat layout */
               <motion.div
                 key="chat"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="flex-1 flex flex-col overflow-hidden"
+                className="flex-1 flex overflow-hidden"
               >
-                {/* Message list */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                  {messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex gap-4 ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
-                    >
-                      {msg.sender === "architect" && (
-                        <div className="w-10 h-10 rounded-xl bg-[var(--accent-subtle)]/20 border border-[var(--accent)]/10 flex items-center justify-center shrink-0">
-                          <Bot className="w-5 h-5 text-[var(--accent)]" />
-                        </div>
-                      )}
-                      <div className="space-y-3 max-w-[80%]">
-                        {/* Text Message Bubble */}
-                        {(msg.text || msg.isStreaming) && (
-                          <div className={`p-4 rounded-2xl leading-relaxed text-sm ${
-                            msg.sender === "user"
-                              ? "bg-[var(--accent)] text-white shadow-md rounded-tr-none"
-                              : "bg-[var(--surface-2)] text-[var(--text-primary)] border border-[var(--border-subtle)] rounded-tl-none"
-                          }`}>
-                            {msg.text || (
-                              <span className="flex items-center gap-2 text-[var(--text-muted)] animate-pulse">
-                                <Loader2 className="w-4 h-4 animate-spin text-[var(--accent)]" />
-                                Architect is typing...
-                              </span>
-                            )}
+                {/* ── Left: Chat messages ── */}
+                <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+                  {/* Messages */}
+                  <div className="flex-1 overflow-y-auto p-5 space-y-5 custom-scrollbar">
+                    {messages.map((msg) => (
+                      <div key={msg.id} className={`flex gap-3 ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
+                        {msg.sender === "architect" && (
+                          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-600 flex items-center justify-center shrink-0 shadow-md mt-0.5">
+                            <Bot className="w-4 h-4 text-white" />
                           </div>
                         )}
-
-                        {/* Inline Planning Steps / Results Bubble */}
-                        {msg.planningState && (
-                          <div className="bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-2xl p-5 space-y-4 rounded-tl-none shadow-md">
-                            {/* Header Status */}
-                            <div className="flex items-center justify-between pb-3 border-b border-[var(--border-subtle)]">
-                              <span className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                                {msg.planningState.statusText || "Agent executing..."}
-                              </span>
-                              <span className="text-[10px] font-mono text-[var(--text-dim)]">
-                                {msg.planningState.agentSteps.filter((s) => s.status === "done").length}/{msg.planningState.agentSteps.length} Steps
-                              </span>
+                        <div className="max-w-[78%]">
+                          {(msg.text || msg.isStreaming) && (
+                            <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                              msg.sender === "user"
+                                ? "bg-gradient-to-br from-[var(--accent)] to-[#009ab0] text-white font-medium shadow-md"
+                                : "bg-[var(--surface-2)] text-[var(--text-primary)] border border-[var(--border-subtle)] border-l-2 border-l-[var(--accent)]/30"
+                            }`}>
+                              {msg.text || (
+                                <span className="flex items-center gap-2 text-[var(--text-muted)]">
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" />
+                                  <span className="text-[12px]">Architect is thinking…</span>
+                                </span>
+                              )}
                             </div>
-
-                            {/* Live Steps Sequence */}
-                            {msg.planningState.agentSteps.length > 0 && (
-                              <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
-                                {msg.planningState.agentSteps.map((step, idx) => (
-                                  <div key={idx} className="flex items-center gap-2.5 text-xs">
-                                    <div className={`
-                                      w-4.5 h-4.5 rounded-full flex items-center justify-center shrink-0 border transition-all
-                                      ${step.status === "done" ? "bg-[var(--success-bg)] border-[var(--success)]/30 text-[var(--success)]" :
-                                        step.status === "error" ? "bg-[var(--danger-bg)] border-[var(--danger)]/30 text-[var(--danger)]" :
-                                        "bg-[var(--surface-1)] border-[var(--border-subtle)] text-[var(--text-muted)]"}
-                                    `}>
-                                      {step.status === "done" && <Check className="w-2.5 h-2.5" />}
-                                      {step.status === "error" && <AlertCircle className="w-2.5 h-2.5" />}
-                                      {step.status === "running" && <Loader2 className="w-2.5 h-2.5 animate-spin text-[var(--accent)]" />}
-                                    </div>
-                                    <span className={step.status === "running" ? "font-semibold text-[var(--text-primary)]" : "text-[var(--text-secondary)]"}>
-                                      {step.label}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {/* Plan Results Dashboard */}
-                            {msg.planningState.planResult && (
-                              <motion.div
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="space-y-4 pt-3 border-t border-[var(--border-subtle)]"
-                              >
-                                <div className="flex items-center justify-between">
-                                  <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-1.5">
-                                    <CheckCircle2 className="w-4 h-4 text-[var(--success)]" />
-                                    {msg.planningState.planResult.projectName || "Plan Created"}
-                                  </h4>
-                                  {msg.planningState.planResult.wikiPageUrl && (
-                                    <a href={msg.planningState.planResult.wikiPageUrl} target="_blank" rel="noopener noreferrer"
-                                      className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-[var(--accent)] hover:underline">
-                                      <FileText className="w-3 h-3" /> Wiki Brief
-                                    </a>
-                                  )}
-                                </div>
-
-                                <div className="grid grid-cols-3 gap-2">
-                                  <div className="bg-[var(--bg-950)] rounded-xl p-2.5 text-center border border-[var(--border-subtle)]">
-                                    <div className="text-xl font-black text-[var(--text-primary)]">{msg.planningState.planResult.taskCount ?? 0}</div>
-                                    <div className="text-[9px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">Tasks</div>
-                                  </div>
-                                  <div className="bg-[var(--bg-950)] rounded-xl p-2.5 text-center border border-[var(--border-subtle)]">
-                                    <div className="text-xl font-black text-[var(--text-primary)]">{msg.planningState.planResult.milestoneCount ?? 0}</div>
-                                    <div className="text-[9px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">Milestones</div>
-                                  </div>
-                                  <div className={`rounded-xl p-2.5 text-center border border-[var(--border-subtle)] ${msg.planningState.planResult.risk ? riskBg(msg.planningState.planResult.risk.score) : "bg-[var(--bg-950)]"}`}>
-                                    <div className={`text-xl font-black ${msg.planningState.planResult.risk ? riskColor(msg.planningState.planResult.risk.score) : "text-[var(--text-primary)]"}`}>
-                                      {msg.planningState.planResult.risk?.score ?? "—"}
-                                    </div>
-                                    <div className="text-[9px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">Risk Score</div>
-                                  </div>
-                                </div>
-
-                                {msg.planningState.planResult.risk?.suggestions && msg.planningState.planResult.risk.suggestions.length > 0 && (
-                                  <div className="space-y-1">
-                                    <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Risk Mitigations</p>
-                                    {msg.planningState.planResult.risk.suggestions.slice(0, 2).map((s, i) => (
-                                      <div key={i} className="flex items-start gap-1.5 text-xs text-[var(--text-secondary)]">
-                                        <Shield className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[var(--accent)]" />
-                                        {s}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-
-                                <div className="pt-2">
-                                  <button
-                                    onClick={() => {
-                                      onPlanGenerated({
-                                        projectName: msg.planningState?.planResult?.projectName || "AI Plan",
-                                        description: `${msg.planningState?.planResult?.taskCount ?? 0} tasks · ${msg.planningState?.planResult?.milestoneCount ?? 0} milestones`,
-                                        tasks: [],
-                                        milestones: [],
-                                      });
-                                    }}
-                                    className="w-full h-11 bg-[var(--accent)] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-95 transition-all shadow-md"
-                                  >
-                                    Open Generated Project Plan
-                                    <ArrowRight className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </motion.div>
-                            )}
+                          )}
+                        </div>
+                        {msg.sender === "user" && (
+                          <div className="w-8 h-8 rounded-xl bg-[var(--surface-2)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0 mt-0.5">
+                            <User className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                           </div>
                         )}
                       </div>
-                      {msg.sender === "user" && (
-                        <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/10 flex items-center justify-center shrink-0">
-                          <User className="w-5 h-5 text-[var(--accent)]" />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  <div ref={chatEndRef} />
-                </div>
+                    ))}
+                    <div ref={chatEndRef} />
+                  </div>
 
-                {/* Suggestions / Starters list */}
-                {messages.length === 1 && (
-                  <div className="p-6 pt-0 space-y-3">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                      Suggested Starters
-                    </p>
-                    <div className="flex flex-wrap gap-2">
+                  {/* Suggested starters */}
+                  {messages.length === 1 && (
+                    <div className="px-5 pb-3 flex flex-wrap gap-2">
                       {[
                         "Create a marketing launch strategy for our KYC feature",
                         "Analyze our team timeline risks and draft a mitigation roadmap",
-                        "List our active wiki pages and suggest strategic updates"
+                        "List our active wiki pages and suggest strategic updates",
                       ].map((starter, idx) => (
                         <button
                           key={idx}
                           onClick={() => handleSend(starter)}
-                          className="text-[11px] px-4 py-2.5 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-secondary)] text-left transition-all border border-[var(--border-subtle)] active:scale-98 shadow-sm max-w-md block"
+                          className="text-[11px] px-3 py-2 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-secondary)] text-left transition-all border border-[var(--border-subtle)] shadow-sm"
                         >
                           {starter}
                         </button>
                       ))}
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Chat Input Box */}
-                <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--surface-2)] flex items-end gap-3">
-                  <button
-                    onClick={startVoiceMode}
-                    className={`p-3.5 rounded-xl transition-all ${
-                      isListening
-                        ? "bg-[var(--danger)] text-white animate-pulse"
-                        : "bg-[var(--surface-3)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                    }`}
-                  >
-                    {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                  </button>
-                  <div className="flex-1 relative">
+                  {/* Input bar */}
+                  <div className="shrink-0 px-4 pb-4 pt-2 border-t border-[var(--border-subtle)] bg-[var(--surface-2)] flex items-end gap-2">
+                    <button
+                      onClick={startVoiceMode}
+                      className={`p-3 rounded-xl transition-all shrink-0 ${isListening ? "bg-[var(--danger)] text-white animate-pulse" : "bg-[var(--surface-3)] text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]"}`}
+                    >
+                      {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                    </button>
                     <textarea
                       value={inputText}
-                      onChange={(e) => setInputText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSend();
-                        }
+                      onChange={(e) => {
+                        setInputText(e.target.value);
+                        e.target.style.height = "auto";
+                        e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
                       }}
-                      placeholder="Ask a question or request a strategic plan..."
-                      className="w-full bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl px-4 py-3.5 pr-12 text-[var(--text-primary)] text-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)] resize-none h-12 max-h-24 shadow-inner"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); }
+                      }}
+                      rows={1}
+                      placeholder="Ask a question or describe a strategic plan…"
+                      className="flex-1 bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)] text-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)] resize-none overflow-hidden leading-relaxed"
+                      style={{ maxHeight: "120px" }}
                     />
+                    <button
+                      onClick={() => void handleSend()}
+                      disabled={!inputText.trim() || loading}
+                      className="p-3 bg-[var(--accent)] hover:opacity-90 disabled:opacity-40 text-white rounded-xl transition-all shadow-md shrink-0"
+                    >
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    </button>
                   </div>
-                  <button
-                    onClick={() => handleSend()}
-                    disabled={!inputText.trim() || loading}
-                    className="p-3.5 bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 text-white rounded-xl transition-all shadow-md"
-                  >
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                  </button>
+                </div>
+
+                {/* ── Right: Live Execution Panel ── */}
+                <div className="w-72 shrink-0 border-l border-[var(--border-subtle)] flex flex-col bg-[var(--bg-950)]/60 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-[var(--border-subtle)] shrink-0">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-1.5 h-1.5 rounded-full ${loading ? "bg-[var(--accent)] animate-pulse" : latestPlanState?.planResult ? "bg-[var(--success)]" : "bg-[var(--border-strong)]"}`} />
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                        {loading ? "Executing" : latestPlanState?.planResult ? "Completed" : "Execution Panel"}
+                      </span>
+                    </div>
+                    {latestPlanState?.statusText && (
+                      <p className="text-[11px] text-[var(--accent)] mt-1 font-medium leading-snug">
+                        {latestPlanState.statusText}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    {/* Step rail */}
+                    {latestPlanState && latestPlanState.agentSteps.length > 0 && (
+                      <div className="px-4 py-3 space-y-0">
+                        {latestPlanState.agentSteps.map((step, idx) => {
+                          const isDone = step.status === "done";
+                          const isErr = step.status === "error";
+                          const isRunning = step.status === "running";
+                          const isLast = idx === latestPlanState.agentSteps.length - 1;
+                          return (
+                            <motion.div
+                              key={`exec-step-${idx}`}
+                              initial={{ opacity: 0, x: 8 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: idx * 0.03 }}
+                              className="flex gap-3"
+                            >
+                              <div className="flex flex-col items-center">
+                                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 transition-all duration-300 ${
+                                  isDone    ? "bg-[var(--success-bg)] border-[var(--success)] text-[var(--success)]" :
+                                  isErr     ? "bg-[var(--danger-bg)] border-[var(--danger)] text-[var(--danger)]" :
+                                  isRunning ? "bg-[var(--surface-2)] border-[var(--accent)] text-[var(--accent)]" :
+                                              "bg-[var(--surface-2)] border-[var(--border-strong)] text-[var(--text-dim)]"
+                                }`}>
+                                  {isDone    && <Check className="w-2.5 h-2.5" />}
+                                  {isErr     && <AlertCircle className="w-2.5 h-2.5" />}
+                                  {isRunning && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                                </div>
+                                {!isLast && <div className="w-[2px] flex-1 min-h-[16px] bg-[var(--border-subtle)] mt-0.5" />}
+                              </div>
+                              <div className={`pb-3 pt-0.5 text-[11px] leading-tight ${
+                                isDone    ? "text-[var(--text-muted)]" :
+                                isErr     ? "text-[var(--danger)]" :
+                                isRunning ? "text-[var(--text-primary)] font-semibold" :
+                                            "text-[var(--text-dim)]"
+                              }`}>
+                                {step.label}
+                              </div>
+                            </motion.div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Plan result card */}
+                    {latestPlanState?.planResult && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="px-4 pb-4 space-y-4"
+                      >
+                        <div className="pt-1 pb-3 border-b border-[var(--border-subtle)]">
+                          <div className="flex items-center gap-1.5">
+                            <CheckCircle2 className="w-4 h-4 text-[var(--success)] shrink-0" />
+                            <span className="text-[13px] font-bold text-[var(--text-primary)] leading-tight">
+                              {latestPlanState.planResult.projectName || "Plan Created"}
+                            </span>
+                          </div>
+                          {latestPlanState.planResult.wikiPageUrl && (
+                            <a href={latestPlanState.planResult.wikiPageUrl} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 mt-1.5 text-[9px] font-bold uppercase tracking-widest text-[var(--accent)] hover:underline">
+                              <FileText className="w-3 h-3" /> View Wiki Brief
+                            </a>
+                          )}
+                        </div>
+
+                        {/* 4-stat grid */}
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            { label: "Tasks",      value: latestPlanState.planResult.taskCount ?? 0,      color: "" },
+                            { label: "Milestones", value: latestPlanState.planResult.milestoneCount ?? 0, color: "" },
+                            { label: "Conflicts",  value: latestPlanState.planResult.conflictCount ?? 0,  color: (latestPlanState.planResult.conflictCount ?? 0) > 0 ? "text-[var(--warning)]" : "" },
+                            { label: "Critique",   value: latestPlanState.planResult.critiqueScore != null ? `${latestPlanState.planResult.critiqueScore}/10` : "—", color: "" },
+                          ].map(({ label, value, color }) => (
+                            <div key={label} className="bg-[var(--surface-1)] rounded-xl p-2.5 text-center border border-[var(--border-subtle)]">
+                              <div className={`text-lg font-black text-[var(--text-primary)] ${color}`}>{value}</div>
+                              <div className="text-[9px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">{label}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Risk meter */}
+                        {latestPlanState.planResult.risk && (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Risk Score</span>
+                              <span className={`text-[11px] font-bold ${riskColor(latestPlanState.planResult.risk.score)}`}>
+                                {latestPlanState.planResult.risk.score}/100
+                              </span>
+                            </div>
+                            <div className="h-2 rounded-full bg-[var(--border-subtle)] overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-700 ${
+                                  latestPlanState.planResult.risk.score <= 30 ? "bg-[var(--success)]" :
+                                  latestPlanState.planResult.risk.score <= 60 ? "bg-[var(--warning)]" : "bg-[var(--danger)]"
+                                }`}
+                                style={{ width: `${latestPlanState.planResult.risk.score}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Risk mitigations */}
+                        {latestPlanState.planResult.risk?.suggestions && latestPlanState.planResult.risk.suggestions.length > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Mitigations</p>
+                            {latestPlanState.planResult.risk.suggestions.slice(0, 3).map((s, i) => (
+                              <div key={i} className="flex items-start gap-1.5 text-[11px] text-[var(--text-secondary)]">
+                                <Shield className="w-3 h-3 shrink-0 mt-0.5 text-[var(--accent)]" />
+                                {s}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Knowledge gaps */}
+                        {latestPlanState.planResult.knowledgeGaps && latestPlanState.planResult.knowledgeGaps.length > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Knowledge Gaps</p>
+                            {latestPlanState.planResult.knowledgeGaps.slice(0, 3).map((gap, i) => (
+                              <div key={i} className="text-[11px] text-[var(--warning)] bg-[var(--warning)]/5 rounded-lg px-2.5 py-1.5 border border-[var(--warning)]/10">
+                                {gap}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* CTA */}
+                        <button
+                          onClick={() => {
+                            onPlanGenerated({
+                              projectName: latestPlanState.planResult?.projectName || "AI Plan",
+                              description: `${latestPlanState.planResult?.taskCount ?? 0} tasks · ${latestPlanState.planResult?.milestoneCount ?? 0} milestones`,
+                              tasks: [],
+                              milestones: [],
+                            });
+                          }}
+                          className="w-full h-10 bg-[var(--accent)] text-white text-[12px] font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-md"
+                        >
+                          Open Project
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </motion.div>
+                    )}
+
+                    {/* Empty state for right panel */}
+                    {!latestPlanState && !loading && (
+                      <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-3 py-8">
+                        <BrainCircuit className="w-8 h-8 text-[var(--text-dim)]" />
+                        <p className="text-[11px] text-[var(--text-dim)] leading-relaxed">
+                          Execution steps and plan results will appear here as the agent works.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </motion.div>
             )}
