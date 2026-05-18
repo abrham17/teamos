@@ -6,20 +6,14 @@ import {
   X,
   BrainCircuit,
   Loader2,
-  CheckCircle2,
-  AlertCircle,
   ArrowRight,
-  Mic,
-  MicOff,
   PenTool,
-  Shield,
-  FileText,
   Send,
   Bot,
-  User,
-  Check
+  User
 } from "lucide-react";
 import { getApiAuthHeaders } from "@/lib/api";
+import ReactMarkdown from "react-markdown";
 
 interface AIPlannerOverlayProps {
   teamId: string;
@@ -84,6 +78,9 @@ const STEP_LABELS: Record<string, string> = {
   plan_check_overdue: "Checking for overdue items",
   wiki_search_pages: "Searching wiki",
   wiki_create_page: "Creating wiki page",
+  chat_load_context: "Loading project context",
+  chat_wiki_search: "Searching knowledge base",
+  chat_generate: "Generating response",
 };
 
 function getStepLabel(name: string, args?: string): string {
@@ -109,18 +106,6 @@ function getStepLabel(name: string, args?: string): string {
   return base;
 }
 
-function riskColor(score: number): string {
-  if (score <= 30) return "text-[var(--success)]";
-  if (score <= 60) return "text-[var(--warning)]";
-  return "text-[var(--danger)]";
-}
-
-function riskBg(score: number): string {
-  if (score <= 30) return "bg-[var(--success-bg)]";
-  if (score <= 60) return "bg-[var(--warning)]/10";
-  return "bg-[var(--danger-bg)]";
-}
-
 export function AIPlannerOverlay({
   teamId,
   mode = "create",
@@ -131,9 +116,6 @@ export function AIPlannerOverlay({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recognitionRef = useRef<any>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Manual Setup State
@@ -164,50 +146,6 @@ export function AIPlannerOverlay({
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
-
-  const startVoiceMode = () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Speech recognition is not supported in this browser.");
-      return;
-    }
-
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-
-    recognition.onstart = () => setIsListening(true);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onerror = (event: any) => {
-      console.error(event.error);
-      setIsListening(false);
-    };
-    recognition.onend = () => setIsListening(false);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onresult = (event: any) => {
-      let finalTranscript = "";
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        }
-      }
-      if (finalTranscript) {
-        setInputText((prev) => prev + (prev ? " " : "") + finalTranscript);
-      }
-    };
-
-    recognition.start();
-    recognitionRef.current = recognition;
-  };
 
   const handleSend = async (textToSend?: string) => {
     const text = (textToSend || inputText).trim();
@@ -324,7 +262,19 @@ export function AIPlannerOverlay({
                       knowledgeGaps: data.knowledge_gaps,
                       critiqueScore: data.critique_score,
                     };
-                    return { ...msg, isStreaming: false, planningState: planState };
+                    const pName = String(data.project_name || "Project");
+                    const tCount = Number(data.task_count ?? 0);
+                    const mCount = Number(data.milestone_count ?? 0);
+                    const cCount = Number(data.conflict_count ?? 0);
+                    const rScore = (data.risk as { score?: number } | undefined)?.score ?? 0;
+                    const summaryParts: string[] = [
+                      `**${tCount}** task${tCount !== 1 ? "s" : ""}`,
+                      `**${mCount}** milestone${mCount !== 1 ? "s" : ""}`,
+                      `risk score **${rScore}/100**`,
+                    ];
+                    if (cCount > 0) summaryParts.push(`**${cCount}** conflict${cCount !== 1 ? "s" : ""} detected`);
+                    const summaryText = `✅ **${pName}** created — ${summaryParts.join(", ")}. Check the execution panel for the full breakdown.`;
+                    return { ...msg, isStreaming: false, text: summaryText, planningState: planState };
                   } else if (currentEvent === "agent_error") {
                     throw new Error(data.detail || "Planning agent error");
                   }
@@ -374,8 +324,44 @@ export function AIPlannerOverlay({
     }
   };
 
-  /* Derive the latest planning state from the last architect message */
-  const latestPlanState = [...messages].reverse().find(m => m.sender === "architect" && m.planningState)?.planningState ?? null;
+
+
+  const renderPlannerInput = () => {
+    return (
+      <motion.div
+        layoutId="planner-chat-input"
+        className="w-full relative flex flex-col gap-2 z-20"
+        transition={{ type: "spring", stiffness: 350, damping: 30 }}
+      >
+        <div className="relative group w-full">
+          <textarea
+            value={inputText}
+            onChange={(e) => {
+              setInputText(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); }
+            }}
+            rows={1}
+            placeholder="Ask a question or describe a strategic plan…"
+            className="w-full bg-[var(--bg-950)] border border-[var(--border-strong)] py-3 pl-4 pr-16 text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]/50 shadow-none resize-none overflow-hidden leading-relaxed"
+            style={{ maxHeight: "120px" }}
+          />
+          <div className="absolute right-2 bottom-2 flex items-center gap-1">
+            <button
+              onClick={() => void handleSend()}
+              disabled={!inputText.trim() || loading}
+              className="h-9 w-9 bg-[var(--accent)] disabled:opacity-40 text-[var(--bg-950)] flex items-center justify-center transition-colors shrink-0"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
 
   return (
     <motion.div
@@ -466,7 +452,6 @@ export function AIPlannerOverlay({
                 </div>
               </motion.div>
             ) : (
-              /* Two-panel AI Chat layout */
               <motion.div
                 key="chat"
                 initial={{ opacity: 0 }}
@@ -474,25 +459,45 @@ export function AIPlannerOverlay({
                 exit={{ opacity: 0 }}
                 className="flex-1 flex overflow-hidden"
               >
-                {/* ── Left: Chat messages ── */}
                 <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-                  {/* Messages */}
                   <div className="flex-1 overflow-y-auto p-5 space-y-5 custom-scrollbar">
                     {messages.map((msg) => (
                       <div key={msg.id} className={`flex gap-3 ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
                         {msg.sender === "architect" && (
-                          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-600 flex items-center justify-center shrink-0 shadow-md mt-0.5">
-                            <Bot className="w-4 h-4 text-white" />
+                          <div className="w-8 h-8 bg-[var(--surface-2)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0 mt-0.5">
+                            <Bot className="w-4 h-4 text-[var(--text-primary)]" />
                           </div>
                         )}
                         <div className="max-w-[78%]">
                           {(msg.text || msg.isStreaming) && (
-                            <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                            <div className={`px-4 py-3 text-sm leading-relaxed ${
                               msg.sender === "user"
-                                ? "bg-gradient-to-br from-[var(--accent)] to-[#009ab0] text-white font-medium shadow-md"
-                                : "bg-[var(--surface-2)] text-[var(--text-primary)] border border-[var(--border-subtle)] border-l-2 border-l-[var(--accent)]/30"
+                                ? "bg-[var(--accent)] text-white font-medium"
+                                : "bg-transparent text-[var(--text-primary)] border-none px-0"
                             }`}>
-                              {msg.text || (
+                              {msg.sender === "architect" && msg.text ? (
+                                <div className="prose prose-sm prose-invert max-w-none text-[var(--text-primary)] [&_strong]:text-[var(--text-primary)] [&_a]:text-[var(--accent)]">
+                                  <ReactMarkdown>{msg.text}</ReactMarkdown>
+                                  {msg.planningState?.planResult && (
+                                    <button
+                                      onClick={() => {
+                                        onPlanGenerated({
+                                          projectName: msg.planningState?.planResult?.projectName || "AI Plan",
+                                          description: `${msg.planningState?.planResult?.taskCount ?? 0} tasks · ${msg.planningState?.planResult?.milestoneCount ?? 0} milestones`,
+                                          tasks: [],
+                                          milestones: [],
+                                        });
+                                      }}
+                                      className="mt-4 w-full h-10 bg-[var(--accent)] text-[var(--bg-950)] text-[12px] font-bold flex items-center justify-center gap-2 transition-colors"
+                                    >
+                                      Open Project
+                                      <ArrowRight className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              ) : msg.text ? (
+                                msg.text
+                              ) : (
                                 <span className="flex items-center gap-2 text-[var(--text-muted)]">
                                   <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" />
                                   <span className="text-[12px]">Architect is thinking…</span>
@@ -502,7 +507,7 @@ export function AIPlannerOverlay({
                           )}
                         </div>
                         {msg.sender === "user" && (
-                          <div className="w-8 h-8 rounded-xl bg-[var(--surface-2)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0 mt-0.5">
+                          <div className="w-8 h-8 bg-[var(--surface-2)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0 mt-0.5">
                             <User className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                           </div>
                         )}
@@ -511,9 +516,8 @@ export function AIPlannerOverlay({
                     <div ref={chatEndRef} />
                   </div>
 
-                  {/* Suggested starters */}
                   {messages.length === 1 && (
-                    <div className="px-5 pb-3 flex flex-wrap gap-2">
+                    <div className="px-5 pb-3 flex flex-wrap gap-2 justify-center">
                       {[
                         "Create a marketing launch strategy for our KYC feature",
                         "Analyze our team timeline risks and draft a mitigation roadmap",
@@ -522,7 +526,7 @@ export function AIPlannerOverlay({
                         <button
                           key={idx}
                           onClick={() => handleSend(starter)}
-                          className="text-[11px] px-3 py-2 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-secondary)] text-left transition-all border border-[var(--border-subtle)] shadow-sm"
+                          className="text-[11px] px-3 py-2 bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-[var(--text-secondary)] text-left transition-colors border border-[var(--border-subtle)]"
                         >
                           {starter}
                         </button>
@@ -530,210 +534,15 @@ export function AIPlannerOverlay({
                     </div>
                   )}
 
-                  {/* Input bar */}
-                  <div className="shrink-0 px-4 pb-4 pt-2 border-t border-[var(--border-subtle)] bg-[var(--surface-2)] flex items-end gap-2">
-                    <button
-                      onClick={startVoiceMode}
-                      className={`p-3 rounded-xl transition-all shrink-0 ${isListening ? "bg-[var(--danger)] text-white animate-pulse" : "bg-[var(--surface-3)] text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]"}`}
-                    >
-                      {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                    </button>
-                    <textarea
-                      value={inputText}
-                      onChange={(e) => {
-                        setInputText(e.target.value);
-                        e.target.style.height = "auto";
-                        e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); }
-                      }}
-                      rows={1}
-                      placeholder="Ask a question or describe a strategic plan…"
-                      className="flex-1 bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)] text-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)] resize-none overflow-hidden leading-relaxed"
-                      style={{ maxHeight: "120px" }}
-                    />
-                    <button
-                      onClick={() => void handleSend()}
-                      disabled={!inputText.trim() || loading}
-                      className="p-3 bg-[var(--accent)] hover:opacity-90 disabled:opacity-40 text-white rounded-xl transition-all shadow-md shrink-0"
-                    >
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* ── Right: Live Execution Panel ── */}
-                <div className="w-72 shrink-0 border-l border-[var(--border-subtle)] flex flex-col bg-[var(--bg-950)]/60 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-[var(--border-subtle)] shrink-0">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-1.5 h-1.5 rounded-full ${loading ? "bg-[var(--accent)] animate-pulse" : latestPlanState?.planResult ? "bg-[var(--success)]" : "bg-[var(--border-strong)]"}`} />
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                        {loading ? "Executing" : latestPlanState?.planResult ? "Completed" : "Execution Panel"}
-                      </span>
+                  {messages.length === 1 ? (
+                    <div className="px-6 pb-6 pt-2 w-full max-w-2xl mx-auto">
+                      {renderPlannerInput()}
                     </div>
-                    {latestPlanState?.statusText && (
-                      <p className="text-[11px] text-[var(--accent)] mt-1 font-medium leading-snug">
-                        {latestPlanState.statusText}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto custom-scrollbar">
-                    {/* Step rail */}
-                    {latestPlanState && latestPlanState.agentSteps.length > 0 && (
-                      <div className="px-4 py-3 space-y-0">
-                        {latestPlanState.agentSteps.map((step, idx) => {
-                          const isDone = step.status === "done";
-                          const isErr = step.status === "error";
-                          const isRunning = step.status === "running";
-                          const isLast = idx === latestPlanState.agentSteps.length - 1;
-                          return (
-                            <motion.div
-                              key={`exec-step-${idx}`}
-                              initial={{ opacity: 0, x: 8 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: idx * 0.03 }}
-                              className="flex gap-3"
-                            >
-                              <div className="flex flex-col items-center">
-                                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 transition-all duration-300 ${
-                                  isDone    ? "bg-[var(--success-bg)] border-[var(--success)] text-[var(--success)]" :
-                                  isErr     ? "bg-[var(--danger-bg)] border-[var(--danger)] text-[var(--danger)]" :
-                                  isRunning ? "bg-[var(--surface-2)] border-[var(--accent)] text-[var(--accent)]" :
-                                              "bg-[var(--surface-2)] border-[var(--border-strong)] text-[var(--text-dim)]"
-                                }`}>
-                                  {isDone    && <Check className="w-2.5 h-2.5" />}
-                                  {isErr     && <AlertCircle className="w-2.5 h-2.5" />}
-                                  {isRunning && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                                </div>
-                                {!isLast && <div className="w-[2px] flex-1 min-h-[16px] bg-[var(--border-subtle)] mt-0.5" />}
-                              </div>
-                              <div className={`pb-3 pt-0.5 text-[11px] leading-tight ${
-                                isDone    ? "text-[var(--text-muted)]" :
-                                isErr     ? "text-[var(--danger)]" :
-                                isRunning ? "text-[var(--text-primary)] font-semibold" :
-                                            "text-[var(--text-dim)]"
-                              }`}>
-                                {step.label}
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Plan result card */}
-                    {latestPlanState?.planResult && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="px-4 pb-4 space-y-4"
-                      >
-                        <div className="pt-1 pb-3 border-b border-[var(--border-subtle)]">
-                          <div className="flex items-center gap-1.5">
-                            <CheckCircle2 className="w-4 h-4 text-[var(--success)] shrink-0" />
-                            <span className="text-[13px] font-bold text-[var(--text-primary)] leading-tight">
-                              {latestPlanState.planResult.projectName || "Plan Created"}
-                            </span>
-                          </div>
-                          {latestPlanState.planResult.wikiPageUrl && (
-                            <a href={latestPlanState.planResult.wikiPageUrl} target="_blank" rel="noopener noreferrer"
-                              className="flex items-center gap-1 mt-1.5 text-[9px] font-bold uppercase tracking-widest text-[var(--accent)] hover:underline">
-                              <FileText className="w-3 h-3" /> View Wiki Brief
-                            </a>
-                          )}
-                        </div>
-
-                        {/* 4-stat grid */}
-                        <div className="grid grid-cols-2 gap-2">
-                          {[
-                            { label: "Tasks",      value: latestPlanState.planResult.taskCount ?? 0,      color: "" },
-                            { label: "Milestones", value: latestPlanState.planResult.milestoneCount ?? 0, color: "" },
-                            { label: "Conflicts",  value: latestPlanState.planResult.conflictCount ?? 0,  color: (latestPlanState.planResult.conflictCount ?? 0) > 0 ? "text-[var(--warning)]" : "" },
-                            { label: "Critique",   value: latestPlanState.planResult.critiqueScore != null ? `${latestPlanState.planResult.critiqueScore}/10` : "—", color: "" },
-                          ].map(({ label, value, color }) => (
-                            <div key={label} className="bg-[var(--surface-1)] rounded-xl p-2.5 text-center border border-[var(--border-subtle)]">
-                              <div className={`text-lg font-black text-[var(--text-primary)] ${color}`}>{value}</div>
-                              <div className="text-[9px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">{label}</div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Risk meter */}
-                        {latestPlanState.planResult.risk && (
-                          <div className="space-y-1.5">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Risk Score</span>
-                              <span className={`text-[11px] font-bold ${riskColor(latestPlanState.planResult.risk.score)}`}>
-                                {latestPlanState.planResult.risk.score}/100
-                              </span>
-                            </div>
-                            <div className="h-2 rounded-full bg-[var(--border-subtle)] overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all duration-700 ${
-                                  latestPlanState.planResult.risk.score <= 30 ? "bg-[var(--success)]" :
-                                  latestPlanState.planResult.risk.score <= 60 ? "bg-[var(--warning)]" : "bg-[var(--danger)]"
-                                }`}
-                                style={{ width: `${latestPlanState.planResult.risk.score}%` }}
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Risk mitigations */}
-                        {latestPlanState.planResult.risk?.suggestions && latestPlanState.planResult.risk.suggestions.length > 0 && (
-                          <div className="space-y-1.5">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Mitigations</p>
-                            {latestPlanState.planResult.risk.suggestions.slice(0, 3).map((s, i) => (
-                              <div key={i} className="flex items-start gap-1.5 text-[11px] text-[var(--text-secondary)]">
-                                <Shield className="w-3 h-3 shrink-0 mt-0.5 text-[var(--accent)]" />
-                                {s}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Knowledge gaps */}
-                        {latestPlanState.planResult.knowledgeGaps && latestPlanState.planResult.knowledgeGaps.length > 0 && (
-                          <div className="space-y-1.5">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Knowledge Gaps</p>
-                            {latestPlanState.planResult.knowledgeGaps.slice(0, 3).map((gap, i) => (
-                              <div key={i} className="text-[11px] text-[var(--warning)] bg-[var(--warning)]/5 rounded-lg px-2.5 py-1.5 border border-[var(--warning)]/10">
-                                {gap}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* CTA */}
-                        <button
-                          onClick={() => {
-                            onPlanGenerated({
-                              projectName: latestPlanState.planResult?.projectName || "AI Plan",
-                              description: `${latestPlanState.planResult?.taskCount ?? 0} tasks · ${latestPlanState.planResult?.milestoneCount ?? 0} milestones`,
-                              tasks: [],
-                              milestones: [],
-                            });
-                          }}
-                          className="w-full h-10 bg-[var(--accent)] text-white text-[12px] font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-md"
-                        >
-                          Open Project
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                      </motion.div>
-                    )}
-
-                    {/* Empty state for right panel */}
-                    {!latestPlanState && !loading && (
-                      <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-3 py-8">
-                        <BrainCircuit className="w-8 h-8 text-[var(--text-dim)]" />
-                        <p className="text-[11px] text-[var(--text-dim)] leading-relaxed">
-                          Execution steps and plan results will appear here as the agent works.
-                        </p>
-                      </div>
-                    )}
-                  </div>
+                  ) : (
+                    <div className="shrink-0 px-4 pb-4 pt-2 border-t border-[var(--border-subtle)] bg-[var(--bg-950)] w-full">
+                      {renderPlannerInput()}
+                    </div>
+                  )}
                 </div>
               </motion.div>
             )}

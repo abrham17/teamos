@@ -791,3 +791,19 @@
   border-radius: 3px 3px 3px 0;
   white-space: nowrap;
 }
+
+/* ── Flat & Sharp Design Overrides ── */
+*, *::before, *::after {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.blur-md, .blur-lg, .blur-xl, .blur-\[50px\], .blur-\[100px\] {
+  filter: none !important;
+}
+
+.shadow-2xl, .shadow-xl, .shadow-lg, .shadow-md, .shadow-sm, .shadow-inner {
+  box-shadow: none !important;
+}
+

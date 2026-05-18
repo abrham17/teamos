@@ -170,31 +170,31 @@ export function Sidebar() {
     const active = isActive(href);
     if (collapsed) {
       return [
-        "w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-150 shrink-0",
+        "w-10 h-10 flex items-center justify-center transition-colors duration-150 shrink-0 relative",
         active
-          ? "bg-[var(--accent-subtle)] text-[var(--accent)]"
+          ? "bg-[var(--surface-2)] text-[var(--accent)] border-l-2 border-l-[var(--accent)]"
           : "text-[var(--text-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)]",
       ].join(" ");
     }
     return [
-      "flex items-center gap-3 px-3 py-2 w-full rounded-xl text-sm transition-colors duration-150",
+      "flex items-center gap-3 px-3 py-2 w-full text-sm transition-colors duration-150 border-l-2",
       active
-        ? "bg-[var(--accent-subtle)] text-[var(--accent)] font-medium"
-        : "text-[var(--text-secondary)] hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)]",
+        ? "bg-[var(--surface-2)] text-[var(--accent)] font-medium border-l-[var(--accent)]"
+        : "text-[var(--text-secondary)] hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)] border-l-transparent",
     ].join(" ");
   };
 
   const bottomBtnCls = (danger = false) => {
     if (collapsed) {
       return [
-        "w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-150 shrink-0",
+        "w-10 h-10 flex items-center justify-center transition-colors duration-150 shrink-0",
         danger
           ? "text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)]"
           : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-2)]",
       ].join(" ");
     }
     return [
-      "flex items-center gap-3 px-3 py-2 w-full rounded-xl text-sm transition-colors duration-150",
+      "flex items-center gap-3 px-3 py-2 w-full text-sm transition-colors duration-150 border-l-2 border-l-transparent",
       danger
         ? "text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)]"
         : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-2)]",
