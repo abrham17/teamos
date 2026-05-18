@@ -21,6 +21,7 @@ from .views import (
     PlanningRiskResolveApplyView,
     NotificationListView,
     TaskCommentListView,
+    PlanningTaskDecomposeDailyView,
 )
 
 urlpatterns = [
@@ -55,5 +56,9 @@ urlpatterns = [
     path(
         "<uuid:team_id>/projects/<uuid:project_id>/tasks/<uuid:task_id>/comments/",
         TaskCommentListView.as_view(),
+    ),
+    path(
+        "<uuid:team_id>/projects/<uuid:project_id>/tasks/<uuid:task_id>/decompose-daily/",
+        PlanningTaskDecomposeDailyView.as_view(),
     ),
 ]

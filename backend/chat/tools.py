@@ -395,6 +395,24 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
         {
             "type": "function",
             "function": {
+                "name": "plan_decompose_task_daily",
+                "description": (
+                    "Decompose a large multi-day task into sequential, day-by-day sub-tasks on the calendar. "
+                    "This creates individual day-by-day sub-tasks in the database linked to the parent task."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "project_id": {"type": "string", "description": "The UUID of the project containing the task."},
+                        "task_id": {"type": "string", "description": "The UUID of the task to decompose daily."},
+                    },
+                    "required": ["project_id", "task_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "plan_update_project",
                 "description": "Update a project by id or natural-language project_query. " + _PLAN_MUTATE_NOTE,
                 "parameters": {
@@ -837,6 +855,8 @@ def execute_plan_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, 
             return _plan_risk_assessment(ctx, args)
         if name == "plan_check_overdue":
             return _plan_check_overdue(ctx, args)
+        if name == "plan_decompose_task_daily":
+            return _plan_decompose_task_daily(ctx, args)
         return {"ok": False, "error": f"unknown_tool:{name}"}
     except Exception as e:
         logger.exception("Plan tool %s failed", name)
@@ -1487,6 +1507,33 @@ def _plan_delete_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
         "task_id": task_id,
         "resolved_from_query": bool((args.get("task_query") or "").strip()),
     }
+
+
+def _plan_decompose_task_daily(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from planning.day_decomposer import decompose_task_daily
+    from planning.serializers import TaskSerializer
+
+    project_id = args.get("project_id")
+    task_id = args.get("task_id")
+
+    if not project_id or not task_id:
+        return {"ok": False, "error": "project_id and task_id are required."}
+
+    try:
+        subtasks = decompose_task_daily(
+            team_id=ctx.team_id,
+            project_id=project_id,
+            task_id=task_id,
+            user=ctx.user
+        )
+        return {
+            "ok": True,
+            "subtasks": TaskSerializer(subtasks, many=True).data,
+            "count": len(subtasks)
+        }
+    except Exception as e:
+        logger.exception("plan_decompose_task_daily tool failed")
+        return {"ok": False, "error": str(e)}
 
 
 def _plan_delete_project(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:

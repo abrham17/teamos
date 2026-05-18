@@ -77,6 +77,32 @@ def create_project(*, team_id: str, user: User, payload: dict) -> Project:
     except Exception:
         logger.exception("Failed to reindex wiki page after planning project creation")
 
+    # Discover and link semantically relevant existing Wiki pages and documents
+    try:
+        from ingest.vectors import vector_store
+        from wiki.models import WikiPage
+
+        query_text = f"Project: {project.name}\n\nDescription: {project.description}"
+        similar_points = vector_store.search_similar_pages(team_id=team_id, query_text=query_text, limit=10)
+
+        matching_page_ids = []
+        for pt in similar_points:
+            payload = getattr(pt, "payload", {})
+            if payload.get("source_type") == "wiki":
+                pid = payload.get("page_id")
+                # Do not link the newly created brief wiki page itself
+                if pid and pid != str(wiki_page.id) and pid not in matching_page_ids:
+                    matching_page_ids.append(pid)
+                    if len(matching_page_ids) >= 5:
+                        break
+
+        if matching_page_ids:
+            related_pages = WikiPage.objects.filter(id__in=matching_page_ids, is_deleted=False)
+            project.related_wiki_pages.add(*related_pages)
+            logger.info("Automatically linked %d related wiki documents to project %s", len(related_pages), project.id)
+    except Exception:
+        logger.exception("Failed to auto-integrate semantically related Wiki pages on project creation")
+
     return project
 
 

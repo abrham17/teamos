@@ -442,7 +442,7 @@ class PlanningActivityView(APIView):
 
 
 class PlanningAssistStreamView(APIView):
-    """Streaming SSE endpoint for agent-driven plan generation."""
+    """Streaming SSE endpoint for agent-driven plan generation and conversational QA."""
 
     permission_classes = [IsAuthenticated, CanEditPlans]
 
@@ -452,6 +452,7 @@ class PlanningAssistStreamView(APIView):
         prompt = request.data.get("prompt")
         mode = request.data.get("mode", "create")
         project_id = request.data.get("project_id")
+        intent = request.data.get("intent")
 
         if not prompt:
             return fail("Prompt is required.", status_code=400, code="prompt_required")
@@ -459,6 +460,29 @@ class PlanningAssistStreamView(APIView):
             return fail("Project is required for update mode.", status_code=400, code="project_required")
         if mode == "manage" and get_project_or_none(team_id=str(team_id), project_id=str(project_id)) is None:
             return fail("Project not found.", status_code=404, code="project_not_found")
+
+        team = Team.objects.get(id=team_id)
+
+        # 1. Intent Classification (Chat vs Plan)
+        if not intent:
+            from llm_orchestrator.orchestrator import llm_json_call
+            classification_prompt = (
+                "You are the TeamOS Assistant Intent Router. Classify the user's input prompt into one of two intents:\n"
+                "1. 'plan': The user explicitly wants to generate, write, schedule, build, create, update, modify, add milestones, restructure, or edit a project plan, tasks, or milestones.\n"
+                "2. 'chat': The user is asking a conversational question, inquiring about project status, comparing multiple projects, checking team member tasks, asking about risks, seeking wiki page explanations, or greeting the system.\n\n"
+                f"User Prompt: \"{prompt}\"\n\n"
+                "Return JSON only: {\"intent\": \"plan\" | \"chat\"}"
+            )
+            try:
+                res = llm_json_call(
+                    team=team,
+                    operation="intent_classify",
+                    messages=[{"role": "system", "content": classification_prompt}],
+                    default_on_error={"intent": "chat"}
+                )
+                intent = res.get("intent", "chat")
+            except Exception:
+                intent = "chat"
 
         def _planner_sse_sync():
             from .agent_executor import run_planner_agent_v2
@@ -476,6 +500,123 @@ class PlanningAssistStreamView(APIView):
                 logger.exception("Planner agent stream failed")
                 yield f"event: agent_error\ndata: {_json.dumps({'detail': str(e)})}\n\n"
 
+        def _chat_sse_sync():
+            # Compile active projects
+            active_projects = Project.objects.filter(team_id=team_id)
+            projects_summary = []
+            for proj in active_projects:
+                projects_summary.append({
+                    "id": str(proj.id),
+                    "name": proj.name,
+                    "description": proj.description,
+                    "status": proj.status,
+                    "task_count": proj.tasks.count(),
+                    "milestone_count": proj.milestones.count(),
+                })
+
+            # Get active project context if project_id is present
+            current_project_context = ""
+            if project_id:
+                try:
+                    curr_project = Project.objects.get(team_id=team_id, id=project_id)
+                    curr_tasks = curr_project.tasks.all().select_related("assignee")
+                    curr_milestones = curr_project.milestones.all()
+
+                    tasks_info = []
+                    for t in curr_tasks:
+                        tasks_info.append({
+                            "title": t.title,
+                            "description": t.description,
+                            "status": t.status,
+                            "priority": t.priority,
+                            "assignee": t.assignee.display_name if t.assignee else "Unassigned",
+                            "start_date": str(t.start_date) if t.start_date else None,
+                            "end_date": str(t.end_date) if t.end_date else None,
+                            "subtasks_count": t.subtasks.count()
+                        })
+
+                    milestones_info = []
+                    for m in curr_milestones:
+                        milestones_info.append({
+                            "title": m.title,
+                            "description": m.description,
+                            "target_date": str(m.target_date) if m.target_date else None,
+                            "status": m.status,
+                        })
+
+                    current_project_context = (
+                        f"\n\nActive Project Details:\n"
+                        f"Project Name: {curr_project.name}\n"
+                        f"Description: {curr_project.description}\n"
+                        f"Status: {curr_project.status}\n"
+                        f"Tasks: {_json.dumps(tasks_info)}\n"
+                        f"Milestones: {_json.dumps(milestones_info)}"
+                    )
+                except Exception:
+                    pass
+
+            # Perform RAG Wiki Search
+            wiki_context = ""
+            try:
+                from ingest.vectors import vector_store
+                search_results = vector_store.search_similar_pages(str(team_id), prompt, limit=4)
+                if search_results:
+                    wiki_context = "\n\nRelevant Wiki Pages:\n" + "\n".join([
+                        f"Title: {p.payload.get('page_title')}\nContent: {p.payload.get('content')[:1500]}"
+                        for p in search_results
+                    ])
+            except Exception:
+                pass
+
+            # Compile team member workloads
+            member_workloads = []
+            for u in User.objects.filter(project_memberships__project__team_id=team_id).distinct():
+                user_tasks = Task.objects.filter(project__team_id=team_id, assignee=u)
+                member_workloads.append({
+                    "name": u.display_name,
+                    "email": u.email,
+                    "task_count": user_tasks.count(),
+                    "tasks": [t.title for t in user_tasks[:5]]
+                })
+
+            # Format system context
+            system_prompt = (
+                "You are the TeamOS AI Planner Architect, a conversational co-pilot for project scheduling, "
+                "wiki planning, team allocation, and risk management.\n\n"
+                "Your objective is to answer questions thoroughly using the provided database and wiki context.\n"
+                "Format your response with premium, clean Markdown (headings, bold text, lists). Be professional, concise, and helpful.\n"
+                "If asked about project relationships, task status, team workloads, or specific calendar events, use the context below "
+                "to answer accurately. Keep schedule dates and project constraints in mind.\n\n"
+                f"=== CONTEXT ===\n"
+                f"Projects in Team: {_json.dumps(projects_summary)}\n"
+                f"Team workloads: {_json.dumps(member_workloads)}"
+                f"{current_project_context}"
+                f"{wiki_context}"
+            )
+
+            # Call streaming LLM
+            from llm_orchestrator.orchestrator import llm_call
+            try:
+                response, model_used, routed_by = llm_call(
+                    team=team,
+                    operation="architect_chat",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    user=request.user,
+                    stream=True
+                )
+                for chunk in response:
+                    delta = chunk.choices[0].delta if chunk.choices else None
+                    text = delta.content if delta and delta.content else ""
+                    if text:
+                        yield f"event: agent_chat_chunk\ndata: {_json.dumps({'text': text})}\n\n"
+                yield f"event: agent_chat_done\ndata: {_json.dumps({'ok': True})}\n\n"
+            except Exception as e:
+                logger.exception("AI Architect chat stream failed")
+                yield f"event: agent_error\ndata: {_json.dumps({'detail': str(e)})}\n\n"
+
         _stream_done = object()
         _heartbeat = object()
 
@@ -486,15 +627,19 @@ class PlanningAssistStreamView(APIView):
                 return _heartbeat
 
         async def async_event_stream():
-            # ASGI needs a real async iterator (not sync map). Run the sync planner
+            # ASGI needs a real async iterator (not sync map). Run the sync planner/chat
             # generator in a dedicated thread and multiplex timed reads so we can
             # emit SSE comment keepalives (Heroku H12 ~30s idle on the connection).
-            out_q: queue.Queue = queue.Queue()
+            out_q = queue.Queue()
 
             def producer():
                 try:
-                    for sse_line in _planner_sse_sync():
-                        out_q.put(sse_line)
+                    if intent == "chat":
+                        for sse_line in _chat_sse_sync():
+                            out_q.put(sse_line)
+                    else:
+                        for sse_line in _planner_sse_sync():
+                            out_q.put(sse_line)
                 except Exception:
                     logger.exception("Planner SSE producer thread failed")
                 finally:
@@ -929,3 +1074,28 @@ class TaskCommentListView(APIView):
         )
         from .serializers import TaskCommentSerializer
         return ok(TaskCommentSerializer(comment).data, status_code=201)
+
+
+class PlanningTaskDecomposeDailyView(APIView):
+    """POST /api/planning/:team_id/projects/:project_id/tasks/:task_id/decompose-daily/
+       Trigger a daily sequence breakdown for a multi-day task."""
+
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def post(self, request, team_id, project_id, task_id):
+        from .day_decomposer import decompose_task_daily
+        from .serializers import TaskSerializer
+
+        try:
+            subtasks = decompose_task_daily(
+                team_id=str(team_id),
+                project_id=str(project_id),
+                task_id=str(task_id),
+                user=request.user
+            )
+            return ok(TaskSerializer(subtasks, many=True).data)
+        except ValueError as e:
+            return fail(str(e), status_code=400, code="decomposition_failed")
+        except Exception as e:
+            logger.exception("Decomposition failed")
+            return fail(str(e), status_code=500)

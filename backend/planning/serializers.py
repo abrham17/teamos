@@ -8,6 +8,7 @@ from .models import Milestone, PlanChunk, Project, Task, TaskComment, Notificati
 class TaskSerializer(serializers.ModelSerializer):
     assignee_email = serializers.SerializerMethodField()
     dependencies = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    parent_task_id = serializers.UUIDField(source="parent_task_id", allow_null=True, required=False)
 
     class Meta:
         model = Task
@@ -22,6 +23,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "start_date",
             "end_date",
             "dependencies",
+            "parent_task_id",
             "order_index",
             "created_by_id",
             "created_at",
@@ -84,10 +86,16 @@ class ProjectDetailSerializer(serializers.ModelSerializer):
     milestones = MilestoneSerializer(many=True, read_only=True)
     members = ProjectMemberSerializer(many=True, read_only=True)
     chunks = serializers.SerializerMethodField()
+    related_wiki_pages = serializers.SerializerMethodField()
 
     def get_chunks(self, obj):
         chunks = PlanChunk.objects.filter(project=obj).order_by("chunk_index")
         return PlanChunkSerializer(chunks, many=True).data
+
+    def get_related_wiki_pages(self, obj):
+        from wiki.serializers import WikiPageListSerializer
+        pages = obj.related_wiki_pages.filter(is_deleted=False).order_by("-updated_at")
+        return WikiPageListSerializer(pages, many=True).data
 
     class Meta:
         model = Project
@@ -100,6 +108,7 @@ class ProjectDetailSerializer(serializers.ModelSerializer):
             "milestones",
             "members",
             "chunks",
+            "related_wiki_pages",
             "created_by_id",
             "created_at",
             "updated_at",
@@ -120,6 +129,7 @@ class TaskWriteSerializer(serializers.ModelSerializer):
     dependency_ids = serializers.ListField(
         child=serializers.UUIDField(), required=False, write_only=True
     )
+    parent_task_id = serializers.UUIDField(allow_null=True, required=False)
 
     class Meta:
         model = Task
@@ -132,6 +142,7 @@ class TaskWriteSerializer(serializers.ModelSerializer):
             "start_date",
             "end_date",
             "dependency_ids",
+            "parent_task_id",
             "order_index",
         ]
 

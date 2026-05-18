@@ -25,6 +25,12 @@ class Project(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    related_wiki_pages = models.ManyToManyField(
+        "wiki.WikiPage",
+        blank=True,
+        related_name="associated_projects",
+        help_text="Wiki pages/documents semantically linked to this project."
+    )
 
     class Meta:
         ordering = ["-updated_at"]
