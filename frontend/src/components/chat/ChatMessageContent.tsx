@@ -238,15 +238,40 @@ type ChatMessageContentProps = {
 
 function preprocessMath(content: string): string {
   if (!content) return "";
-  // Replace block math \[ ... \] with $$ ... $$
-  let processed = content.replace(/\\\[([\s\S]*?)\\\]/g, (_, equation) => {
-    return `$$${equation}$$`;
+
+  let processed = content;
+
+  // 1. Replace explicit escaped block math: \[ ... \] or \\[ ... \\] etc.
+  processed = processed.replace(/\\+\[([\s\S]*?)\\+\]/g, (_, equation) => {
+    return formatBlockMath(equation);
   });
-  // Replace inline math \( ... \) with $ ... $
-  processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, (_, equation) => {
+
+  // 2. Replace brackets on separate lines:
+  // [
+  // ...
+  // ]
+  processed = processed.replace(/(?:^|\n)\[\s*\n([\s\S]*?)\n\s*\](?:\n|$)/g, (_, equation) => {
+    return formatBlockMath(equation);
+  });
+
+  // 3. Replace explicit escaped inline math: \( ... \) or \\( ... \\) etc.
+  processed = processed.replace(/\\+\(([\s\S]*?)\\+\)/g, (_, equation) => {
+    return `$${equation.trim()}$`;
+  });
+
+  // 4. Convert inline math variables in parentheses like (a_i), (b_i), (c_i), (d_i), (x_n)
+  processed = processed.replace(/\((([a-zA-Z])_([a-zA-Z0-9]+))\)/g, (_, equation) => {
     return `$${equation}$`;
   });
+
   return processed;
+}
+
+function formatBlockMath(equation: string): string {
+  // Fix single backslashes at the end of lines inside the equation
+  let cleaned = equation.replace(/\\(?:\s*\n)/g, "\\\\\n");
+  cleaned = cleaned.replace(/\\{3,}(?:\s*\n)/g, "\\\\\n");
+  return `\n\n$$\n${cleaned.trim()}\n$$\n\n`;
 }
 
 export function ChatMessageContent({ content, streaming }: ChatMessageContentProps) {
@@ -320,7 +345,7 @@ export function ChatMessageContent({ content, streaming }: ChatMessageContentPro
     <div className="chat-md max-w-none">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[[rehypeSanitize, sanitizeSchema], rehypeKatex]}
+        rehypePlugins={[rehypeKatex, [rehypeSanitize, sanitizeSchema]]}
         components={components}
       >
         {processedContent}

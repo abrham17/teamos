@@ -4,9 +4,40 @@ import { InlineMathNode } from "@aarkue/tiptap-math-extension";
 
 // Regexes for dollar and bracket delimiters
 const inlineDollarRegex = /^\$(?![$\s,.])((?:[^$\\]|\\\$|\\)+?)\$/;
-const inlineBracketRegex = /^\\\(([\s\S]*?)\\\)/;
 const blockDollarRegex = /^\$\$(?!\s)([\s\S]*?)\$\$/;
-const blockBracketRegex = /^\\\[([\s\S]*?)\\\]/;
+
+const blockBracketRegexes = [
+  /^\\\\+\[([\s\S]*?)\\\\+\]/, // Double/multi-escaped
+  /^\\\[([\s\S]*?)\\\]/,        // Single escaped
+  /^\[\s*\n([\s\S]*?)\n\s*\]/,  // Raw brackets on newlines
+];
+
+const inlineBracketRegexes = [
+  /^\\\\+\(([\s\S]*?)\\\\+\)/, // Double/multi-escaped
+  /^\\\(([\s\S]*?)\\\)/,        // Single escaped
+  /^\((([a-zA-Z])_([a-zA-Z0-9]+))\)/, // Parenthesized subscripts (a_i)
+];
+
+function matchRegexes(src: string, regexes: RegExp[]): { raw: string; text: string } | null {
+  for (const regex of regexes) {
+    const match = src.match(regex);
+    if (match) {
+      return {
+        raw: match[0],
+        text: match[1],
+      };
+    }
+  }
+  return null;
+}
+
+function cleanLatex(latex: string): string {
+  if (!latex) return "";
+  // Fix single backslashes at the end of lines inside the equation
+  let cleaned = latex.replace(/\\(?:\s*\n)/g, "\\\\\n");
+  cleaned = cleaned.replace(/\\{3,}(?:\s*\n)/g, "\\\\\n");
+  return cleaned.trim();
+}
 
 // Extended InlineMathNode with markdown parsing/rendering support
 export const ExtendedInlineMathNode = InlineMathNode.extend({
@@ -15,7 +46,7 @@ export const ExtendedInlineMathNode = InlineMathNode.extend({
 
   parseMarkdown: (token: any, helpers: any) => {
     return helpers.createNode("inlineMath", {
-      latex: token.text,
+      latex: cleanLatex(token.text),
       display: token.display || "no",
       evaluate: "no",
     });
@@ -32,7 +63,7 @@ export const ExtendedInlineMathNode = InlineMathNode.extend({
     name: "inlineMath",
     level: "inline",
     start(src: string) {
-      const match = src.match(/(?:\$|\\\()/);
+      const match = src.match(/(?:\$|\\+\(|\\+\[|\[\s*\n|\((?:[a-zA-Z])_(?:[a-zA-Z0-9]+)\))/);
       return match ? match.index : -1;
     },
     tokenize(src: string) {
@@ -47,12 +78,12 @@ export const ExtendedInlineMathNode = InlineMathNode.extend({
         };
       }
       // 2. Check block bracket
-      const blockBracketMatch = src.match(blockBracketRegex);
+      const blockBracketMatch = matchRegexes(src, blockBracketRegexes);
       if (blockBracketMatch) {
         return {
           type: "inlineMath",
-          raw: blockBracketMatch[0],
-          text: blockBracketMatch[1],
+          raw: blockBracketMatch.raw,
+          text: blockBracketMatch.text,
           display: "yes",
         };
       }
@@ -71,12 +102,12 @@ export const ExtendedInlineMathNode = InlineMathNode.extend({
         }
       }
       // 4. Check inline bracket
-      const inlineBracketMatch = src.match(inlineBracketRegex);
+      const inlineBracketMatch = matchRegexes(src, inlineBracketRegexes);
       if (inlineBracketMatch) {
         return {
           type: "inlineMath",
-          raw: inlineBracketMatch[0],
-          text: inlineBracketMatch[1],
+          raw: inlineBracketMatch.raw,
+          text: inlineBracketMatch.text,
           display: "no",
         };
       }
@@ -91,7 +122,7 @@ export const BlockMathMarkdownExtension = Extension.create({
 
   parseMarkdown: (token: any, helpers: any) => {
     return helpers.createNode("inlineMath", {
-      latex: token.text,
+      latex: cleanLatex(token.text),
       display: "yes",
       evaluate: "no",
     });
@@ -101,7 +132,7 @@ export const BlockMathMarkdownExtension = Extension.create({
     name: "inlineMathBlock",
     level: "block",
     start(src: string) {
-      const match = src.match(/(?:\$|\\\[)/);
+      const match = src.match(/(?:\$|\\+\[|\[\s*\n)/);
       return match ? match.index : -1;
     },
     tokenize(src: string) {
@@ -114,12 +145,12 @@ export const BlockMathMarkdownExtension = Extension.create({
           display: "yes",
         };
       }
-      const blockBracketMatch = src.match(blockBracketRegex);
+      const blockBracketMatch = matchRegexes(src, blockBracketRegexes);
       if (blockBracketMatch) {
         return {
           type: "inlineMathBlock",
-          raw: blockBracketMatch[0],
-          text: blockBracketMatch[1],
+          raw: blockBracketMatch.raw,
+          text: blockBracketMatch.text,
           display: "yes",
         };
       }
