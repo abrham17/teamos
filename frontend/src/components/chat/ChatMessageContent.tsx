@@ -281,17 +281,38 @@ export function ChatMessageContent({ content, streaming }: ChatMessageContentPro
         components={components}
         skipHtml
       >
-        {streaming ? closeIncompleteMermaidFence(content) : content}
+        {preprocessContent(content, streaming)}
       </ReactMarkdown>
     </div>
   );
 }
 
 /**
+ * Preprocesses Markdown content by:
+ * 1. Temporarily closing incomplete Mermaid code fences while streaming.
+ * 2. Translating LaTeX block and inline mathematical brackets to $$ and $ for KaTeX.
+ */
+function preprocessContent(text: string, streaming?: boolean): string {
+  let processed = text ?? "";
+  
+  if (streaming) {
+    processed = closeIncompleteMermaidFence(processed);
+  }
+
+  // Translate \[ ... \] block delimiters to $$ ... $$ and \( ... \) inline delimiters to $ ... $
+  processed = processed
+    .replace(/\\\[/g, "\n$$\n")
+    .replace(/\\\]/g, "\n$$\n")
+    .replace(/\\\(/g, "$")
+    .replace(/\\\)/g, "$");
+
+  return processed;
+}
+
+/**
  * If the model opened ```mermaid but has not closed the fence yet, temporarily append ```
  * so markdown below still parses; MermaidBlock may fail until the diagram is complete.
  */
-
 function closeIncompleteMermaidFence(text: string): string {
   const fence = "```mermaid";
   const start = text.indexOf(fence);

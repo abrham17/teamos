@@ -13,7 +13,7 @@ import {
   User
 } from "lucide-react";
 import { getApiAuthHeaders } from "@/lib/api";
-import ReactMarkdown from "react-markdown";
+import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 
 interface AIPlannerOverlayProps {
   teamId: string;
@@ -505,7 +505,7 @@ export function AIPlannerOverlay({
                             <div className="text-sm leading-relaxed text-[var(--text-primary)]">
                               {msg.sender === "architect" && msg.text ? (
                                 <div className="prose prose-sm prose-invert max-w-none text-[var(--text-primary)] [&_strong]:text-[var(--text-primary)] [&_a]:text-[var(--chat-accent)] border-none px-0">
-                                  <ReactMarkdown>{msg.text}</ReactMarkdown>
+                                  <ChatMessageContent content={msg.text} streaming={msg.isStreaming} />
                                   
                                   {/* Streaming execution steps inline */}
                                   {msg.planningState && (

@@ -127,13 +127,13 @@
   --primary-900: #004d66;
 
   /* ── Claude-inspired Chat / Architect tokens ── */
-  --chat-page-bg: #1a1916;
-  --chat-sidebar-bg: #141310;
-  --user-bubble: #2d2b26;
-  --user-bubble-text: #f0ede8;
-  --chat-accent: #d97757;
-  --chat-input-bg: #211f1c;
-  --chat-border: rgba(255, 255, 255, 0.09);
+  --chat-page-bg: var(--bg-950);
+  --chat-sidebar-bg: var(--bg-900);
+  --user-bubble: var(--surface-2);
+  --user-bubble-text: var(--text-primary);
+  --chat-accent: var(--accent);
+  --chat-input-bg: var(--bg-800);
+  --chat-border: var(--border-subtle);
 }
 
 /* ─── Light Theme ────────────────────────────────────────────────── */
@@ -197,13 +197,13 @@
   --primary-900: #003d8a;
 
   /* ── Claude-inspired Chat / Architect tokens ── */
-  --chat-page-bg: #faf9f7;
-  --chat-sidebar-bg: #f2efe9;
-  --user-bubble: #edeae4;
-  --user-bubble-text: #1a1918;
-  --chat-accent: #c96a3a;
-  --chat-input-bg: #ffffff;
-  --chat-border: rgba(0, 0, 0, 0.09);
+  --chat-page-bg: var(--bg-950);
+  --chat-sidebar-bg: var(--bg-900);
+  --user-bubble: var(--surface-2);
+  --user-bubble-text: var(--text-primary);
+  --chat-accent: var(--accent);
+  --chat-input-bg: var(--bg-800);
+  --chat-border: var(--border-subtle);
 }
 
 /* ─── Base Layer ─────────────────────────────────────────────────── */
