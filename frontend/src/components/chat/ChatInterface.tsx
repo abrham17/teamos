@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { Send, Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, Mic, BrainCircuit, Search, Calendar, ArrowRight } from "lucide-react";
+import { Send, Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, Mic, BrainCircuit, Search, Calendar, BookOpen, Target } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { ChatCitationList } from "@/components/chat/ChatCitationList";
@@ -457,21 +457,25 @@ export function ChatInterface() {
                 <h2 className="text-2xl font-black tracking-tight text-[var(--text-primary)]">Command Center</h2>
                 <p className="mt-2 max-w-sm text-sm leading-relaxed text-[var(--text-muted)]">Connect your team&apos;s knowledge and execute complex workflows.</p>
               </div>
-              {/* Simplified Suggestion Prompts */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl">
+              {/* Capability cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl">
                 {[
-                  { label: "Ask about knowledge", prompt: "Summarize our team's core knowledge base." },
-                  { label: "Summarize a project", prompt: "Provide a high-level summary of our active projects." },
-                  { label: "Find risks", prompt: "Analyze our planning timeline and list any scheduling risks." },
-                  { label: "Create a plan", prompt: "Help me create a new project plan." },
-                ].map(({ label, prompt }) => (
+                  { icon: Search,   label: "Search knowledge",    desc: "Ask anything about your wiki",               prompt: "Summarize our key knowledge areas" },
+                  { icon: BookOpen, label: "Create wiki pages",   desc: "Draft or update knowledge base pages",        prompt: "Create a wiki page about our onboarding process" },
+                  { icon: Target,   label: "Build & manage plans",desc: "Generate tasks, milestones, and timelines",   prompt: "Show me the current project plans and highlight risks" },
+                ].map(({ icon: Icon, label, desc, prompt }) => (
                   <button
                     key={label}
                     onClick={() => { setInput(prompt); inputRef.current?.focus(); }}
-                    className="group flex items-center justify-between p-4 rounded-xl bg-[var(--surface-1)] border border-[var(--border-subtle)] hover:border-[var(--accent)]/40 hover:bg-[var(--surface-2)] text-left transition-all text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] shadow-sm"
+                    className="group flex flex-col gap-2.5 p-4 rounded-2xl bg-[var(--surface-1)] border border-[var(--border-subtle)] hover:border-[var(--accent)]/40 hover:bg-[var(--surface-2)] text-left transition-all shadow-sm"
                   >
-                    <span>{label}</span>
-                    <ArrowRight className="w-3.5 h-3.5 text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-colors" />
+                    <div className="w-9 h-9 rounded-xl bg-[var(--accent)]/10 flex items-center justify-center group-hover:bg-[var(--accent)]/20 transition-colors">
+                      <Icon className="w-4.5 h-4.5 text-[var(--accent)]" />
+                    </div>
+                    <div>
+                      <div className="text-[13px] font-bold text-[var(--text-primary)]">{label}</div>
+                      <div className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-snug">{desc}</div>
+                    </div>
                   </button>
                 ))}
               </div>

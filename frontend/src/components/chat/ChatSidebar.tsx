@@ -47,15 +47,15 @@ export function ChatSidebar({
       return [
         "w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-150 shrink-0",
         isActive
-          ? "bg-[var(--user-bubble)] text-[var(--text-primary)]"
-          : "text-[var(--text-muted)] hover:bg-[var(--surface-1)] hover:text-[var(--text-primary)]",
+          ? "bg-[var(--accent-subtle)] text-[var(--accent)]"
+          : "text-[var(--text-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)]",
       ].join(" ");
     }
     return [
-      "flex items-center gap-3 px-3 py-2 w-full rounded-xl text-sm transition-colors duration-150 text-left group/sess",
+      "flex items-center gap-3 px-3 py-2 w-full rounded-xl text-sm transition-colors duration-150 text-left truncate group/sess",
       isActive
-        ? "bg-[var(--user-bubble)] text-[var(--text-primary)] font-medium"
-        : "text-[var(--text-secondary)] hover:bg-[var(--surface-1)] hover:text-[var(--text-primary)]",
+        ? "bg-[var(--accent-subtle)] text-[var(--accent)] font-medium"
+        : "text-[var(--text-secondary)] hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)]",
     ].join(" ");
   };
 
@@ -102,7 +102,7 @@ export function ChatSidebar({
       {/* Single sidebar element — positioned differently for mobile vs desktop via CSS */}
       <div
         className={cn(
-          "bg-[var(--chat-sidebar-bg)] border-r border-[var(--border-subtle)] flex flex-col h-full shrink-0 transition-[width] duration-[220ms] ease-in-out overflow-hidden",
+          "bg-[var(--bg-800)] border-r border-[var(--border-subtle)] flex flex-col h-full shrink-0 transition-[width] duration-[220ms] ease-in-out overflow-hidden",
           /* Mobile: fixed slide-in */
           "max-md:fixed max-md:top-0 max-md:left-0 max-md:z-50 max-md:transition-transform max-md:duration-300",
           mobileOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full",
@@ -150,9 +150,9 @@ export function ChatSidebar({
               <PlusCircle className="w-4 h-4" />
             </button>
           ) : (
-          <button
+            <button
               onClick={onNewChat}
-              className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded-full border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-1)] font-medium transition-colors"
+              className="flex items-center gap-2.5 w-full px-3 py-2 text-sm rounded-xl bg-[var(--accent-subtle)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--bg-950)] font-medium transition-colors"
             >
               <PlusCircle className="w-4 h-4" />
               New Chat

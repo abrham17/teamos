@@ -22,8 +22,8 @@
   --accent-rgb: 0, 212, 232;
   --accent-light: #70ffff;
   --accent-dark: #009ab0;
-  --accent-glow: rgba(0, 212, 232, 0.12);
-  --accent-subtle: rgba(0, 212, 232, 0.08);
+  --accent-glow: rgba(0, 212, 232, 0.35);
+  --accent-subtle: rgba(0, 212, 232, 0.1);
 
   /* Status */
   --success: #00e898;
@@ -64,10 +64,10 @@
   --glass-heavy-bg: rgba(2, 2, 4, 0.88);
 
   /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.45);
-  --shadow-glow: 0 0 8px var(--accent-glow);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.55);
+  --shadow-glow: 0 0 20px var(--accent-glow);
   --shadow-1: var(--shadow-sm);
   --shadow-2: var(--shadow-md);
   --shadow-3: var(--shadow-lg);
@@ -97,12 +97,12 @@
   --reading-max-w: 760px;
 
   /* Layout */
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-2xl: 24px;
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-2xl: 36px;
   --radius: var(--radius-md);
   --sidebar-w: 240px;
   --sidebar-w-collapsed: 72px;
@@ -145,8 +145,8 @@
   --accent-rgb: 0, 112, 243;
   --accent-light: #3291ff;
   --accent-dark: #0050bb;
-  --accent-glow: rgba(0, 112, 243, 0.08);
-  --accent-subtle: rgba(0, 112, 243, 0.05);
+  --accent-glow: rgba(0, 112, 243, 0.22);
+  --accent-subtle: rgba(0, 112, 243, 0.08);
 
   --success: #00a855;
   --warning: #d97706;
@@ -176,10 +176,10 @@
   --glass-border: rgba(0, 0, 0, 0.06);
   --glass-heavy-bg: rgba(250, 250, 254, 0.92);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.1);
-  --shadow-glow: 0 0 8px rgba(0, 112, 243, 0.06);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 0 20px rgba(0, 112, 243, 0.18);
   --shadow-1: var(--shadow-sm);
   --shadow-2: var(--shadow-md);
   --shadow-3: var(--shadow-lg);
@@ -272,7 +272,7 @@
   height: min(52vmin, 480px);
   left: -12%;
   top: 8%;
-  background: radial-gradient(circle, rgba(0, 212, 232, 0.15) 0%, transparent 72%);
+  background: radial-gradient(circle, rgba(0, 212, 232, 0.42) 0%, transparent 72%);
   animation: graph-ambient-drift-a 18s ease-in-out infinite;
 }
 
@@ -281,7 +281,7 @@
   height: min(44vmin, 400px);
   right: -8%;
   bottom: 5%;
-  background: radial-gradient(circle, rgba(168, 85, 247, 0.12) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.38) 0%, transparent 70%);
   animation: graph-ambient-drift-b 22s ease-in-out infinite;
 }
 
@@ -290,25 +290,24 @@
   height: min(36vmin, 320px);
   left: 35%;
   bottom: 18%;
-  background: radial-gradient(circle, rgba(34, 197, 94, 0.08) 0%, transparent 68%);
+  background: radial-gradient(circle, rgba(34, 197, 94, 0.22) 0%, transparent 68%);
   animation: graph-ambient-drift-c 14s ease-in-out infinite;
 }
 
 @keyframes graph-ambient-drift-a {
-  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.12; }
-  50% { transform: translate(6vw, -5vh) scale(1.08); opacity: 0.22; }
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.32; }
+  50% { transform: translate(6vw, -5vh) scale(1.08); opacity: 0.52; }
 }
 
 @keyframes graph-ambient-drift-b {
-  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.1; }
-  50% { transform: translate(-5vw, 4vh) scale(1.1); opacity: 0.2; }
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.28; }
+  50% { transform: translate(-5vw, 4vh) scale(1.1); opacity: 0.48; }
 }
 
 @keyframes graph-ambient-drift-c {
-  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.08; }
-  50% { transform: translate(-3vw, -6vh) scale(1.15); opacity: 0.15; }
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.22; }
+  50% { transform: translate(-3vw, -6vh) scale(1.15); opacity: 0.4; }
 }
-
 
 @media (prefers-reduced-motion: reduce) {
   .graph-ambient-orb--a,

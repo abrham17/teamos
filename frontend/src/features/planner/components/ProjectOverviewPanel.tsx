@@ -29,9 +29,6 @@ import { getApiAuthHeaders } from "@/lib/api";
 import { ConflictPanel } from "./ConflictPanel";
 import { RiskCard } from "./RiskCard";
 import { useEffect } from "react";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { PromptDialog } from "@/components/ui/PromptDialog";
-import { useToast } from "@/components/ui/Toast";
 
 interface ProjectOverviewPanelProps {
   activeProject: PlanProjectDetail | null;
@@ -44,8 +41,6 @@ interface ProjectOverviewPanelProps {
   onOpenAddMilestone: () => void;
   onDeleteProject: (name: string) => void;
   onDeleteTask: (taskId: string) => void;
-  onCreateWithAI?: () => void;
-  onCreateManually?: () => void;
 }
 
 export function ProjectOverviewPanel({
@@ -59,13 +54,8 @@ export function ProjectOverviewPanel({
   onOpenAddMilestone,
   onDeleteProject,
   onDeleteTask,
-  onCreateWithAI,
-  onCreateManually,
 }: ProjectOverviewPanelProps) {
   const { currentTeamId } = useWikiStore();
-  const { success: toastSuccess, error: toastError } = useToast();
-  const [isDeleteProjectOpen, setIsDeleteProjectOpen] = useState(false);
-  const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
   const [taskSearch, setTaskSearch] = useState("");
   const [overdue, setOverdue] = useState<{ overdue_tasks: OverdueTask[]; missed_milestones: MissedMilestone[] } | null>(null);
   const [decomposingTaskId, setDecomposingTaskId] = useState<string | null>(null);
@@ -94,36 +84,27 @@ export function ProjectOverviewPanel({
     return (
       <div className="flex-1 flex items-center justify-center p-12 text-center bg-[var(--bg-950)]/50">
         <div className="max-w-md space-y-6">
-          <div className="w-16 h-16 bg-[var(--surface-1)] rounded-[20px] flex items-center justify-center mx-auto border border-[var(--border-subtle)]">
-            <Sparkles className="w-8 h-8 text-[var(--accent)] opacity-20" />
+          <div className="w-20 h-20 bg-[var(--surface-1)] rounded-[32px] flex items-center justify-center mx-auto border border-[var(--border-subtle)] shadow-inner">
+            <Sparkles className="w-10 h-10 text-[var(--accent)] opacity-20" />
           </div>
           <div className="space-y-2">
-            <h3 className="text-lg font-bold text-[var(--text-primary)]">
-              {error ? "Deployment Error" : "Get Started with Planner"}
+            <h3 className="text-xl font-bold text-[var(--text-primary)]">
+              {error ? "Deployment Error" : "Select a Strategy"}
             </h3>
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+            <p className="text-sm text-[var(--text-muted)] leading-relaxed">
               {error
                 ? "Failed to fetch project data. Please verify your connection."
-                : "Select a project from the sidebar, or create a new plan manually or using AI."}
+                : "Select a project from the sidebar or initialize a new strategic plan with the AI Architect."}
             </p>
           </div>
           {!error && (
-            <div className="flex justify-center gap-3">
-              <button
-                onClick={onCreateManually || onAskAI}
-                className="px-5 py-2.5 bg-[var(--surface-2)] text-[var(--text-secondary)] border border-[var(--border-subtle)] rounded-xl font-bold flex items-center gap-2 hover:bg-[var(--surface-3)] transition-all text-sm"
-              >
-                <Plus className="w-4 h-4" />
-                Create manually
-              </button>
-              <button
-                onClick={onCreateWithAI || onAskAI}
-                className="px-5 py-2.5 bg-[var(--accent)] text-white rounded-xl font-bold flex items-center gap-2 hover:opacity-90 transition-all text-sm shadow-md"
-              >
-                <Sparkles className="w-4 h-4" />
-                Create with AI
-              </button>
-            </div>
+            <button
+              onClick={onAskAI}
+              className="px-6 py-3 bg-[var(--accent)] text-white rounded-2xl font-bold flex items-center gap-2 mx-auto hover:opacity-90 transition-all shadow-xl shadow-[var(--accent-glow)]"
+            >
+              <Plus className="w-4 h-4" />
+              Initialize Project
+            </button>
           )}
         </div>
       </div>
@@ -287,7 +268,12 @@ export function ProjectOverviewPanel({
   };
 
   const handleDeleteProject = () => {
-    setIsDeleteProjectOpen(true);
+    const email = prompt(`To delete this project, please type the project name: "${activeProject.name}"`);
+    if (email === activeProject.name) {
+      onDeleteProject(email);
+    } else if (email !== null) {
+      alert("Project name did not match. Deletion cancelled.");
+    }
   };
 
   const handleDecomposeDaily = async (taskId: string) => {
@@ -311,11 +297,11 @@ export function ProjectOverviewPanel({
       }
 
       onRefreshDetail();
-      toastSuccess("Successfully decomposed task into sequential day-by-day sub-tasks!");
+      alert("Successfully decomposed task into sequential day-by-day sub-tasks!");
     } catch (e) {
       const err = e as Error;
       console.error(err);
-      toastError(err.message || "Failed to decompose task");
+      alert(err.message || "Failed to decompose task");
     } finally {
       setDecomposingTaskId(null);
     }
@@ -383,10 +369,10 @@ export function ProjectOverviewPanel({
           <div className="flex items-center gap-3 shrink-0 pt-2">
             <button
               onClick={onAskAI}
-              className="h-12 px-6 bg-[var(--surface-1)] text-[var(--text-primary)] rounded-xl font-bold flex items-center gap-2 border border-[var(--border-subtle)] hover:border-[var(--accent-subtle)] transition-all group"
+              className="h-12 px-6 bg-[var(--surface-1)] text-[var(--text-primary)] rounded-2xl font-bold flex items-center gap-2 border border-[var(--border-subtle)] hover:border-[var(--accent-subtle)] transition-all group"
             >
               <Sparkles className="w-4 h-4 text-[var(--accent)] group-hover:scale-110 transition-transform" />
-              Ask AI
+              Ask Architect
             </button>
             <button 
               onClick={handleDeleteProject}
@@ -648,35 +634,6 @@ export function ProjectOverviewPanel({
           </div>
         </div>
       </div>
-
-      <ConfirmDialog
-        isOpen={deleteTaskId !== null}
-        onClose={() => setDeleteTaskId(null)}
-        onConfirm={() => {
-          if (deleteTaskId) {
-            onDeleteTask(deleteTaskId);
-          }
-        }}
-        title="Delete Task"
-        message="Permanently delete this task? This action cannot be undone."
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
-        type="danger"
-      />
-
-      <PromptDialog
-        isOpen={isDeleteProjectOpen}
-        onClose={() => setIsDeleteProjectOpen(false)}
-        onSubmit={(val) => {
-          onDeleteProject(val);
-        }}
-        title="Delete Project"
-        message="This action is permanent and cannot be undone. Please type the project name to confirm deletion:"
-        placeholder="Project name"
-        confirmLabel="Permanently Delete"
-        cancelLabel="Cancel"
-        validationValue={activeProject.name}
-      />
     </div>
   );
 }
@@ -798,7 +755,7 @@ function TaskItem({
         <button 
           onClick={(e) => {
             e.stopPropagation();
-            onDelete();
+            if (confirm("Permanently delete this task?")) onDelete();
           }}
           className="p-1.5 text-[var(--text-dim)] hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 rounded-lg transition-all"
           title="Delete Task"

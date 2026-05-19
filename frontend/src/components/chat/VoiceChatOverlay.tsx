@@ -1,11 +1,14 @@
 "use client";
 
-import { motion, AnimatePresence } from "motion/react";
-import { Mic, MicOff, X, Sparkles } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { animate } from "animejs";
+import { Mic, Sparkles, X } from "lucide-react";
 
-export type VoiceOverlayPhase = "idle" | "listening" | "thinking";
+import { graphChromePrefersReducedMotion } from "@/lib/graphChromeMotion";
 
-interface VoiceChatOverlayProps {
+export type VoiceOverlayPhase = "idle" | "listening" | "thinking" | "speaking";
+
+interface Props {
   open: boolean;
   onClose: () => void;
   phase: VoiceOverlayPhase;
@@ -13,7 +16,9 @@ interface VoiceChatOverlayProps {
   interimTranscript: string;
   listening: boolean;
   speechSupported: boolean;
-  micDisabled: boolean;
+  /** Disable starting listening while a reply is streaming */
+  micDisabled?: boolean;
+  /** Orb tap toggles listen/stop (primary voice control). */
   onOrbClick: () => void;
 }
 
@@ -23,142 +28,156 @@ export function VoiceChatOverlay({
   phase,
   caption,
   interimTranscript,
+  listening,
   speechSupported,
-  micDisabled,
+  micDisabled = false,
   onOrbClick,
-}: VoiceChatOverlayProps) {
+}: Props) {
+  const shellRef = useRef<HTMLDivElement>(null);
+  const orbRef = useRef<HTMLButtonElement>(null);
+  const ringRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open || !shellRef.current || graphChromePrefersReducedMotion()) return;
+    const el = shellRef.current;
+    const a = animate(el, {
+      scale: [0.88, 1],
+      opacity: [0, 1],
+      duration: 480,
+      ease: "outCubic",
+    });
+    return () => {
+      try {
+        a.revert();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !orbRef.current || graphChromePrefersReducedMotion()) return;
+    const pulse =
+      phase === "listening" || phase === "thinking" || phase === "speaking" || listening;
+    if (!pulse) return;
+    const el = orbRef.current;
+    const big = phase === "speaking" ? 1.06 : phase === "thinking" ? 1.04 : 1.03;
+    const a = animate(el, {
+      scale: [1, big, 1],
+      duration: phase === "listening" ? 720 : 900,
+      ease: "inOutSine",
+      loop: true,
+      alternate: true,
+    });
+    return () => {
+      try {
+        a.revert();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [open, phase, listening]);
+
+  useEffect(() => {
+    if (!open || !ringRef.current || graphChromePrefersReducedMotion()) return;
+    if (phase !== "thinking" && phase !== "speaking") return;
+    const el = ringRef.current;
+    const a = animate(el, {
+      rotate: [0, 360],
+      duration: 16000,
+      ease: "linear",
+      loop: true,
+    });
+    return () => {
+      try {
+        a.revert();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [open, phase]);
+
+  if (!open) return null;
+
+  const orbDisabled = !speechSupported || (micDisabled && !listening);
+  const orbLabel = listening ? "Stop listening" : "Start listening";
+
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4"
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--bg-950)]/80 p-6 backdrop-blur-sm motion-reduce:backdrop-blur-none"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="voice-chat-title"
+    >
+      <div
+        ref={shellRef}
+        className="relative flex w-full max-w-lg flex-col items-center gap-8 rounded-[2rem] border border-[var(--border-subtle)] bg-[var(--surface-1)] px-8 py-10 shadow-[var(--shadow-lg)] [pointer-events:none]"
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 z-10 rounded-xl p-2 text-[var(--text-muted)] transition-colors [pointer-events:auto] hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)]"
+          aria-label="Close voice chat"
         >
-          {/* Main Card */}
-          <motion.div
-            initial={{ scale: 0.9, y: 20 }}
-            animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.9, y: 20 }}
-            transition={{ type: "spring", damping: 25, stiffness: 350 }}
-            className="relative w-full max-w-lg bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-[32px] p-8 shadow-2xl text-center space-y-8 overflow-hidden"
+          <X className="h-5 w-5" />
+        </button>
+
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-800)] px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-dim)]">
+            <Sparkles className="h-3 w-3 text-[var(--text-muted)]" aria-hidden />
+            Voice mode
+          </div>
+          <h2 id="voice-chat-title" className="text-xl font-bold text-[var(--text-primary)]">
+            Ask out loud
+          </h2>
+          <p className="max-w-sm text-sm text-[var(--text-muted)]">
+            Tap the orb to speak or stop. We listen in your browser, then search your wiki and answer. Spoken replies
+            use cloud text-to-speech when configured.
+          </p>
+        </div>
+
+        <div className="relative flex h-52 w-52 items-center justify-center [pointer-events:auto]">
+          <div
+            ref={ringRef}
+            className="absolute inset-0 rounded-full border border-dashed border-[var(--border-subtle)] opacity-70"
+            aria-hidden
+          />
+          <button
+            type="button"
+            ref={orbRef}
+            disabled={orbDisabled}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOrbClick();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                if (!orbDisabled) onOrbClick();
+              }
+            }}
+            aria-pressed={listening}
+            aria-label={orbLabel}
+            className="relative flex h-40 w-40 cursor-pointer items-center justify-center rounded-full border border-[var(--border-subtle)] bg-[var(--accent)] text-[var(--bg-950)] shadow-md outline-none transition-[box-shadow,transform] hover:shadow-lg focus-visible:ring-2 focus-visible:ring-[var(--border-subtle)] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {/* Ambient Background Glow */}
-            <div className="absolute -top-24 -left-24 w-48 h-48 bg-[var(--accent)]/10 rounded-full blur-[60px]" />
-            <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-purple-500/10 rounded-full blur-[60px]" />
+            <Mic className="h-14 w-14 drop-shadow-sm" aria-hidden />
+          </button>
+        </div>
 
-            {/* Close Button */}
-            <button
-              onClick={onClose}
-              className="absolute right-6 top-6 p-2 rounded-xl text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-2)] transition-all"
-            >
-              <X className="w-5 h-5" />
-            </button>
+        <div className="min-h-[4.5rem] w-full rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-900)] px-4 py-3 text-center text-sm text-[var(--text-secondary)]">
+          {caption ? <p className="leading-relaxed">{caption}</p> : null}
+          {interimTranscript ? (
+            <p className="mt-2 text-xs italic text-[var(--text-dim)]">{interimTranscript}</p>
+          ) : null}
+        </div>
 
-            {/* Title / Status */}
-            <div className="space-y-1">
-              <h3 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Voice Assistant</h3>
-              <p className="text-xs text-[var(--text-muted)] font-medium">
-                {!speechSupported
-                  ? "Speech recognition is not supported by your browser."
-                  : phase === "listening"
-                  ? "Listening... speak now"
-                  : phase === "thinking"
-                  ? "Processing speech..."
-                  : "Ready. Tap the mic to talk."}
-              </p>
-            </div>
-
-            {/* Animated Interactive Orb / Mic Button */}
-            <div className="flex justify-center py-6">
-              <div className="relative">
-                {/* Wave Rings when listening or thinking */}
-                {(phase === "listening" || phase === "thinking") && (
-                  <>
-                    <motion.div
-                      animate={{ scale: [1, 1.8], opacity: [0.4, 0] }}
-                      transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut" }}
-                      className="absolute inset-0 rounded-full bg-[var(--accent)]/20"
-                    />
-                    <motion.div
-                      animate={{ scale: [1, 1.5], opacity: [0.3, 0] }}
-                      transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut", delay: 0.4 }}
-                      className="absolute inset-0 rounded-full bg-purple-500/20"
-                    />
-                  </>
-                )}
-
-                {/* Orb Button */}
-                <button
-                  onClick={onOrbClick}
-                  disabled={!speechSupported || micDisabled}
-                  className={`
-                    relative w-28 h-28 rounded-full flex items-center justify-center transition-all duration-500 shadow-xl
-                    ${!speechSupported || micDisabled
-                      ? "bg-[var(--surface-3)] text-[var(--text-dim)] border border-[var(--border-subtle)]"
-                      : phase === "listening"
-                      ? "bg-gradient-to-tr from-[var(--accent)] to-purple-600 text-white hover:scale-105"
-                      : phase === "thinking"
-                      ? "bg-gradient-to-tr from-purple-600 to-pink-500 text-white hover:scale-105"
-                      : "bg-[var(--surface-2)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--accent-subtle)] hover:bg-[var(--surface-3)] hover:scale-105"
-                    }
-                  `}
-                >
-                  <AnimatePresence mode="wait">
-                    {!speechSupported ? (
-                      <motion.div
-                        key="supported"
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                      >
-                        <MicOff className="w-8 h-8" />
-                      </motion.div>
-                    ) : phase === "thinking" ? (
-                      <motion.div
-                        key="thinking"
-                        initial={{ opacity: 0, rotate: 0 }}
-                        animate={{ opacity: 1, rotate: 360 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-                      >
-                        <Sparkles className="w-8 h-8" />
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="normal"
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                      >
-                        <Mic className={`w-8 h-8 ${phase === "listening" ? "animate-pulse" : ""}`} />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </button>
-              </div>
-            </div>
-
-            {/* Transcript Display Section */}
-            <div className="min-h-16 px-4 py-3 bg-[var(--surface-2)] border border-[var(--border-subtle)] rounded-2xl flex flex-col items-center justify-center max-w-sm mx-auto">
-              {interimTranscript ? (
-                <p className="text-xs text-[var(--text-primary)] italic leading-relaxed break-words w-full">
-                  &ldquo;{interimTranscript}&rdquo;
-                </p>
-              ) : caption ? (
-                <p className="text-xs text-[var(--text-muted)] font-medium leading-relaxed break-words w-full">
-                  Last input: &ldquo;{caption}&rdquo;
-                </p>
-              ) : (
-                <p className="text-[10px] text-[var(--text-dim)] font-black uppercase tracking-wider">
-                  No active voice stream
-                </p>
-              )}
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        {!speechSupported ? (
+          <p className="text-center text-xs text-amber-400/90">
+            Speech recognition isn&apos;t available in this browser. Use Chrome or Edge on desktop, or type in the
+            main chat.
+          </p>
+        ) : null}
+      </div>
+    </div>
   );
 }

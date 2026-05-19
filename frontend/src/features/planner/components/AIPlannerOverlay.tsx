@@ -20,8 +20,6 @@ import {
   Check
 } from "lucide-react";
 import { getApiAuthHeaders } from "@/lib/api";
-import ReactMarkdown from "react-markdown";
-import { useToast } from "@/components/ui/Toast";
 
 interface AIPlannerOverlayProps {
   teamId: string;
@@ -31,7 +29,6 @@ interface AIPlannerOverlayProps {
   projectId?: string | null;
   onClose: () => void;
   onPlanGenerated: (plan: { projectName: string; description: string; tasks: unknown[]; milestones: unknown[] }) => Promise<void> | void;
-  initialManual?: boolean;
 }
 
 interface AgentStepEntry {
@@ -87,32 +84,7 @@ const STEP_LABELS: Record<string, string> = {
   plan_check_overdue: "Checking for overdue items",
   wiki_search_pages: "Searching wiki",
   wiki_create_page: "Creating wiki page",
-  chat_load_context: "Loading project context",
-  chat_wiki_search: "Searching knowledge base",
-  chat_generate: "Generating response",
 };
-
-function getStepDetail(name: string, result: Record<string, unknown>): string {
-  if (name === "reasoning_research") return result.snippets_found != null ? `${result.snippets_found} snippets found` : "";
-  if (name === "reasoning_synthesize") return result.domain ? `${result.domain}` : "";
-  if (name === "reasoning_decompose") return result.goal_count != null ? `${result.goal_count} sub-goals` : "";
-  if (name === "reasoning_draft") return result.task_count != null ? `${result.task_count} tasks · ${result.milestone_count ?? 0} milestones` : "";
-  if (name === "reasoning_critique") return result.score != null ? `Quality score ${result.score}/10` : "";
-  if (name === "reasoning_finalize") return result.tasks_scheduled != null ? `${result.tasks_scheduled} tasks scheduled` : "";
-  if (name === "plan_create_task" || name === "plan_update_task") return result.title ? `"${result.title}"` : "";
-  if (name === "plan_create_milestone" || name === "plan_update_milestone") return result.title ? `"${result.title}"` : "";
-  if (name === "plan_create_project" || name === "plan_update_project") return result.name ? `"${result.name}"` : "";
-  if (name === "plan_detect_conflicts") return result.conflict_count != null ? `${result.conflict_count} conflict(s) found` : "";
-  if (name === "plan_auto_resolve") return result.remaining_conflicts != null ? `${result.remaining_conflicts} remaining` : "";
-  if (name === "plan_risk_assessment") return typeof result.score === "number" ? `Score ${result.score}/100` : "";
-  if (name === "plan_sync_wiki") return result.wiki_slug ? `synced to wiki` : "";
-  if (name === "plan_check_overdue") return result.overdue_count != null ? `${result.overdue_count} overdue` : "";
-  if (name === "plan_assign_project_roles") return result.member_count != null ? `${result.member_count} members assigned` : "";
-  if (name === "chat_load_context") return result.active_project ? `${result.active_project}` : result.project_count != null ? `${result.project_count} projects` : "";
-  if (name === "chat_wiki_search") return result.snippets_found != null ? `${result.snippets_found} snippets found` : "";
-  if (name === "chat_generate") return result.chars != null ? `${result.chars} chars` : "";
-  return "";
-}
 
 function getStepLabel(name: string, args?: string): string {
   const base = STEP_LABELS[name] || name.replace(/_/g, " ");
@@ -143,6 +115,11 @@ function riskColor(score: number): string {
   return "text-[var(--danger)]";
 }
 
+function riskBg(score: number): string {
+  if (score <= 30) return "bg-[var(--success-bg)]";
+  if (score <= 60) return "bg-[var(--warning)]/10";
+  return "bg-[var(--danger-bg)]";
+}
 
 export function AIPlannerOverlay({
   teamId,
@@ -150,9 +127,7 @@ export function AIPlannerOverlay({
   projectId = null,
   onClose,
   onPlanGenerated,
-  initialManual = false,
 }: AIPlannerOverlayProps) {
-  const { warning } = useToast();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -162,15 +137,15 @@ export function AIPlannerOverlay({
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Manual Setup State
-  const [isManualMode, setIsManualMode] = useState(initialManual);
+  const [isManualMode, setIsManualMode] = useState(false);
   const [manualName, setManualName] = useState("");
   const [manualDesc, setManualDesc] = useState("");
 
   // Initialize introductory message
   useEffect(() => {
     const greetText = mode === "manage"
-      ? "Hello! I am your AI Planner. Ask me questions about active projects, request a complete project plan, or assign tasks!"
-      : "Welcome to AI Planning! Let's build a new project plan together. Tell me what you'd like to build!";
+      ? "Hello! I am your AI Planner Architect. I have deep semantic access to your team's Wiki, active projects, team availability, and timeline risks. Ask me questions about active projects, request a complete project plan, or assign tasks!"
+      : "Welcome to the AI Plan Architect! Let's build a new strategic project plan together. Tell me what you'd like to build, or suggest a mission!";
     
     setMessages([
       {
@@ -194,7 +169,7 @@ export function AIPlannerOverlay({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      warning("Speech recognition is not supported in this browser.");
+      alert("Speech recognition is not supported in this browser.");
       return;
     }
 
@@ -238,7 +213,7 @@ export function AIPlannerOverlay({
     const text = (textToSend || inputText).trim();
     if (!text) return;
     if (mode === "manage" && !projectId) {
-      warning("No project is selected. Open a project and use AI Planner from the overview.");
+      alert("No project is selected. Open a project and use AI Architect from the overview.");
       return;
     }
 
@@ -349,19 +324,7 @@ export function AIPlannerOverlay({
                       knowledgeGaps: data.knowledge_gaps,
                       critiqueScore: data.critique_score,
                     };
-                    const pName = String(data.project_name || "Project");
-                    const tCount = Number(data.task_count ?? 0);
-                    const mCount = Number(data.milestone_count ?? 0);
-                    const cCount = Number(data.conflict_count ?? 0);
-                    const rScore = (data.risk as { score?: number } | undefined)?.score ?? 0;
-                    const summaryParts: string[] = [
-                      `**${tCount}** task${tCount !== 1 ? "s" : ""}`,
-                      `**${mCount}** milestone${mCount !== 1 ? "s" : ""}`,
-                      `risk score **${rScore}/100**`,
-                    ];
-                    if (cCount > 0) summaryParts.push(`**${cCount}** conflict${cCount !== 1 ? "s" : ""} detected`);
-                    const summaryText = `✅ **${pName}** created — ${summaryParts.join(", ")}. Check the execution panel for the full breakdown.`;
-                    return { ...msg, isStreaming: false, text: summaryText, planningState: planState };
+                    return { ...msg, isStreaming: false, planningState: planState };
                   } else if (currentEvent === "agent_error") {
                     throw new Error(data.detail || "Planning agent error");
                   }
@@ -387,7 +350,7 @@ export function AIPlannerOverlay({
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantMsgId
-            ? { ...msg, isStreaming: false, text: `⚠️ Error: ${err?.message || "Failed to communicate with the AI Planner."}` }
+            ? { ...msg, isStreaming: false, text: `⚠️ Error: ${err?.message || "Failed to communicate with AI Architect."}` }
             : msg
         )
       );
@@ -434,7 +397,7 @@ export function AIPlannerOverlay({
             </div>
             <div>
               <h2 className="text-base font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-2">
-                AI Planner
+                AI Planner Architect
                 <span className="text-[9px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
                   {mode === "manage" ? "Manage" : "Create"}
                 </span>
@@ -529,13 +492,7 @@ export function AIPlannerOverlay({
                                 ? "bg-gradient-to-br from-[var(--accent)] to-[#009ab0] text-white font-medium shadow-md"
                                 : "bg-[var(--surface-2)] text-[var(--text-primary)] border border-[var(--border-subtle)] border-l-2 border-l-[var(--accent)]/30"
                             }`}>
-                              {msg.sender === "architect" && msg.text ? (
-                                <div className="prose prose-sm prose-invert max-w-none text-[var(--text-primary)] [&_strong]:text-[var(--text-primary)] [&_a]:text-[var(--accent)]">
-                                  <ReactMarkdown>{msg.text}</ReactMarkdown>
-                                </div>
-                              ) : msg.text ? (
-                                msg.text
-                              ) : (
+                              {msg.text || (
                                 <span className="flex items-center gap-2 text-[var(--text-muted)]">
                                   <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" />
                                   <span className="text-[12px]">Architect is thinking…</span>
@@ -659,16 +616,6 @@ export function AIPlannerOverlay({
                                             "text-[var(--text-dim)]"
                               }`}>
                                 {step.label}
-                                {isDone && step.result && getStepDetail(step.name, step.result as Record<string, unknown>) && (
-                                  <div className="text-[9px] text-[var(--accent)] mt-0.5 font-medium">
-                                    {getStepDetail(step.name, step.result as Record<string, unknown>)}
-                                  </div>
-                                )}
-                                {isErr && step.result && !!(step.result as Record<string, unknown>).error && (
-                                  <div className="text-[9px] text-[var(--danger)] mt-0.5 font-medium truncate max-w-[160px]">
-                                    {String((step.result as Record<string, unknown>).error)}
-                                  </div>
-                                )}
                               </div>
                             </motion.div>
                           );

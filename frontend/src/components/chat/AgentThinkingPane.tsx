@@ -81,14 +81,14 @@ export function AgentThinkingPane({ thoughts, reflections, steps = [], isActive 
                       >
                         {/* Circle + connector line */}
                         <div className="flex flex-col items-center">
-                        <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 ${
-                            isDone ? "bg-[var(--success)]" :
-                            isErr  ? "bg-[var(--danger)]" :
-                                     "bg-[var(--border-strong)]"
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 transition-all duration-300 ${
+                            isDone ? "bg-[var(--success-bg)] border-[var(--success)] text-[var(--success)]" :
+                            isErr  ? "bg-[var(--danger-bg)] border-[var(--danger)] text-[var(--danger)]" :
+                                     "bg-[var(--surface-2)] border-[var(--accent)] text-[var(--accent)]"
                           }`}>
-                            {isDone && <Check className="w-2.5 h-2.5 text-white" />}
-                            {isErr  && <AlertTriangle className="w-2.5 h-2.5 text-white" />}
-                            {isPending && <Loader2 className="w-2.5 h-2.5 text-white animate-spin" />}
+                            {isDone && <Check className="w-2.5 h-2.5" />}
+                            {isErr  && <AlertTriangle className="w-2.5 h-2.5" />}
+                            {isPending && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
                           </div>
                           {!isLast && <div className="w-[2px] flex-1 min-h-[14px] bg-[var(--border-subtle)] mt-0.5" />}
                         </div>
@@ -113,7 +113,7 @@ export function AgentThinkingPane({ thoughts, reflections, steps = [], isActive 
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: idx * 0.05 }}
-                  className="text-[11px] text-[var(--text-secondary)] leading-relaxed rounded-lg px-3 py-2 border border-[var(--border-subtle)] italic"
+                  className="text-[11px] text-[var(--text-secondary)] leading-relaxed bg-[var(--bg-900)] rounded-lg px-3 py-2 border border-[var(--border-subtle)] italic"
                 >
                   {thought.content}
                 </motion.div>
