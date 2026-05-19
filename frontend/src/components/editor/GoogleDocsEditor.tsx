@@ -18,7 +18,7 @@ import { Markdown } from "@tiptap/markdown";
 import { Link } from "@tiptap/extension-link";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
-import { MathExtension } from '@aarkue/tiptap-math-extension';
+import { CustomMathExtension } from "./extensions/MathMarkdownExtension";
 import "katex/dist/katex.min.css";
 import Youtube from '@tiptap/extension-youtube';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
@@ -116,7 +116,7 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
         suggestion: getWikilinkSuggestion(teamId),
       }),
       Callout,
-      MathExtension.configure({
+      CustomMathExtension.configure({
         evaluation: false, // We just want rendering, not evaluation
       }),
       Youtube.configure({

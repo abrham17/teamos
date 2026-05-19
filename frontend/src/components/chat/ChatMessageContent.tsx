@@ -236,8 +236,27 @@ type ChatMessageContentProps = {
   streaming?: boolean;
 };
 
+function preprocessMath(content: string): string {
+  if (!content) return "";
+  // Replace block math \[ ... \] with $$ ... $$
+  let processed = content.replace(/\\\[([\s\S]*?)\\\]/g, (_, equation) => {
+    return `$$${equation}$$`;
+  });
+  // Replace inline math \( ... \) with $ ... $
+  processed = processed.replace(/\\\(([\s\S]*?)\\\)/g, (_, equation) => {
+    return `$${equation}$`;
+  });
+  return processed;
+}
+
 export function ChatMessageContent({ content, streaming }: ChatMessageContentProps) {
   const trimmed = (content ?? "").trim();
+
+  const processedContent = useMemo(() => {
+    if (!trimmed) return "";
+    const raw = streaming ? closeIncompleteMermaidFence(content) : content;
+    return preprocessMath(raw);
+  }, [content, trimmed, streaming]);
 
   const components = useMemo<Components>(
     () => ({
@@ -301,10 +320,10 @@ export function ChatMessageContent({ content, streaming }: ChatMessageContentPro
     <div className="chat-md max-w-none">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex, [rehypeSanitize, sanitizeSchema]]}
+        rehypePlugins={[[rehypeSanitize, sanitizeSchema], rehypeKatex]}
         components={components}
       >
-        {streaming ? closeIncompleteMermaidFence(content) : content}
+        {processedContent}
       </ReactMarkdown>
     </div>
   );
