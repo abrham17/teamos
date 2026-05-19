@@ -34,35 +34,35 @@ export default function UseCaseGrid() {
   ];
 
   return (
-    <section className="py-32 px-6 max-w-7xl mx-auto">
-      <div className="flex justify-between items-end mb-16 gap-8">
-        <div className="space-y-4 max-w-2xl text-left">
-          <h2 className="text-4xl md:text-6xl font-black uppercase tracking-tighter leading-none italic">
-            Built for <span className="text-gradient">Every Node.</span>
+    <section className="py-24 px-6 border-t border-[var(--border-subtle)]">
+      <div className="max-w-6xl mx-auto">
+        <div className="mb-14 space-y-3">
+          <h2 className="text-4xl md:text-5xl font-bold tracking-tight">
+            Built for every team.
           </h2>
-          <p className="text-slate-500 text-lg uppercase tracking-widest font-bold font-display">Specialized verticals for advanced knowledge operations.</p>
+          <p className="text-[var(--text-muted)] text-base">Specialized for the verticals that matter most.</p>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {cases.map((c, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className={cn(
-              "p-8 rounded-[2rem] bg-white/5 border border-white/5 hover:border-white/20 transition-all group",
-              c.span
-            )}
-          >
-            <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-              {c.icon}
-            </div>
-            <h3 className="text-3xl font-black uppercase tracking-tighter mb-4 italic text-white">{c.title}</h3>
-            <p className="text-slate-500 text-sm leading-relaxed font-mono uppercase tracking-widest">{c.desc}</p>
-          </motion.div>
-        ))}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-[var(--border-subtle)]">
+          {cases.map((c, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 16 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.08 }}
+              className={cn(
+                "p-8 bg-[var(--bg-950)] hover:bg-[var(--bg-800)] transition-colors group",
+                c.span
+              )}
+            >
+              <div className="mb-5 text-[var(--accent)]">
+                {c.icon}
+              </div>
+              <h3 className="text-xl font-semibold mb-3">{c.title}</h3>
+              <p className="text-[var(--text-muted)] text-[13px] leading-relaxed">{c.desc}</p>
+            </motion.div>
+          ))}
+        </div>
       </div>
     </section>
   );

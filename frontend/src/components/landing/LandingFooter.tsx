@@ -5,98 +5,90 @@ import Link from 'next/link';
 
 export default function LandingFooter() {
   return (
-    <footer className="relative z-10 border-t border-white/5 bg-[#020617] py-20 px-6 overflow-hidden">
-      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-blue-600/5 rounded-full blur-[100px] pointer-events-none" />
-      
-      <div className="max-w-7xl mx-auto mb-20">
-        <div className="relative p-8 rounded-3xl bg-white/5 border border-white/10 backdrop-blur-sm overflow-hidden group hover:border-blue-500/30 transition-all">
-          <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
-            <div className="text-8xl font-black italic uppercase tracking-tighter">PRICING</div>
+    <footer className="border-t border-[var(--border-subtle)] bg-[var(--bg-950)] py-16 px-6">
+      {/* CTA strip */}
+      <div className="max-w-6xl mx-auto mb-16">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-6 p-8 border border-[var(--border-subtle)] bg-[var(--bg-800)]">
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold">Scale your architecture.</h3>
+            <p className="text-[var(--text-muted)] text-[13px]">Simple per-user pricing with no hidden fees.</p>
           </div>
-          <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
-            <div className="space-y-2">
-              <h3 className="text-2xl font-black uppercase italic tracking-tighter text-white">Scale your architecture.</h3>
-              <p className="text-slate-500 text-xs font-bold uppercase tracking-[0.2em]">Simple per-user pricing with no hidden fees.</p>
+          <div className="flex items-center gap-8">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-[var(--accent)]">$20</div>
+              <div className="text-[11px] text-[var(--text-dim)] uppercase tracking-wider mt-0.5">Team / user</div>
             </div>
-            <div className="flex items-center gap-6">
-              <div className="text-center">
-                <div className="text-3xl font-black italic tracking-tighter text-blue-500">$20</div>
-                <div className="text-[10px] font-black uppercase tracking-widest text-slate-600">Team / User</div>
-              </div>
-              <div className="w-px h-10 bg-white/10" />
-              <div className="text-center">
-                <div className="text-3xl font-black italic tracking-tighter text-purple-500">$30</div>
-                <div className="text-[10px] font-black uppercase tracking-widest text-slate-600">Pro / User</div>
-              </div>
-              <Link 
-                href="/settings?billing=true"
-                className="ml-4 bg-white text-black px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-transform"
-              >
-                Get Started
-              </Link>
+            <div className="w-px h-8 bg-[var(--border-subtle)]" />
+            <div className="text-center">
+              <div className="text-2xl font-bold text-[var(--accent)]">$30</div>
+              <div className="text-[11px] text-[var(--text-dim)] uppercase tracking-wider mt-0.5">Pro / user</div>
             </div>
+            <Link
+              href="/settings?billing=true"
+              className="ml-2 bg-[var(--accent)] text-white px-6 py-2.5 text-[12px] font-medium hover:bg-[var(--accent-dark)] transition-colors"
+            >
+              Get started
+            </Link>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-5 gap-12">
-        <div className="col-span-1 md:col-span-2 space-y-6">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-black text-white shadow-lg">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-5 gap-12">
+        <div className="col-span-1 md:col-span-2 space-y-5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-6 h-6 bg-[var(--accent)] flex items-center justify-center font-bold text-white text-xs">
               T
             </div>
-            <span className="font-display font-black tracking-tighter text-2xl uppercase italic">TeamOS</span>
+            <span className="font-semibold tracking-tight text-[15px]">TeamOS</span>
           </div>
-          <p className="text-slate-500 text-sm max-w-sm leading-relaxed uppercase tracking-widest font-bold">
-            The knowledge engine for agentic teams. documentation that builds itself.
+          <p className="text-[var(--text-dim)] text-[13px] max-w-xs leading-relaxed">
+            The knowledge engine for agentic teams. Documentation that builds itself.
           </p>
-          <div className="flex gap-4">
-             <div className="w-8 h-8 rounded-full border border-white/5 flex items-center justify-center text-slate-500 hover:text-white hover:border-white/20 cursor-pointer transition-all">𝕏</div>
-             <div className="w-8 h-8 rounded-full border border-white/5 flex items-center justify-center text-slate-500 hover:text-white hover:border-white/20 cursor-pointer transition-all">gh</div>
+          <div className="flex gap-3">
+            <div className="w-7 h-7 border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] cursor-pointer transition-colors text-xs">𝕏</div>
+            <div className="w-7 h-7 border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] cursor-pointer transition-colors text-xs">gh</div>
           </div>
         </div>
 
-        <div className="space-y-6">
-          <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">Engine</h4>
-          <ul className="space-y-4 text-xs font-bold uppercase tracking-widest text-slate-600">
-            <li><Link href="/wiki" className="hover:text-[var(--accent)] transition-colors">Wiki loop</Link></li>
-            <li><Link href="/graph" className="hover:text-[var(--accent)] transition-colors">Graph semantics</Link></li>
-            <li><Link href="/chat" className="hover:text-[var(--accent)] transition-colors">Agentic Chat</Link></li>
-            <li><Link href="/ingest" className="hover:text-[var(--accent)] transition-colors">Ingest pipeline</Link></li>
+        <div className="space-y-4">
+          <h4 className="text-[11px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">Engine</h4>
+          <ul className="space-y-3 text-[13px] text-[var(--text-dim)]">
+            <li><Link href="/wiki" className="hover:text-[var(--text-primary)] transition-colors">Wiki</Link></li>
+            <li><Link href="/graph" className="hover:text-[var(--text-primary)] transition-colors">Graph</Link></li>
+            <li><Link href="/chat" className="hover:text-[var(--text-primary)] transition-colors">Chat</Link></li>
+            <li><Link href="/ingest" className="hover:text-[var(--text-primary)] transition-colors">Ingest</Link></li>
           </ul>
         </div>
 
-        <div className="space-y-6">
-          <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">Platform</h4>
-          <ul className="space-y-4 text-xs font-bold uppercase tracking-widest text-slate-600">
-            <li><Link href="/settings" className="hover:text-[var(--accent)] transition-colors">Settings</Link></li>
-            <li><Link href="/settings?billing=true" className="hover:text-[var(--accent)] transition-colors">Billing</Link></li>
-            <li><Link href="/docs" className="hover:text-[var(--accent)] transition-colors">API Docs</Link></li>
-            <li><Link href="/legal" className="hover:text-[var(--accent)] transition-colors">Privacy & Terms</Link></li>
+        <div className="space-y-4">
+          <h4 className="text-[11px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">Platform</h4>
+          <ul className="space-y-3 text-[13px] text-[var(--text-dim)]">
+            <li><Link href="/settings" className="hover:text-[var(--text-primary)] transition-colors">Settings</Link></li>
+            <li><Link href="/settings?billing=true" className="hover:text-[var(--text-primary)] transition-colors">Billing</Link></li>
+            <li><Link href="/docs" className="hover:text-[var(--text-primary)] transition-colors">API Docs</Link></li>
+            <li><Link href="/legal" className="hover:text-[var(--text-primary)] transition-colors">Privacy &amp; Terms</Link></li>
           </ul>
         </div>
 
-        <div className="space-y-6">
-          <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">Plans</h4>
-          <ul className="space-y-4 text-xs font-bold uppercase tracking-widest text-slate-600">
-            <li><Link href="/settings?billing_plan=free" className="hover:text-green-500 transition-colors">Start Free</Link></li>
-            <li><Link href="/settings?billing_plan=team" className="hover:text-blue-500 transition-colors">Team Plan</Link></li>
-            <li><Link href="/settings?billing_plan=pro" className="hover:text-purple-500 transition-colors">Pro Plan</Link></li>
-            <li><Link href="/settings?billing=true" className="hover:text-white transition-colors">Compare All</Link></li>
+        <div className="space-y-4">
+          <h4 className="text-[11px] font-semibold uppercase tracking-widest text-[var(--text-muted)]">Plans</h4>
+          <ul className="space-y-3 text-[13px] text-[var(--text-dim)]">
+            <li><Link href="/settings?billing_plan=free" className="hover:text-[var(--text-primary)] transition-colors">Free</Link></li>
+            <li><Link href="/settings?billing_plan=team" className="hover:text-[var(--text-primary)] transition-colors">Team</Link></li>
+            <li><Link href="/settings?billing_plan=pro" className="hover:text-[var(--text-primary)] transition-colors">Pro</Link></li>
+            <li><Link href="/settings?billing=true" className="hover:text-[var(--text-primary)] transition-colors">Compare</Link></li>
           </ul>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto mt-20 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
-        <p className="text-[10px] font-bold text-slate-700 uppercase tracking-widest">
-          © 2026 TeamOS. Build 4.1.2-alpha. All rights reserved.
+      <div className="max-w-6xl mx-auto mt-14 pt-6 border-t border-[var(--border-subtle)] flex flex-col md:flex-row justify-between items-center gap-4">
+        <p className="text-[12px] text-[var(--text-dim)]">
+          © 2026 TeamOS. All rights reserved.
         </p>
-        <div className="flex gap-6">
-           <span className="text-[10px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
-              All Systems Operational
-           </span>
-        </div>
+        <span className="text-[12px] text-[var(--text-dim)] flex items-center gap-2">
+          <span className="w-1.5 h-1.5 bg-[var(--success)]" />
+          All systems operational
+        </span>
       </div>
     </footer>
   );

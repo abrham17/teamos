@@ -43,84 +43,65 @@ export default function AgentShowcase() {
   ];
 
   return (
-    <section className="py-32 px-6 max-w-7xl mx-auto flex flex-col lg:flex-row gap-16 items-center">
-      <div className="lg:w-1/2 space-y-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-purple-500/10 border border-purple-500/20 rounded-full">
-          <Cpu className="w-3 h-3 text-purple-400" />
-          <span className="text-[10px] uppercase font-bold tracking-widest text-purple-400">Phase 02: Execution</span>
+    <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-12 items-start">
+      <div className="lg:w-1/2 space-y-6">
+        <div className="inline-flex items-center gap-2 px-3 py-1 border border-[var(--border-subtle)] bg-[var(--bg-800)]">
+          <Cpu className="w-3 h-3 text-[var(--accent)]" />
+          <span className="text-[11px] uppercase font-medium tracking-widest text-[var(--text-muted)]">Context-Driven Execution</span>
         </div>
-        
-        <h2 className="text-6xl md:text-8xl font-black uppercase tracking-tighter leading-[0.85]">
-          Context-Driven <br />
-          <span className="text-gradient">Planning.</span>
+
+        <h2 className="text-4xl md:text-5xl font-bold tracking-tight leading-tight">
+          Context-driven<br />
+          <span className="text-[var(--accent)]">planning.</span>
         </h2>
-        
-        <p className="text-slate-400 text-xl max-w-lg leading-relaxed">
-          The wiki isn&apos;t just for reading. Our agents use it as a grounding layer. They read your entire interlinked logic before architecting a single task, ensuring plans are authoritative, not just estimated.
+
+        <p className="text-[var(--text-muted)] text-base max-w-md leading-relaxed">
+          The wiki isn&apos;t just for reading. Agents use it as a grounding layer — reading your entire interlinked logic before architecting a single task.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-4">
           {stages.map((s, i) => (
-            <div 
+            <div
               key={i}
               className={cn(
-                "p-4 rounded-2xl border transition-all duration-500",
-                activeStage === i ? "bg-white/10 border-white/20 shadow-xl" : "bg-transparent border-white/5 opacity-40 grayscale"
+                "p-4 border transition-colors duration-300",
+                activeStage === i
+                  ? "border-[var(--accent)]/40 bg-[var(--accent-subtle)]"
+                  : "border-[var(--border-subtle)] bg-transparent opacity-50"
               )}
             >
-              <div className="flex items-center gap-3 mb-2">
-                <div className={cn(
-                  "p-2 rounded-lg",
-                  i === 0 ? "bg-blue-500/20 text-blue-400" :
-                  i === 1 ? "bg-purple-500/20 text-purple-400" :
-                  i === 2 ? "bg-pink-500/20 text-pink-400" : "bg-emerald-500/20 text-emerald-400"
-                )}>
-                  {s.icon}
-                </div>
-                <h4 className="font-bold uppercase tracking-tighter text-sm italic">{s.title}</h4>
+              <div className="flex items-center gap-2.5 mb-2">
+                <div className="text-[var(--accent)]">{s.icon}</div>
+                <h4 className="font-medium text-[13px]">{s.title}</h4>
               </div>
-              <p className="text-[10px] text-slate-500 line-clamp-2 uppercase tracking-wider leading-relaxed">{s.desc}</p>
+              <p className="text-[12px] text-[var(--text-dim)] leading-relaxed">{s.desc}</p>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="lg:w-1/2 w-full h-[500px] glass rounded-[3rem] border border-white/5 relative overflow-hidden flex items-center justify-center">
-         {/* Live "System Log" Animation */}
-         <div className="absolute inset-0 p-8 font-mono text-[10px] text-blue-500/30 overflow-hidden pointer-events-none uppercase tracking-tighter select-none">
-            {Array.from({ length: 20 }).map((_, i) => (
-              <motion.div 
-                key={i}
-                animate={{ x: [-20, 20, -20], opacity: [0.1, 0.3, 0.1] }}
-                transition={{ duration: 5 + i, repeat: Infinity }}
-                className="mb-1"
-              >
-                [SYSTEM] LOG_{8274 + i} :: ANALYZING_CONTEXT_SLICE_{i} :: CONFIDENCE=0.9{i}
-              </motion.div>
-            ))}
-         </div>
-
+      <div className="lg:w-1/2 w-full h-[440px] border border-[var(--border-subtle)] bg-[var(--bg-800)] relative overflow-hidden flex items-center justify-center">
          <div className="relative w-full max-w-sm px-8 space-y-4">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeStage}
-                initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -20, scale: 1.05 }}
-                transition={{ duration: 0.5 }}
-                className="bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl relative z-10"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -16 }}
+                transition={{ duration: 0.4 }}
+                className="border border-[var(--border-subtle)] bg-[var(--bg-700)] p-6 relative z-10"
               >
                 {activeStage === 0 && (
                    <div className="flex flex-col gap-4">
-                      <div className="h-2 w-1/3 bg-blue-500/20 rounded-full overflow-hidden">
-                        <motion.div initial={{ width: 0 }} animate={{ width: "100%" }} className="h-full bg-blue-400" />
+                      <div className="h-1 w-1/3 bg-[var(--bg-600)] overflow-hidden">
+                        <motion.div initial={{ width: 0 }} animate={{ width: "100%" }} className="h-full bg-[var(--accent)]" />
                       </div>
                       <div className="space-y-2">
-                        <div className="h-3 w-full bg-white/5 rounded" />
-                        <div className="h-3 w-3/4 bg-white/5 rounded" />
-                        <div className="h-3 w-5/6 bg-white/5 rounded" />
+                        <div className="h-2.5 w-full bg-[var(--bg-600)]" />
+                        <div className="h-2.5 w-3/4 bg-[var(--bg-600)]" />
+                        <div className="h-2.5 w-5/6 bg-[var(--bg-600)]" />
                       </div>
-                      <span className="text-[9px] text-blue-400 uppercase tracking-widest font-mono">Scanning Knowledge Graph...</span>
+                      <span className="text-[10px] text-[var(--accent)] uppercase tracking-widest font-mono">Scanning knowledge graph...</span>
                    </div>
                 )}
 
@@ -128,11 +109,11 @@ export default function AgentShowcase() {
                   <div className="space-y-4">
                     {[1, 2, 3].map(i => (
                       <div key={i} className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded bg-purple-500/20 border border-purple-500/30 text-purple-400 flex items-center justify-center text-[10px] font-bold italic">M{i}</div>
-                        <div className="h-2 flex-1 bg-white/5 rounded" />
+                        <div className="w-8 h-8 border border-[var(--border-subtle)] bg-[var(--bg-600)] text-[var(--accent)] flex items-center justify-center text-[10px] font-bold">M{i}</div>
+                        <div className="h-1.5 flex-1 bg-[var(--bg-600)]" />
                       </div>
                     ))}
-                    <span className="text-[9px] text-purple-400 uppercase tracking-widest font-mono">Sequencing Milestones...</span>
+                    <span className="text-[10px] text-[var(--accent)] uppercase tracking-widest font-mono">Sequencing milestones...</span>
                   </div>
                 )}
 
@@ -142,12 +123,12 @@ export default function AgentShowcase() {
                       <motion.div 
                         initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: i * 0.1 }}
                         key={user} 
-                        className="px-3 py-1 bg-pink-500 text-black font-black text-[10px] rounded tracking-widest"
+                        className="px-3 py-1 bg-[var(--accent)] text-white font-semibold text-[10px] tracking-widest"
                       >
                         {user}
                       </motion.div>
                     ))}
-                    <span className="w-full text-[9px] text-pink-400 uppercase tracking-widest font-mono mt-2">Optimal Resource Alloc...</span>
+                    <span className="w-full text-[10px] text-[var(--accent)] uppercase tracking-widest font-mono mt-2">Optimal resource alloc...</span>
                   </div>
                 )}
 
@@ -155,19 +136,19 @@ export default function AgentShowcase() {
                   <div className="flex flex-col items-center gap-4 py-4 text-center">
                     <motion.div
                       initial={{ scale: 0 }}
-                      animate={{ scale: [0, 1.2, 1] }}
-                      className="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center text-black"
+                      animate={{ scale: [0, 1.1, 1] }}
+                      className="w-14 h-14 bg-[var(--success)] flex items-center justify-center text-white"
                     >
                       <CheckSquare className="w-8 h-8" />
                     </motion.div>
                     <h5 className="font-bold uppercase tracking-tighter text-white">Project Initialized</h5>
-                    <span className="text-slate-500 text-[10px] font-mono tracking-widest">WORKSPACE_UUID_A82-F19</span>
+                    <span className="text-[var(--text-dim)] text-[10px] font-mono tracking-widest">WORKSPACE_UUID_A82-F19</span>
                   </div>
                 )}
               </motion.div>
             </AnimatePresence>
          </div>
       </div>
-    </section>
+    </div>
   );
 }

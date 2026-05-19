@@ -1,39 +1,38 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap');
 @import "tailwindcss";
 
 /* ─── Dark Theme (Default) ──────────────────────────────────────── */
 :root, [data-theme="dark"] {
-  /* Backgrounds */
-  --bg-950: #020204;
-  --bg-900: #050508;
-  --bg-800: #0a0a10;
-  --bg-700: #12121a;
-  --bg-600: #1c1c28;
-  --bg-500: #282838;
+  /* Backgrounds — zinc scale, slightly warm */
+  --bg-950: #0d0d0f;
+  --bg-900: #111114;
+  --bg-800: #18181c;
+  --bg-700: #1e1e23;
+  --bg-600: #26262d;
+  --bg-500: #2e2e37;
 
-  /* Text */
-  --text-primary: #f0f0f8;
-  --text-secondary: #a3a3b5;
-  --text-muted: #6e6e80;
-  --text-dim: #434354;
+  /* Text — zinc scale */
+  --text-primary: #f4f4f5;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --text-dim: #3f3f46;
 
-  /* Accent — Cyberpunk Cyan */
-  --accent: #00d4e8;
-  --accent-rgb: 0, 212, 232;
-  --accent-light: #70ffff;
-  --accent-dark: #009ab0;
-  --accent-glow: rgba(0, 212, 232, 0.35);
-  --accent-subtle: rgba(0, 212, 232, 0.1);
+  /* Accent — Indigo (ElevenLabs-inspired) */
+  --accent: #6366f1;
+  --accent-rgb: 99, 102, 241;
+  --accent-light: #818cf8;
+  --accent-dark: #4f46e5;
+  --accent-glow: rgba(99, 102, 241, 0.25);
+  --accent-subtle: rgba(99, 102, 241, 0.1);
 
   /* Status */
-  --success: #00e898;
-  --warning: #ffb800;
-  --danger: #ff3366;
-  --info: #00c3ff;
-  --success-bg: rgba(0, 232, 152, 0.1);
-  --danger-bg: rgba(255, 51, 102, 0.1);
-  --warning-bg: rgba(255, 184, 0, 0.1);
-  --info-bg: rgba(0, 195, 255, 0.1);
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #3b82f6;
+  --success-bg: rgba(34, 197, 94, 0.08);
+  --danger-bg: rgba(239, 68, 68, 0.08);
+  --warning-bg: rgba(245, 158, 11, 0.08);
+  --info-bg: rgba(59, 130, 246, 0.08);
 
   /* Legacy aliases */
   --green: var(--success);
@@ -49,33 +48,33 @@
   --surface-2: var(--bg-700);
   --surface-3: var(--bg-600);
 
-  /* Borders */
-  --border-subtle: rgba(255, 255, 255, 0.05);
-  --border-strong: rgba(255, 255, 255, 0.1);
+  /* Borders — ElevenLabs-thin */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.11);
   --border: var(--border-subtle);
   --border-hover: var(--border-strong);
   --ring: var(--accent);
 
-  /* Glass */
-  --glass-bg: rgba(5, 5, 8, 0.65);
-  --glass-bg-light: rgba(5, 5, 8, 0.4);
+  /* Glass (kept for compat, rarely needed now) */
+  --glass-bg: rgba(13, 13, 15, 0.8);
+  --glass-bg-light: rgba(13, 13, 15, 0.5);
   --glass-border: rgba(255, 255, 255, 0.06);
-  --glass-blur: 24px;
-  --glass-heavy-bg: rgba(2, 2, 4, 0.88);
+  --glass-blur: 20px;
+  --glass-heavy-bg: rgba(13, 13, 15, 0.92);
 
-  /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.55);
-  --shadow-glow: 0 0 20px var(--accent-glow);
-  --shadow-1: var(--shadow-sm);
-  --shadow-2: var(--shadow-md);
-  --shadow-3: var(--shadow-lg);
+  /* Shadows — zeroed out by flat-design rule, kept as fallback vars */
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-glow: none;
+  --shadow-1: none;
+  --shadow-2: none;
+  --shadow-3: none;
 
-  /* Typography */
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-display: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  /* Typography — Geist (loaded in layout.tsx) */
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
   --text-base: 14px;
   --leading-base: 1.6;
   --heading-1: 2rem;
@@ -97,16 +96,16 @@
   --reading-max-w: 760px;
 
   /* Layout */
-  --radius-xs: 6px;
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
-  --radius-xl: 28px;
-  --radius-2xl: 36px;
-  --radius: var(--radius-md);
-  --sidebar-w: 240px;
-  --sidebar-w-collapsed: 72px;
-  --sidebar-w-rail: 72px;
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius: 0px;
+  --sidebar-w: 220px;
+  --sidebar-w-collapsed: 56px;
+  --sidebar-w-rail: 56px;
   --header-h: 52px;
   --panel-max-w: 1024px;
 
@@ -121,41 +120,41 @@
   --t-slow: 400ms var(--ease);
 
   /* Compat */
-  --primary-50: #e0faff;
-  --primary-100: #b3f2ff;
-  --primary-500: #00d4e8;
-  --primary-900: #004d66;
+  --primary-50: #eef2ff;
+  --primary-100: #e0e7ff;
+  --primary-500: #6366f1;
+  --primary-900: #312e81;
 }
 
 /* ─── Light Theme ────────────────────────────────────────────────── */
 [data-theme="light"] {
-  --bg-950: #eff0f5;
-  --bg-900: #f7f7fc;
+  --bg-950: #fafafa;
+  --bg-900: #f5f5f5;
   --bg-800: #ffffff;
-  --bg-700: #ebebf3;
-  --bg-600: #dfdfe8;
-  --bg-500: #cfcfdc;
+  --bg-700: #ececec;
+  --bg-600: #e4e4e7;
+  --bg-500: #d4d4d8;
 
-  --text-primary: #0c0c16;
-  --text-secondary: #383850;
-  --text-muted: #68687e;
-  --text-dim: #9898b2;
+  --text-primary: #09090b;
+  --text-secondary: #3f3f46;
+  --text-muted: #71717a;
+  --text-dim: #a1a1aa;
 
-  --accent: #0070f3;
-  --accent-rgb: 0, 112, 243;
-  --accent-light: #3291ff;
-  --accent-dark: #0050bb;
-  --accent-glow: rgba(0, 112, 243, 0.22);
-  --accent-subtle: rgba(0, 112, 243, 0.08);
+  --accent: #4f46e5;
+  --accent-rgb: 79, 70, 229;
+  --accent-light: #6366f1;
+  --accent-dark: #3730a3;
+  --accent-glow: rgba(79, 70, 229, 0.18);
+  --accent-subtle: rgba(79, 70, 229, 0.08);
 
-  --success: #00a855;
+  --success: #16a34a;
   --warning: #d97706;
   --danger: #dc2626;
-  --info: #0284c7;
-  --success-bg: rgba(0, 168, 85, 0.08);
+  --info: #2563eb;
+  --success-bg: rgba(22, 163, 74, 0.08);
   --danger-bg: rgba(220, 38, 38, 0.08);
   --warning-bg: rgba(217, 119, 6, 0.08);
-  --info-bg: rgba(2, 132, 199, 0.08);
+  --info-bg: rgba(37, 99, 235, 0.08);
 
   --green: var(--success);
   --yellow: var(--warning);
@@ -165,27 +164,27 @@
   --red-bg: var(--danger-bg);
 
   --surface-1: #ffffff;
-  --surface-2: #f3f3f8;
+  --surface-2: #f4f4f5;
   --surface-3: var(--bg-700);
 
   --border-subtle: rgba(0, 0, 0, 0.07);
-  --border-strong: rgba(0, 0, 0, 0.14);
+  --border-strong: rgba(0, 0, 0, 0.13);
 
-  --glass-bg: rgba(255, 255, 255, 0.75);
-  --glass-bg-light: rgba(255, 255, 255, 0.5);
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-bg-light: rgba(255, 255, 255, 0.6);
   --glass-border: rgba(0, 0, 0, 0.06);
-  --glass-heavy-bg: rgba(250, 250, 254, 0.92);
+  --glass-heavy-bg: rgba(250, 250, 250, 0.95);
 
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
-  --shadow-glow: 0 0 20px rgba(0, 112, 243, 0.18);
-  --shadow-1: var(--shadow-sm);
-  --shadow-2: var(--shadow-md);
-  --shadow-3: var(--shadow-lg);
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-glow: none;
+  --shadow-1: none;
+  --shadow-2: none;
+  --shadow-3: none;
 
-  --primary-500: #0070f3;
-  --primary-900: #003d8a;
+  --primary-500: #6366f1;
+  --primary-900: #312e81;
 }
 
 /* ─── Base Layer ─────────────────────────────────────────────────── */
@@ -272,7 +271,7 @@
   height: min(52vmin, 480px);
   left: -12%;
   top: 8%;
-  background: radial-gradient(circle, rgba(0, 212, 232, 0.42) 0%, transparent 72%);
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.18) 0%, transparent 72%);
   animation: graph-ambient-drift-a 18s ease-in-out infinite;
 }
 
@@ -281,7 +280,7 @@
   height: min(44vmin, 400px);
   right: -8%;
   bottom: 5%;
-  background: radial-gradient(circle, rgba(168, 85, 247, 0.38) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(129, 140, 248, 0.15) 0%, transparent 70%);
   animation: graph-ambient-drift-b 22s ease-in-out infinite;
 }
 
@@ -290,7 +289,7 @@
   height: min(36vmin, 320px);
   left: 35%;
   bottom: 18%;
-  background: radial-gradient(circle, rgba(34, 197, 94, 0.22) 0%, transparent 68%);
+  background: radial-gradient(circle, rgba(34, 197, 94, 0.12) 0%, transparent 68%);
   animation: graph-ambient-drift-c 14s ease-in-out infinite;
 }
 
@@ -326,8 +325,9 @@
 }
 
 .text-gradient {
-  background: linear-gradient(to right, #60a5fa, #a855f7, #ec4899);
+  background: linear-gradient(to right, #818cf8, #6366f1);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 

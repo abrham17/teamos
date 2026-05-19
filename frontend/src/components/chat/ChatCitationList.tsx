@@ -26,18 +26,18 @@ function CitationLink({ c }: { c: ChatCitation }) {
   return (
     <Link
       href={href}
-      className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] hover:bg-[var(--surface-2)] hover:border-[var(--accent)]/30 hover:shadow-glow transition-all duration-300 group"
+      className="flex items-center gap-2 px-3 py-1.5 border border-[var(--border-subtle)] bg-[var(--bg-800)] hover:bg-[var(--bg-700)] hover:border-[var(--border-strong)] transition-colors duration-150 group"
     >
       {isPlan ? (
-          <Layers className="h-3 w-3 text-[var(--warning)] group-hover:scale-110 transition-transform" />
+          <Layers className="h-3 w-3 text-[var(--warning)] shrink-0" />
       ) : (
-          <FileText className="h-3 w-3 text-[var(--accent)] group-hover:scale-110 transition-transform" />
+          <FileText className="h-3 w-3 text-[var(--accent)] shrink-0" />
       )}
-      <span className="text-[11px] font-semibold text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] truncate max-w-[120px]">
+      <span className="text-[11px] font-medium text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] truncate max-w-[120px] transition-colors">
         {displayTitle}
       </span>
       {isPlan && c.source_kind && (
-          <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-[var(--warning)]/10 text-[var(--warning)] border border-[var(--warning)]/20">
+          <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 bg-[var(--warning-bg)] text-[var(--warning)] border border-[var(--warning)]/15">
               {c.source_kind}
           </span>
       )}
