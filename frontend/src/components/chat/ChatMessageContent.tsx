@@ -7,6 +7,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import type { Components } from "react-markdown";
+import { preprocessMath } from "../editor/extensions/MathMarkdownExtension";
 
 import "katex/dist/katex.min.css";
 
@@ -236,43 +237,7 @@ type ChatMessageContentProps = {
   streaming?: boolean;
 };
 
-function preprocessMath(content: string): string {
-  if (!content) return "";
-
-  let processed = content;
-
-  // 1. Replace explicit escaped block math: \[ ... \] or \\[ ... \\] etc.
-  processed = processed.replace(/\\+\[([\s\S]*?)\\+\]/g, (_, equation) => {
-    return formatBlockMath(equation);
-  });
-
-  // 2. Replace brackets on separate lines:
-  // [
-  // ...
-  // ]
-  processed = processed.replace(/(?:^|\n)\[\s*\n([\s\S]*?)\n\s*\](?:\n|$)/g, (_, equation) => {
-    return formatBlockMath(equation);
-  });
-
-  // 3. Replace explicit escaped inline math: \( ... \) or \\( ... \\) etc.
-  processed = processed.replace(/\\+\(([\s\S]*?)\\+\)/g, (_, equation) => {
-    return `$${equation.trim()}$`;
-  });
-
-  // 4. Convert inline math variables in parentheses like (a_i), (b_i), (c_i), (d_i), (x_n)
-  processed = processed.replace(/\((([a-zA-Z])_([a-zA-Z0-9]+))\)/g, (_, equation) => {
-    return `$${equation}$`;
-  });
-
-  return processed;
-}
-
-function formatBlockMath(equation: string): string {
-  // Fix single backslashes at the end of lines inside the equation
-  let cleaned = equation.replace(/\\(?:\s*\n)/g, "\\\\\n");
-  cleaned = cleaned.replace(/\\{3,}(?:\s*\n)/g, "\\\\\n");
-  return `\n\n$$\n${cleaned.trim()}\n$$\n\n`;
-}
+// Math preprocessing is now imported from extensions/MathMarkdownExtension
 
 export function ChatMessageContent({ content, streaming }: ChatMessageContentProps) {
   const trimmed = (content ?? "").trim();

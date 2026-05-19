@@ -18,7 +18,7 @@ import { Markdown } from "@tiptap/markdown";
 import { Link } from "@tiptap/extension-link";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
-import { CustomMathExtension } from "./extensions/MathMarkdownExtension";
+import { CustomMathExtension, preprocessMath } from "./extensions/MathMarkdownExtension";
 import "katex/dist/katex.min.css";
 import Youtube from '@tiptap/extension-youtube';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
@@ -63,7 +63,7 @@ function getEditorMarkdown(editor: NonNullable<ReturnType<typeof useEditor>>): s
 }
 
 function setEditorMarkdownContent(editor: NonNullable<ReturnType<typeof useEditor>>, markdown: string) {
-  const value = markdown || "";
+  const value = preprocessMath(markdown || "");
   editor.commands.setContent(value, {
     contentType: "markdown",
     emitUpdate: false,
@@ -164,6 +164,9 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
     editorProps: {
       attributes: {
         class: "prose prose-invert max-w-none focus:outline-none min-h-[500px] pb-32 tiptap",
+      },
+      transformPastedText(text) {
+        return preprocessMath(text);
       },
     },
     onCreate: ({ editor }) => {
