@@ -366,26 +366,26 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col h-full bg-[var(--bg-900)] overflow-y-auto">
-      <div className="flex items-center h-12 border-b border-[var(--border-subtle)] px-6 shrink-0 bg-[var(--bg-900)] justify-between">
-        <h2 className="text-[13px] font-semibold text-[var(--text-primary)] flex items-center gap-2">
-          <Settings2 className="w-4 h-4" /> Settings
+      <div className="flex items-center h-14 border-b border-[var(--border-subtle)] px-6 shrink-0 bg-[var(--bg-900)] justify-between">
+        <h2 className="text-[14px] font-semibold text-[var(--text-primary)] flex items-center gap-2">
+          <Settings2 className="w-4 h-4 text-[var(--accent)]" /> Settings
         </h2>
-        <div className="flex items-center border border-[var(--border-subtle)]">
-          <button 
+        <div className="flex items-center gap-1 bg-[var(--bg-800)] border border-[var(--border-subtle)] rounded-xl p-1">
+          <button
             onClick={() => setActiveTab("profile")}
-            className={`px-4 py-1.5 text-[11px] font-semibold uppercase tracking-widest transition-colors ${activeTab === 'profile' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)]'}`}
+            className={`px-4 py-1.5 text-[12px] font-medium rounded-lg transition-all ${activeTab === 'profile' ? 'bg-[var(--accent)] text-white shadow-[var(--shadow-sm)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)]'}`}
           >
             Profile
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab("members")}
-            className={`px-4 py-1.5 text-[11px] font-semibold uppercase tracking-widest transition-colors border-l border-[var(--border-subtle)] ${activeTab === 'members' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)]'}`}
+            className={`px-4 py-1.5 text-[12px] font-medium rounded-lg transition-all ${activeTab === 'members' ? 'bg-[var(--accent)] text-white shadow-[var(--shadow-sm)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)]'}`}
           >
             Members
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab("billing")}
-            className={`px-4 py-1.5 text-[11px] font-semibold uppercase tracking-widest transition-colors border-l border-[var(--border-subtle)] ${activeTab === 'billing' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)]'}`}
+            className={`px-4 py-1.5 text-[12px] font-medium rounded-lg transition-all ${activeTab === 'billing' ? 'bg-[var(--accent)] text-white shadow-[var(--shadow-sm)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)]'}`}
           >
             Billing
           </button>
@@ -411,12 +411,12 @@ export default function SettingsPage() {
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                   placeholder="name@company.com"
-                  className="px-3 py-2 bg-[var(--bg-800)] border border-[var(--border-subtle)] text-[13px] outline-none focus:border-[var(--accent)]/50"
+                  className="px-3 py-2 rounded-lg bg-[var(--bg-800)] border border-[var(--border-subtle)] text-[13px] outline-none focus:border-[var(--accent)]/60 focus:ring-2 focus:ring-[var(--accent)]/15 transition-all"
                 />
                 <select
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value)}
-                  className="px-3 py-2 bg-[var(--bg-800)] border border-[var(--border-subtle)] text-[13px] capitalize outline-none"
+                  className="px-3 py-2 rounded-lg bg-[var(--bg-800)] border border-[var(--border-subtle)] text-[13px] capitalize outline-none"
                 >
                   <option value="viewer">viewer</option>
                   <option value="editor">editor</option>
@@ -424,17 +424,17 @@ export default function SettingsPage() {
                 </select>
                 <button
                   onClick={handleInviteMember}
-                  className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-800)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[13px] transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-[13px] font-medium hover:bg-[var(--accent-dark)] hover:shadow-[var(--shadow-glow)] transition-all active:scale-95"
                 >
-                  <Plus className="w-4 h-4" /> Invite Member
+                  <Plus className="w-4 h-4" /> Invite
                 </button>
               </div>
             </div>
-            <div className="border border-[var(--border-subtle)] overflow-hidden">
+            <div className="rounded-xl border border-[var(--border-subtle)] overflow-hidden shadow-[var(--shadow-sm)]">
               {members.map(m => (
-                <div key={m.id} className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-800)]">
+                <div key={m.id} className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-800)] transition-colors">
                   <div className="flex items-center gap-4">
-                    <div className="w-8 h-8 bg-[var(--bg-700)] flex items-center justify-center font-semibold text-[13px] text-[var(--accent)]">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center font-semibold text-[13px] text-white">
                       {(m.user?.display_name?.[0] || m.user?.email?.[0] || '?').toUpperCase()}
                     </div>
                     <div>
@@ -443,8 +443,8 @@ export default function SettingsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1.5 px-2 py-0.5 bg-[var(--bg-700)] text-[11px] font-medium text-[var(--text-muted)] border border-[var(--border-subtle)] capitalize">
-                      {m.role === 'owner' && <Shield className="w-3 h-3 text-amber-500" />}
+                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--bg-700)] text-[11px] font-medium text-[var(--text-secondary)] border border-[var(--border-subtle)] capitalize">
+                      {m.role === 'owner' && <Shield className="w-3 h-3 text-amber-400" />}
                       {m.role}
                     </span>
                     {team?.my_role === "owner" && m.role !== "owner" && m.user?.id !== myUserId && (
@@ -452,27 +452,27 @@ export default function SettingsPage() {
                         {m.role === "viewer" ? (
                           <button
                             onClick={() => handleChangeMemberRole(m.user.id, "editor")}
-                            className="px-2.5 py-1 border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent)] text-[11px] transition-colors"
+                            className="px-2.5 py-1 rounded-lg border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] text-[11px] transition-all"
                           >
                             Make editor
                           </button>
                         ) : (
                           <button
                             onClick={() => handleChangeMemberRole(m.user.id, "viewer")}
-                            className="px-2.5 py-1 border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent)] text-[11px] transition-colors"
+                            className="px-2.5 py-1 rounded-lg border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] text-[11px] transition-all"
                           >
                             Make viewer
                           </button>
                         )}
                         <button
                           onClick={() => handleTransferOwnership(m.user.id)}
-                          className="px-2.5 py-1 border border-amber-500/30 text-amber-400 hover:border-amber-400 text-[11px] transition-colors"
+                          className="px-2.5 py-1 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-400 hover:bg-amber-400/10 text-[11px] transition-all"
                         >
                           Make owner
                         </button>
                         <button
                           onClick={() => handleRemoveMember(m.user.id)}
-                          className="px-2.5 py-1 border border-[var(--danger)]/30 text-[var(--danger)] hover:border-[var(--danger)] text-[11px] transition-colors"
+                          className="px-2.5 py-1 rounded-lg border border-[var(--danger)]/30 text-[var(--danger)] hover:border-[var(--danger)] hover:bg-[var(--danger-bg)] text-[11px] transition-all"
                         >
                           Remove
                         </button>
@@ -482,8 +482,8 @@ export default function SettingsPage() {
                 </div>
               ))}
             </div>
-            <div className="mt-4 border border-[var(--border-subtle)] overflow-hidden">
-              <div className="px-4 py-3 border-b border-[var(--border-subtle)] text-[12px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+            <div className="mt-4 rounded-xl border border-[var(--border-subtle)] overflow-hidden shadow-[var(--shadow-sm)]">
+              <div className="px-4 py-3 border-b border-[var(--border-subtle)] text-[11px] font-semibold uppercase tracking-widest text-[var(--text-dim)]">
                 Pending invites
               </div>
               {invites.length === 0 ? (
@@ -512,13 +512,13 @@ export default function SettingsPage() {
                           <>
                             <button
                               onClick={() => handleResendInvite(invite.id)}
-                              className="px-3 py-1.5 border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[12px] transition-colors"
+                              className="px-3 py-1.5 rounded-lg border border-[var(--border-subtle)] hover:border-[var(--accent)] hover:text-[var(--accent)] text-[12px] transition-all"
                             >
                               Resend
                             </button>
                             <button
                               onClick={() => handleRevokeInvite(invite.id)}
-                              className="px-3 py-1.5 border border-[var(--danger)]/20 text-[var(--danger)] hover:border-[var(--danger)] text-[12px] transition-colors"
+                              className="px-3 py-1.5 rounded-lg border border-[var(--danger)]/20 text-[var(--danger)] hover:border-[var(--danger)] hover:bg-[var(--danger-bg)] text-[12px] transition-all"
                             >
                               Revoke
                             </button>
@@ -541,12 +541,12 @@ export default function SettingsPage() {
                 <h3 className="text-lg font-medium text-[var(--text-primary)]">Personal Profile</h3>
                 <p className="text-sm text-[var(--text-muted)] mt-1">Manage your identity across TeamOS.</p>
               </div>
-              <div className="border border-[var(--border-subtle)] p-6 space-y-6">
+              <div className="rounded-xl border border-[var(--border-subtle)] p-6 space-y-6 shadow-[var(--shadow-sm)]">
                 {/* Avatar Section */}
                 <div className="space-y-3">
                   <label className="text-[11px] uppercase tracking-widest font-semibold text-[var(--text-dim)] px-1">Avatar</label>
                   <div className="flex items-center gap-4 mb-2">
-                    <div className="w-14 h-14 overflow-hidden border border-[var(--border-strong)] bg-[var(--bg-800)] flex items-center justify-center text-[var(--accent)] font-bold text-xl shrink-0">
+                    <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-[var(--border-strong)] bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center text-white font-bold text-xl shrink-0">
                       {profileAvatarUrl
                         ? /* eslint-disable-next-line @next/next/no-img-element */
                           <img src={profileAvatarUrl} alt="Avatar" className="w-full h-full" />
@@ -567,9 +567,9 @@ export default function SettingsPage() {
                         type="button"
                         onClick={() => setProfileAvatarUrl(avatar.svg)}
                         title={avatar.label}
-                        className={`relative w-full aspect-square overflow-hidden border-2 transition-colors ${
+                        className={`relative w-full aspect-square overflow-hidden rounded-lg border-2 transition-all ${
                           profileAvatarUrl === avatar.svg
-                            ? "border-[var(--accent)]"
+                            ? "border-[var(--accent)] shadow-[var(--shadow-glow)]"
                             : "border-transparent hover:border-[var(--border-strong)]"
                         }`}
                       >
@@ -590,7 +590,7 @@ export default function SettingsPage() {
                       type="text"
                       value={profileFirstName}
                       onChange={(e) => setProfileFirstName(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-[var(--bg-800)] border border-[var(--border-subtle)] focus:border-[var(--accent)]/50 outline-none text-[13px]"
+                      className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg-800)] border border-[var(--border-subtle)] focus:border-[var(--accent)]/60 focus:ring-2 focus:ring-[var(--accent)]/15 outline-none text-[13px] transition-all"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -601,7 +601,7 @@ export default function SettingsPage() {
                       type="text"
                       value={profileLastName}
                       onChange={(e) => setProfileLastName(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-[var(--bg-800)] border border-[var(--border-subtle)] focus:border-[var(--accent)]/50 outline-none text-[13px]"
+                      className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg-800)] border border-[var(--border-subtle)] focus:border-[var(--accent)]/60 focus:ring-2 focus:ring-[var(--accent)]/15 outline-none text-[13px] transition-all"
                     />
                   </div>
                 </div>
@@ -611,7 +611,7 @@ export default function SettingsPage() {
                   <button
                     onClick={handleSaveProfile}
                     disabled={profileSaving}
-                    className="px-6 py-2.5 bg-[var(--accent)] text-white font-medium text-[13px] hover:bg-[var(--accent-dark)] transition-colors disabled:opacity-50 flex items-center gap-2"
+                    className="px-6 py-2.5 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white font-medium text-[13px] hover:shadow-[var(--shadow-glow)] active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2"
                   >
                     {profileSaving ? "Saving..." : "Save Changes"}
                   </button>
@@ -625,7 +625,7 @@ export default function SettingsPage() {
                 <h3 className="text-lg font-medium text-[var(--text-primary)]">Team Profile</h3>
                 <p className="text-sm text-[var(--text-muted)] mt-1">Manage your team&apos;s identity and subscription plan.</p>
               </div>
-              <div className="border border-[var(--border-subtle)] p-6">
+              <div className="rounded-xl border border-[var(--border-subtle)] p-6 shadow-[var(--shadow-sm)]">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-[12px] text-[var(--text-muted)] mb-1 uppercase tracking-wider">Team Name</div>

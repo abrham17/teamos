@@ -389,17 +389,22 @@ export function ChatInterface() {
             </div>
           )}
           {sessionReady && messages.length === 0 && (
-            <div className="flex flex-1 flex-col items-center justify-center px-4 my-auto gap-8">
+            <div className="flex flex-1 flex-col items-center justify-center px-4 my-auto gap-10">
               {/* Hero */}
-              <div className="text-center">
-                <div className="w-10 h-10 bg-[var(--accent)] flex items-center justify-center mx-auto mb-4">
-                  <Bot className="h-5 w-5 text-white" />
+              <div className="text-center space-y-4">
+                <div className="relative mx-auto w-14 h-14">
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] opacity-20 blur-xl" />
+                  <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center shadow-[var(--shadow-glow)]">
+                    <Bot className="h-6 w-6 text-white" />
+                  </div>
                 </div>
-                <h2 className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">Team Intelligence</h2>
-                <p className="mt-1.5 max-w-xs text-[13px] leading-relaxed text-[var(--text-muted)]">Ask questions about your wiki, plans, and team knowledge.</p>
+                <div>
+                  <h2 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">Team Intelligence</h2>
+                  <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-[var(--text-muted)]">Ask anything about your wiki, plans, and team knowledge.</p>
+                </div>
               </div>
               {/* Capability cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full max-w-2xl">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl">
                 {[
                   { icon: Search,   label: "Search knowledge",    desc: "Ask anything about your wiki",               prompt: "Summarize our key knowledge areas" },
                   { icon: BookOpen, label: "Create wiki pages",   desc: "Draft or update knowledge base pages",        prompt: "Create a wiki page about our onboarding process" },
@@ -408,12 +413,14 @@ export function ChatInterface() {
                   <button
                     key={label}
                     onClick={() => { setInput(prompt); inputRef.current?.focus(); }}
-                    className="group flex flex-col gap-2 p-4 border border-[var(--border-subtle)] bg-[var(--bg-800)] hover:bg-[var(--bg-700)] text-left transition-colors"
+                    className="group flex flex-col gap-3 p-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-800)] hover:bg-[var(--bg-700)] hover:border-[var(--border-strong)] text-left transition-all duration-150 shadow-[var(--shadow-sm)]"
                   >
-                    <Icon className="w-4 h-4 text-[var(--accent)]" />
+                    <div className="w-8 h-8 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center">
+                      <Icon className="w-4 h-4 text-[var(--accent)]" />
+                    </div>
                     <div>
                       <div className="text-[13px] font-medium text-[var(--text-primary)]">{label}</div>
-                      <div className="text-[12px] text-[var(--text-muted)] mt-0.5 leading-snug">{desc}</div>
+                      <div className="text-[12px] text-[var(--text-muted)] mt-1 leading-snug">{desc}</div>
                     </div>
                   </button>
                 ))}
@@ -427,30 +434,35 @@ export function ChatInterface() {
             const isEditing = editingMessageId === m.id;
             
             return (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} key={m.id || i} className={cn("mx-auto flex w-full max-w-3xl gap-3 py-3 group/msg", isUser ? "justify-end" : "justify-start")}>
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} key={m.id || i} className={cn("mx-auto flex w-full max-w-3xl gap-3 py-2.5 group/msg", isUser ? "justify-end" : "justify-start")}>
                 {!isUser && (
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center bg-[var(--bg-800)] border border-[var(--border-subtle)] mt-0.5">
-                    <Bot className="h-3.5 w-3.5 text-[var(--accent)]" />
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] shadow-[var(--shadow-glow)] mt-0.5">
+                    <Bot className="h-4 w-4 text-white" />
                   </div>
                 )}
                 <div className={cn("flex max-w-[80%] flex-col gap-2", isUser ? "items-end" : "items-start")}>
                   {!isUser && i === messages.length - 1 && isStreaming && (agentThoughts.length > 0 || agentReflections.length > 0) && (
-                    <AgentThinkingPane 
-                      thoughts={agentThoughts} 
-                      reflections={agentReflections} 
+                    <AgentThinkingPane
+                      thoughts={agentThoughts}
+                      reflections={agentReflections}
                       steps={agentSteps}
-                      isActive={isStreaming} 
+                      isActive={isStreaming}
                     />
                   )}
                   {!isUser && agentStepsForMessage(m).length > 0 && <ChatAgentToolTimeline steps={agentStepsForMessage(m)} />}
                   <div className="relative group/msg-content">
-                    <div className={cn("px-4 py-3 text-[14px] leading-relaxed", isUser ? "bg-[var(--bg-800)] text-[var(--text-primary)] border border-[var(--border-subtle)]" : "text-[var(--text-primary)]")}>
+                    <div className={cn(
+                      "px-4 py-3 text-[14px] leading-relaxed",
+                      isUser
+                        ? "rounded-2xl rounded-br-sm bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white shadow-[var(--shadow-md)]"
+                        : "text-[var(--text-primary)]"
+                    )}>
                         {isEditing ? (
                           <div className="flex flex-col gap-3 min-w-0 w-full">
-                            <textarea className="w-full bg-transparent border-none outline-none text-[var(--text-primary)] resize-none overflow-hidden" value={editInput} onChange={(e) => { setEditInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }} autoFocus />
+                            <textarea className="w-full bg-transparent border-none outline-none text-white resize-none overflow-hidden" value={editInput} onChange={(e) => { setEditInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }} autoFocus />
                             <div className="flex justify-end gap-2">
-                                <button onClick={() => setEditingMessageId(null)} className="p-1 text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors"><X className="w-3.5 h-3.5" /></button>
-                                <button onClick={() => handleSaveEdit(m.id)} className="p-1 bg-[var(--accent)] text-white transition-colors"><Check className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => setEditingMessageId(null)} className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"><X className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => handleSaveEdit(m.id)} className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"><Check className="w-3.5 h-3.5" /></button>
                             </div>
                           </div>
                         ) : m.role === "assistant" ? (
@@ -460,22 +472,22 @@ export function ChatInterface() {
                         )}
                     </div>
                     {isUser && !isEditing && (
-                        <button onClick={() => { setEditingMessageId(m.id); setEditInput(m.content); }} className="absolute -left-9 top-2 p-1.5 text-[var(--text-dim)] hover:text-[var(--text-primary)] opacity-0 group-hover/msg:opacity-100 transition-all" title="Edit">
+                        <button onClick={() => { setEditingMessageId(m.id); setEditInput(m.content); }} className="absolute -left-9 top-2 p-1.5 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] opacity-0 group-hover/msg:opacity-100 transition-all" title="Edit">
                             <Pencil className="w-3 h-3" />
                         </button>
                     )}
                     {!isUser && !isLiveAssistant && (
                         <div className="flex items-center gap-0.5 mt-1 opacity-0 group-hover/msg-content:opacity-100 transition-all">
-                            <button onClick={() => { navigator.clipboard.writeText(m.content); }} className="p-1.5 text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors" title="Copy">
+                            <button onClick={() => { navigator.clipboard.writeText(m.content); }} className="p-1.5 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] transition-colors" title="Copy">
                                 <Copy className="w-3 h-3" />
                             </button>
                             {i === messages.length - 1 && (
-                                <button 
+                                <button
                                     onClick={() => {
                                         const lastUser = [...messages].reverse().find(msg => msg.role === "user");
                                         if (lastUser) handleSaveEdit(lastUser.id);
-                                    }} 
-                                    className="p-1.5 text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors" 
+                                    }}
+                                    className="p-1.5 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] transition-colors"
                                     title="Regenerate"
                                 >
                                     <RotateCcw className="w-3 h-3" />
@@ -487,8 +499,8 @@ export function ChatInterface() {
                   {m.citations && m.citations.length > 0 && <div className="mt-1"><ChatCitationList citations={m.citations} /></div>}
                 </div>
                 {isUser && (
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center bg-[var(--bg-800)] border border-[var(--border-subtle)] mt-0.5">
-                    <User className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--bg-700)] border border-[var(--border-strong)] mt-0.5">
+                    <User className="h-4 w-4 text-[var(--text-muted)]" />
                   </div>
                 )}
               </motion.div>
@@ -496,8 +508,8 @@ export function ChatInterface() {
           })}
 
           {isStreaming && status && (
-            <div className="mx-auto flex w-full max-w-3xl justify-start items-center gap-3">
-              <div className="flex items-center gap-2 px-3 py-1.5 border border-[var(--border-subtle)] bg-[var(--bg-800)]">
+            <div className="mx-auto flex w-full max-w-3xl justify-start items-center gap-3 pl-11">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-800)] shadow-[var(--shadow-sm)]">
                 <Loader2 className="w-3 h-3 text-[var(--accent)] animate-spin shrink-0" />
                 <span className="text-[12px] text-[var(--text-muted)]">{status}</span>
               </div>
@@ -510,7 +522,7 @@ export function ChatInterface() {
         {showScrollBtn && (
           <button
             onClick={scrollToBottom}
-            className="absolute right-6 bottom-24 z-30 p-2 border border-[var(--border-subtle)] bg-[var(--bg-800)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] transition-colors"
+            className="absolute right-6 bottom-24 z-30 p-2 rounded-full border border-[var(--border-strong)] bg-[var(--bg-800)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] shadow-[var(--shadow-md)] transition-all"
             title="Scroll to bottom"
           >
             <ArrowDown className="w-3.5 h-3.5" />
@@ -518,13 +530,13 @@ export function ChatInterface() {
         )}
 
         {/* Input bar */}
-        <div className="shrink-0 border-t border-[var(--border-subtle)] bg-[var(--bg-950)] px-4 pt-3 pb-4 w-full">
+        <div className="shrink-0 bg-[var(--bg-950)] px-4 pt-3 pb-5 w-full">
           <div className="mx-auto w-full max-w-3xl">
             {strategy && (
               <motion.div
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex items-center gap-2 mb-2"
+                className="flex items-center gap-2 mb-2 px-1"
               >
                 {strategy.primary_agent === "lightweight" && <Search className="w-3 h-3 text-[var(--accent)]" />}
                 {(strategy.primary_agent === "wiki" || strategy.primary_agent === "plan" || strategy.primary_agent === "analyst" || strategy.primary_agent === "strategic_planner") && <BrainCircuit className="w-3 h-3 text-[var(--accent)]" />}
@@ -539,7 +551,7 @@ export function ChatInterface() {
               <textarea
                 ref={inputRef}
                 rows={1}
-                className="w-full border border-[var(--border-strong)] bg-[var(--bg-800)] py-3.5 pl-4 pr-12 text-[14px] text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/50 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden leading-relaxed"
+                className="w-full rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-800)] py-3.5 pl-4 pr-14 text-[14px] text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/60 focus:ring-2 focus:ring-[var(--accent)]/15 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden leading-relaxed shadow-[var(--shadow-md)]"
                 style={{ maxHeight: "180px" }}
                 placeholder={!sessionReady ? "Initializing…" : "Ask anything… (Shift+Enter for newline)"}
                 value={input}
@@ -559,9 +571,9 @@ export function ChatInterface() {
               <button
                 onClick={() => void handleSend()}
                 disabled={sendDisabled}
-                className="absolute right-2.5 bottom-2.5 h-8 w-8 flex items-center justify-center bg-[var(--accent)] text-white transition-opacity disabled:opacity-30"
+                className="absolute right-2.5 bottom-2.5 h-9 w-9 flex items-center justify-center rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white transition-all disabled:opacity-30 hover:shadow-[var(--shadow-glow)] active:scale-95"
               >
-                {isStreaming ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                {isStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </button>
             </div>
           </div>

@@ -37,20 +37,18 @@ export default function EditorToolbar({ editor, teamId }: Props) {
         onClick();
       }}
       title={title}
-      className={`p-2 rounded-xl transition-all duration-300 active:scale-95 flex items-center justify-center relative group ${isActive
-          ? "bg-[var(--accent)] text-[var(--bg-950)] scale-110 shadow-[0_0_20px_rgba(var(--accent-rgb),0.4)] z-10"
-          : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/10 hover:scale-105"
-        }`}
+      className={`p-1.5 rounded-lg transition-all duration-150 active:scale-95 flex items-center justify-center ${
+        isActive
+          ? "bg-[var(--accent)] text-white shadow-[var(--shadow-glow)]"
+          : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-600)]"
+      }`}
     >
       {children}
-      {isActive && (
-        <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-[var(--bg-950)] rounded-full opacity-50" />
-      )}
     </button>
   );
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 p-2 bg-white/[0.02] border border-white/5 rounded-2xl backdrop-blur-md sticky top-4 z-30 transition-all hover:bg-white/[0.04]">
+    <div className="flex flex-wrap items-center gap-1 p-2 bg-[var(--bg-800)] border border-[var(--border-subtle)] rounded-xl sticky top-4 z-30 shadow-[var(--shadow-sm)]">
       <div className="flex items-center gap-1 px-1">
         <Button
           onClick={() => editor.chain().focus().toggleBold().run()}

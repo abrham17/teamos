@@ -170,64 +170,68 @@ export function Sidebar() {
     const active = isActive(href);
     if (collapsed) {
       return [
-        "w-9 h-9 flex items-center justify-center transition-colors duration-150 shrink-0",
+        "w-10 h-9 flex items-center justify-center rounded-lg transition-all duration-150 shrink-0",
         active
           ? "bg-[var(--accent-subtle)] text-[var(--accent)]"
-          : "text-[var(--text-muted)] hover:bg-[var(--bg-700)] hover:text-[var(--text-primary)]",
+          : "text-[var(--text-muted)] hover:bg-[var(--bg-700)] hover:text-[var(--text-secondary)]",
       ].join(" ");
     }
     return [
-      "flex items-center gap-2.5 px-3 py-2 w-full text-[13px] transition-colors duration-150",
+      "flex items-center gap-3 px-3 py-2 w-full text-[13px] rounded-lg transition-all duration-150",
       active
         ? "bg-[var(--accent-subtle)] text-[var(--accent)] font-medium"
-        : "text-[var(--text-muted)] hover:bg-[var(--bg-700)] hover:text-[var(--text-primary)]",
+        : "text-[var(--text-muted)] hover:bg-[var(--bg-700)] hover:text-[var(--text-secondary)]",
     ].join(" ");
   };
 
   const bottomBtnCls = (danger = false) => {
     if (collapsed) {
       return [
-        "w-9 h-9 flex items-center justify-center transition-colors duration-150 shrink-0",
+        "w-10 h-9 flex items-center justify-center rounded-lg transition-all duration-150 shrink-0",
         danger
-          ? "text-[var(--text-muted)] hover:text-[var(--danger)]"
-          : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)]",
+          ? "text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)]"
+          : "text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-700)]",
       ].join(" ");
     }
     return [
-      "flex items-center gap-2.5 px-3 py-2 w-full text-[13px] transition-colors duration-150",
+      "flex items-center gap-3 px-3 py-2 w-full text-[13px] rounded-lg transition-all duration-150",
       danger
         ? "text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)]"
-        : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)]",
+        : "text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-700)]",
     ].join(" ");
   };
 
   return (
     <div
-      style={{ width: collapsed ? "56px" : "220px" }}
-      className="bg-[var(--bg-900)] border-r border-[var(--border-subtle)] flex flex-col h-full shrink-0 transition-[width] duration-[200ms] ease-in-out overflow-hidden"
+      style={{ width: collapsed ? "58px" : "240px" }}
+      className="bg-[var(--bg-900)] border-r border-[var(--border-subtle)] flex flex-col h-full shrink-0 transition-[width] duration-200 ease-in-out overflow-hidden"
     >
       {/* ── Logo + Collapse toggle ── */}
       <div
-        className={`flex items-center h-12 border-b border-[var(--border-subtle)] shrink-0 ${
-          collapsed ? "justify-center" : "px-4 justify-between"
+        className={`flex items-center h-[52px] border-b border-[var(--border-subtle)] shrink-0 ${
+          collapsed ? "justify-center px-2" : "px-4 justify-between"
         }`}
       >
         {collapsed ? (
-          <Command className="w-4 h-4 text-[var(--text-primary)]" />
+          <button onClick={toggleCollapsed} title="Expand sidebar" className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-[var(--bg-700)] transition-colors">
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center shadow-[var(--shadow-glow)]">
+              <span className="text-white font-bold text-[10px]">T</span>
+            </div>
+          </button>
         ) : (
           <>
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 bg-[var(--accent)] flex items-center justify-center">
-                <Command className="w-3 h-3 text-white" />
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center shadow-[var(--shadow-glow)] shrink-0">
+                <span className="text-white font-bold text-[11px]">T</span>
               </div>
-              <span className="font-semibold text-[var(--text-primary)] tracking-tight text-[14px]">
+              <span className="font-semibold text-[var(--text-primary)] tracking-tight text-[15px] leading-none">
                 TeamOS
               </span>
             </div>
             <button
               onClick={toggleCollapsed}
               title="Collapse sidebar"
-              className="p-1 text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors"
+              className="p-1.5 rounded-md text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-700)] transition-colors"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
@@ -238,7 +242,7 @@ export function Sidebar() {
       {/* ── Team selector ── */}
       <div
         className={`border-b border-[var(--border-subtle)] ${
-          collapsed ? "py-2.5 flex justify-center" : "p-2.5"
+          collapsed ? "py-2 flex justify-center" : "p-2"
         }`}
         ref={teamDropRef}
       >
@@ -246,7 +250,7 @@ export function Sidebar() {
           <button
             onClick={toggleCollapsed}
             title={currentTeam?.name || "Expand to switch team"}
-            className="w-8 h-8 bg-[var(--bg-700)] flex items-center justify-center text-[var(--text-muted)] font-semibold text-xs hover:bg-[var(--bg-600)] transition-colors"
+            className="w-10 h-9 rounded-lg bg-[var(--bg-700)] flex items-center justify-center text-[var(--text-secondary)] font-semibold text-xs hover:bg-[var(--bg-600)] transition-colors"
           >
             {currentTeam?.name?.[0]?.toUpperCase() ?? "T"}
           </button>
@@ -254,13 +258,13 @@ export function Sidebar() {
           <div className="relative">
             <button
               onClick={() => setTeamDropOpen(v => !v)}
-              className="w-full flex items-center gap-2.5 px-2 py-1.5 hover:bg-[var(--bg-700)] transition-colors text-left"
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[var(--bg-700)] transition-colors text-left"
             >
-              <div className="w-6 h-6 bg-[var(--accent)] flex items-center justify-center text-white font-semibold text-xs shrink-0">
+              <div className="w-7 h-7 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center text-[var(--accent)] font-bold text-xs shrink-0">
                 {currentTeam?.name?.[0]?.toUpperCase() ?? "T"}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-[var(--text-primary)] truncate leading-tight">
+                <div className="text-[13px] font-semibold text-[var(--text-primary)] truncate leading-tight">
                   {currentTeam?.name ?? "Select Team"}
                 </div>
                 {currentTeam?.plan && (
@@ -270,16 +274,16 @@ export function Sidebar() {
                 )}
               </div>
               <ChevronDown
-                className={`w-4 h-4 text-[var(--text-dim)] transition-transform duration-200 ${
+                className={`w-3.5 h-3.5 text-[var(--text-dim)] transition-transform duration-200 ${
                   teamDropOpen ? "rotate-180" : ""
                 }`}
               />
             </button>
 
             {teamDropOpen && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-[var(--bg-800)] border border-[var(--border-subtle)] z-50 overflow-hidden">
+              <div className="absolute top-full left-0 right-0 mt-1.5 bg-[var(--bg-800)] border border-[var(--border-strong)] rounded-xl z-50 overflow-hidden shadow-[var(--shadow-lg)] py-1">
                 {teamLoadError && (
-                  <div className="px-3 py-2 text-xs text-red-400 border-b border-[var(--border-subtle)]">
+                  <div className="px-3 py-2 text-xs text-[var(--danger)] border-b border-[var(--border-subtle)]">
                     {teamLoadError}
                   </div>
                 )}
@@ -289,7 +293,7 @@ export function Sidebar() {
                     onClick={() => { setCurrentTeamId(t.id); setTeamDropOpen(false); }}
                     className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] hover:bg-[var(--bg-700)] text-[var(--text-primary)] transition-colors"
                   >
-                    <div className="w-5 h-5 bg-[var(--accent-subtle)] flex items-center justify-center text-[var(--accent)] text-[10px] font-bold">
+                    <div className="w-6 h-6 rounded-md bg-[var(--accent-subtle)] flex items-center justify-center text-[var(--accent)] text-[10px] font-bold">
                       {t.name[0].toUpperCase()}
                     </div>
                     <span className="flex-1 truncate">{t.name}</span>
@@ -298,20 +302,20 @@ export function Sidebar() {
                     )}
                   </button>
                 ))}
-                <div className="border-t border-[var(--border-subtle)] p-1.5">
+                <div className="border-t border-[var(--border-subtle)] mt-1 pt-1 px-1.5">
                   {!createTeamOpen ? (
                     <button
                       onClick={() => {
                         setCreateTeamOpen(true);
                         setCreateTeamError(null);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-2 text-[13px] text-[var(--accent)] hover:bg-[var(--bg-700)] transition-colors"
+                      className="w-full flex items-center gap-2 px-2.5 py-2 text-[13px] text-[var(--accent)] hover:bg-[var(--bg-700)] rounded-lg transition-colors"
                     >
                       <PlusCircle className="w-3.5 h-3.5" />
                       Create Team
                     </button>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-2 p-1">
                       <input
                         value={newTeamName}
                         onChange={(e) => {
@@ -330,18 +334,18 @@ export function Sidebar() {
                           }
                         }}
                         placeholder="New team name"
-                        className="w-full px-3 py-2 rounded-lg text-sm bg-[var(--bg-900)] border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent)]"
+                        className="w-full px-3 py-2 rounded-lg text-sm bg-[var(--bg-900)] border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)]/30"
                         autoFocus
                         disabled={createTeamBusy}
                       />
                       {createTeamError && (
-                        <p className="text-xs text-red-400 px-1">{createTeamError}</p>
+                        <p className="text-xs text-[var(--danger)] px-1">{createTeamError}</p>
                       )}
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => void handleCreateTeam()}
                           disabled={createTeamBusy}
-                          className="flex-1 px-3 py-2 text-[13px] bg-[var(--accent)] text-white disabled:opacity-60"
+                          className="flex-1 px-3 py-1.5 text-[13px] bg-[var(--accent)] text-white rounded-lg font-medium disabled:opacity-60 hover:bg-[var(--accent-dark)] transition-colors"
                         >
                           {createTeamBusy ? "Creating..." : "Create"}
                         </button>
@@ -353,7 +357,7 @@ export function Sidebar() {
                             setNewTeamName("");
                           }}
                           disabled={createTeamBusy}
-                          className="px-3 py-2 text-[13px] border border-[var(--border-subtle)] hover:border-[var(--text-muted)] disabled:opacity-60"
+                          className="px-3 py-1.5 text-[13px] rounded-lg border border-[var(--border-subtle)] hover:bg-[var(--bg-700)] text-[var(--text-muted)] disabled:opacity-60 transition-colors"
                         >
                           Cancel
                         </button>
@@ -369,11 +373,16 @@ export function Sidebar() {
 
       {/* ── Navigation ── */}
       <nav
-        className={`flex-1 overflow-y-auto py-2 flex flex-col gap-px ${
-          collapsed ? "items-center px-1.5" : "px-2"
+        className={`flex-1 overflow-y-auto py-3 flex flex-col ${
+          collapsed ? "items-center px-2 gap-0.5" : "px-2 gap-0.5"
         }`}
         aria-label="Main navigation"
       >
+        {!collapsed && (
+          <div className="px-3 pb-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-dim)]">Workspace</span>
+          </div>
+        )}
         {NAV_ITEMS.map(({ href, icon: Icon, label }) => (
           <Link
             key={href}
@@ -381,37 +390,38 @@ export function Sidebar() {
             title={collapsed ? label : undefined}
             className={navCls(href)}
           >
-            <Icon className="w-3.5 h-3.5 shrink-0" />
+            <Icon className="w-4 h-4 shrink-0" />
             {!collapsed && <span>{label}</span>}
           </Link>
         ))}
-      </nav>
 
-      {/* ── New Page CTA ── */}
-      <div className={`pb-2 ${collapsed ? "flex justify-center px-1.5" : "px-2"}`}>
-        {collapsed ? (
+        {/* New Page button inline in nav */}
+        {!collapsed && (
+          <div className="pt-3 mt-1 border-t border-[var(--border-subtle)]">
+            <button
+              onClick={() => router.push("/wiki?action=new")}
+              className="flex items-center gap-3 w-full px-3 py-2 text-[13px] rounded-lg bg-[var(--accent-subtle)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white font-medium transition-all duration-150"
+            >
+              <PlusCircle className="w-4 h-4 shrink-0" />
+              New Page
+            </button>
+          </div>
+        )}
+        {collapsed && (
           <button
             onClick={() => router.push("/wiki?action=new")}
             title="New Page"
-            className="w-9 h-9 flex items-center justify-center text-[var(--accent)] hover:bg-[var(--accent-subtle)] transition-colors"
+            className="w-10 h-9 flex items-center justify-center rounded-lg text-[var(--accent)] hover:bg-[var(--accent-subtle)] transition-colors mt-1"
           >
-            <PlusCircle className="w-3.5 h-3.5" />
-          </button>
-        ) : (
-          <button
-            onClick={() => router.push("/wiki?action=new")}
-            className="flex items-center gap-2 w-full px-3 py-2 text-[13px] bg-[var(--accent-subtle)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white font-medium transition-colors"
-          >
-            <PlusCircle className="w-3.5 h-3.5" />
-            New Page
+            <PlusCircle className="w-4 h-4" />
           </button>
         )}
-      </div>
+      </nav>
 
       {/* ── Bottom actions ── */}
       <div
-        className={`border-t border-[var(--border-subtle)] py-2 flex flex-col gap-px ${
-          collapsed ? "items-center px-1.5" : "px-2"
+        className={`border-t border-[var(--border-subtle)] pt-2 pb-3 flex flex-col gap-0.5 ${
+          collapsed ? "items-center px-2" : "px-2"
         }`}
       >
         <Link
@@ -419,45 +429,53 @@ export function Sidebar() {
           title={collapsed ? "Settings" : undefined}
           className={navCls("/settings")}
         >
-          <Settings className="w-3.5 h-3.5 shrink-0" />
+          <Settings className="w-4 h-4 shrink-0" />
           {!collapsed && <span>Settings</span>}
         </Link>
 
-        <button
-          onClick={handleLogout}
-          title={collapsed ? "Logout" : undefined}
-          className={bottomBtnCls(true)}
-        >
-          <LogOut className="w-3.5 h-3.5 shrink-0" />
-          {!collapsed && <span>Logout</span>}
-        </button>
-
-        {/* Theme toggle */}
         <button
           onClick={toggleTheme}
           title={collapsed ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}
           className={bottomBtnCls()}
         >
           {theme === "dark"
-            ? <Sun className="w-3.5 h-3.5 shrink-0" />
-            : <Moon className="w-3.5 h-3.5 shrink-0" />
+            ? <Sun className="w-4 h-4 shrink-0" />
+            : <Moon className="w-4 h-4 shrink-0" />
           }
-          {!collapsed && <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>}
+          {!collapsed && <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>}
+        </button>
+
+        <button
+          onClick={handleLogout}
+          title={collapsed ? "Logout" : undefined}
+          className={bottomBtnCls(true)}
+        >
+          <LogOut className="w-4 h-4 shrink-0" />
+          {!collapsed && <span>Sign out</span>}
         </button>
 
         {/* User Profile */}
-        <div className={`pt-2 mt-1 border-t border-[var(--border-subtle)] ${collapsed ? "flex flex-col items-center gap-1 px-1.5" : "px-1"}`}>
+        <div className={`mt-2 pt-2 border-t border-[var(--border-subtle)] ${collapsed ? "flex flex-col items-center gap-1" : ""}`}>
           {collapsed ? (
-            <div className="w-8 h-8 overflow-hidden flex items-center justify-center bg-[var(--bg-700)] text-[var(--text-muted)] font-semibold text-xs">
-              {user?.avatar_url
-                ? /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
-                : (user?.display_name?.[0]?.toUpperCase() || "U")
-              }
-            </div>
+            <>
+              <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white font-semibold text-xs">
+                {user?.avatar_url
+                  ? /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
+                  : (user?.display_name?.[0]?.toUpperCase() || "U")
+                }
+              </div>
+              <button
+                onClick={toggleCollapsed}
+                title="Expand sidebar"
+                className="w-10 h-9 flex items-center justify-center rounded-lg text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-700)] transition-colors"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </>
           ) : (
-            <div className="flex items-center gap-2.5 px-2 py-2">
-              <div className="w-7 h-7 overflow-hidden bg-[var(--bg-700)] flex items-center justify-center text-[var(--text-muted)] font-semibold text-xs shrink-0">
+            <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[var(--bg-700)] transition-colors cursor-default">
+              <div className="w-7 h-7 rounded-full overflow-hidden bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center text-white font-semibold text-xs shrink-0">
                 {user?.avatar_url
                   ? /* eslint-disable-next-line @next/next/no-img-element */
                     <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
@@ -473,17 +491,6 @@ export function Sidebar() {
                 </div>
               </div>
             </div>
-          )}
-
-          {/* Expand button (only visible when collapsed) */}
-          {collapsed && (
-            <button
-              onClick={toggleCollapsed}
-              title="Expand sidebar"
-              className="w-9 h-9 flex items-center justify-center text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] transition-colors"
-            >
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
           )}
         </div>
       </div>

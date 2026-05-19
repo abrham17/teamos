@@ -23,7 +23,7 @@ export default function Home() {
       <nav className="fixed top-0 left-0 right-0 z-50 h-14 border-b border-[var(--border-subtle)] bg-[var(--bg-950)]/95 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto h-full flex items-center justify-between px-6">
           <div className="flex items-center gap-2.5">
-            <div className="w-6 h-6 bg-[var(--accent)] flex items-center justify-center font-bold text-white text-xs">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center font-bold text-white text-[11px] shadow-[var(--shadow-glow)]">
               T
             </div>
             <span className="font-semibold tracking-tight text-[15px]">TeamOS</span>
@@ -33,18 +33,18 @@ export default function Home() {
             {!isSignedIn ? (
               <>
                 <SignInButton mode="modal">
-                  <button className="text-[12px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+                  <button className="text-[13px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
                     Sign in
                   </button>
                 </SignInButton>
                 <SignUpButton mode="modal">
-                  <button className="bg-[var(--accent)] text-white px-5 py-1.5 text-[12px] font-medium hover:bg-[var(--accent-dark)] transition-colors">
+                  <button className="bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white px-5 py-2 text-[13px] font-medium rounded-lg hover:shadow-[var(--shadow-glow)] transition-all active:scale-95">
                     Get started
                   </button>
                 </SignUpButton>
               </>
             ) : (
-              <Link href="/wiki" className="bg-[var(--accent)] text-white px-5 py-1.5 text-[12px] font-medium hover:bg-[var(--accent-dark)] transition-colors">
+              <Link href="/wiki" className="bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white px-5 py-2 text-[13px] font-medium rounded-lg hover:shadow-[var(--shadow-glow)] transition-all">
                 Open workspace
               </Link>
             )}
@@ -62,8 +62,8 @@ export default function Home() {
               transition={{ duration: 0.6, ease: "easeOut" }}
               className="space-y-8"
             >
-              <div className="inline-flex items-center gap-2 px-3 py-1 border border-[var(--border-subtle)] bg-[var(--bg-800)]">
-                <span className="w-1.5 h-1.5 bg-[var(--accent)]"></span>
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[var(--border-strong)] bg-[var(--bg-800)] shadow-[var(--shadow-sm)]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"></span>
                 <span className="text-[11px] uppercase font-medium tracking-widest text-[var(--text-muted)]">Team Intelligence</span>
               </div>
 
@@ -79,12 +79,12 @@ export default function Home() {
               <div className="flex items-center gap-4 pt-2">
                 {!isSignedIn ? (
                   <SignUpButton mode="modal">
-                    <button className="bg-[var(--accent)] text-white px-8 py-3 text-[13px] font-medium hover:bg-[var(--accent-dark)] transition-colors">
+                    <button className="bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white px-8 py-3 text-[14px] font-semibold rounded-xl hover:shadow-[var(--shadow-glow)] active:scale-95 transition-all">
                       Get started free
                     </button>
                   </SignUpButton>
                 ) : (
-                  <Link href="/wiki" className="bg-[var(--accent)] text-white px-8 py-3 text-[13px] font-medium hover:bg-[var(--accent-dark)] transition-colors">
+                  <Link href="/wiki" className="bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white px-8 py-3 text-[14px] font-semibold rounded-xl hover:shadow-[var(--shadow-glow)] active:scale-95 transition-all">
                     Open workspace
                   </Link>
                 )}
@@ -99,10 +99,10 @@ export default function Home() {
               transition={{ delay: 0.3, duration: 0.7 }}
               className="relative lg:block hidden"
             >
-              <div className="border border-[var(--border-subtle)] bg-[var(--bg-800)] overflow-hidden">
+              <div className="rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-800)] overflow-hidden shadow-[var(--shadow-lg)]">
                 <HeroMockup />
               </div>
-              <div className="absolute -top-4 -left-4 p-3 border border-[var(--border-subtle)] bg-[var(--bg-800)] w-44">
+              <div className="absolute -top-4 -left-4 p-3 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-800)] w-44 shadow-[var(--shadow-md)]">
                 <div className="text-[10px] text-[var(--accent)] font-semibold uppercase tracking-wider mb-1">Knowledge Nodes</div>
                 <div className="text-2xl font-bold tracking-tight">4,285</div>
               </div>

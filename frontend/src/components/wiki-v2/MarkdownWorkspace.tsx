@@ -315,23 +315,26 @@ export function MarkdownWorkspace() {
   if (!isNew && !page && !loading) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-[var(--bg-900)] text-center px-4">
-        <div className="w-20 h-20 rounded-3xl bg-[var(--surface-1)] border border-[var(--border-subtle)] flex items-center justify-center mb-6 shadow-xl text-[var(--accent)]">
-          <Book className="w-10 h-10" />
+        <div className="relative mb-6">
+          <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] opacity-20 blur-xl" />
+          <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center shadow-[var(--shadow-glow)]">
+            <Book className="w-7 h-7 text-white" />
+          </div>
         </div>
-        <h2 className="text-2xl font-bold text-[var(--text-primary)] mb-2">Team Knowledge Wiki</h2>
-        <p className="text-[var(--text-muted)] mb-8 max-w-sm">
-          Capture documentation, meeting notes, and decisions. Use <code className="text-[var(--accent)]">[[links]]</code> to connect pages.
+        <h2 className="text-2xl font-semibold text-[var(--text-primary)] mb-2 tracking-tight">Team Knowledge Wiki</h2>
+        <p className="text-[var(--text-muted)] mb-8 max-w-sm text-[14px] leading-relaxed">
+          Capture documentation, meeting notes, and decisions. Use <code className="text-[var(--accent)] bg-[var(--accent-subtle)] px-1 py-0.5 rounded text-[13px]">[[links]]</code> to connect pages.
         </p>
-        <div className="flex gap-4">
-          <button 
+        <div className="flex gap-3">
+          <button
             onClick={() => router.push("/wiki?action=new")}
-            className="px-6 py-2.5 bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-[var(--bg-950)] font-bold rounded-xl shadow-lg hover:scale-105 transition-transform"
+            className="px-5 py-2.5 bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white font-semibold rounded-xl shadow-[var(--shadow-glow)] hover:shadow-[var(--shadow-lg)] hover:scale-[1.02] active:scale-98 transition-all"
           >
             Create New Page
           </button>
-          <button 
+          <button
             onClick={() => setWikiSidebarOpen(true)}
-            className="px-6 py-2.5 bg-[var(--surface-1)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-medium rounded-xl hover:bg-[var(--surface-2)] transition-colors"
+            className="px-5 py-2.5 bg-[var(--bg-800)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-medium rounded-xl hover:bg-[var(--bg-700)] hover:border-[var(--border-strong)] transition-colors shadow-[var(--shadow-sm)]"
           >
             Browse Pages
           </button>
@@ -350,54 +353,54 @@ export function MarkdownWorkspace() {
 
   return (
     <div className="flex flex-col h-full bg-[var(--bg-950)] w-full overflow-hidden">
-      {/* Premium Header */}
-      <div className="flex items-center h-16 border-b border-white/5 bg-[var(--bg-950)]/80 backdrop-blur-xl px-6 gap-4 shrink-0 z-20">
-        <button 
-          onClick={() => router.push("/wiki")} 
-          className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-all active:scale-95"
+      {/* Header */}
+      <div className="flex items-center h-14 border-b border-[var(--border-subtle)] bg-[var(--bg-900)]/90 backdrop-blur-sm px-4 gap-3 shrink-0 z-20">
+        <button
+          onClick={() => router.push("/wiki")}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] transition-all active:scale-95"
         >
-          <ChevronLeft className="w-4 h-4" />
-          <span>Dashboard</span>
+          <ChevronLeft className="w-3.5 h-3.5" />
+          <span>Wiki</span>
         </button>
-        
-        <div className="w-px h-6 bg-white/10 mx-1" />
-        
-        <button 
-          onClick={() => setWikiSidebarOpen(true)} 
-          className="p-2.5 text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent-subtle)] rounded-xl transition-all active:scale-95" 
+
+        <div className="w-px h-5 bg-[var(--border-strong)]" />
+
+        <button
+          onClick={() => setWikiSidebarOpen(true)}
+          className="p-2 text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent-subtle)] rounded-lg transition-all active:scale-95"
           title="Open Library"
         >
-          <FolderOpen className="w-5 h-5" />
+          <FolderOpen className="w-4 h-4" />
         </button>
-        
-        <div className="flex-1 min-w-0 mx-4">
+
+        <div className="flex-1 min-w-0 mx-2">
           <input
-            className="w-full bg-transparent border-none outline-none text-lg font-semibold text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:placeholder-white/20 transition-all"
+            className="w-full bg-transparent border-none outline-none text-[15px] font-semibold text-[var(--text-primary)] placeholder:text-[var(--text-dim)] transition-all"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Untitled Document"
+            placeholder="Untitled"
           />
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2.5">
           {saveStatus !== "idle" && (
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all duration-500 border ${
-              saveStatus === "saving" 
-                ? "bg-[var(--warning-bg)]/20 text-[var(--warning)] border-[var(--warning)]/30 animate-pulse" 
-                : "bg-[var(--success-bg)]/20 text-[var(--success)] border-[var(--success)]/30"
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-500 ${
+              saveStatus === "saving"
+                ? "text-[var(--warning)] bg-[var(--warning-bg)]"
+                : "text-[var(--success)] bg-[var(--success-bg)]"
             }`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${saveStatus === "saving" ? "bg-[var(--warning)]" : "bg-[var(--success)]"}`} />
-              {saveStatus === "saving" ? "Syncing" : "Saved"}
+              <div className={`w-1.5 h-1.5 rounded-full ${saveStatus === "saving" ? "bg-[var(--warning)] animate-pulse" : "bg-[var(--success)]"}`} />
+              {saveStatus === "saving" ? "Saving" : "Saved"}
             </div>
           )}
 
           {!isNew && page && page.citations && page.citations.length > 0 && (
             <button
               onClick={() => setShowCitations(!showCitations)}
-              className={`text-xs px-4 py-2 rounded-xl border transition-all font-medium ${
-                showCitations 
-                  ? "bg-[var(--accent)] text-[var(--bg-950)] border-[var(--accent)] shadow-[0_0_20px_rgba(var(--accent-rgb),0.3)]" 
-                  : "bg-white/5 text-[var(--text-secondary)] border-white/10 hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
+              className={`text-[12px] px-3 py-1.5 rounded-lg border transition-all font-medium ${
+                showCitations
+                  ? "bg-[var(--accent)] text-white border-[var(--accent)] shadow-[var(--shadow-glow)]"
+                  : "bg-[var(--bg-700)] text-[var(--text-muted)] border-[var(--border-subtle)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
               }`}
             >
               Citations ({page.citations.length})
@@ -406,23 +409,20 @@ export function MarkdownWorkspace() {
 
           {!isNew && page ? (
             <div className="flex items-center gap-2">
-              <label className="hidden sm:flex cursor-pointer items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors">
+              <label className="hidden sm:flex cursor-pointer items-center gap-2 text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors">
                 <input
                   type="checkbox"
                   checked={autoApproveWiki}
                   onChange={(e) => persistWikiAutoApprove(e.target.checked)}
-                  className="rounded-sm border-white/20 bg-white/5 checked:bg-[var(--accent)]"
+                  className="rounded border-[var(--border-strong)] bg-[var(--bg-700)] accent-[var(--accent)]"
                 />
                 Auto-approve
               </label>
               <button
                 type="button"
-                disabled={
-                  publishBusy ||
-                  !resolveBodyMarkdown(editorRef, content, page.content)
-                }
+                disabled={publishBusy || !resolveBodyMarkdown(editorRef, content, page.content)}
                 onClick={() => void handlePublish()}
-                className="rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] px-5 py-2 text-xs font-bold text-[var(--bg-950)] hover:shadow-[0_0_20px_rgba(var(--accent-rgb),0.4)] hover:scale-[1.02] active:scale-95 disabled:opacity-50 transition-all"
+                className="rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] px-4 py-1.5 text-[12px] font-semibold text-white hover:shadow-[var(--shadow-glow)] active:scale-95 disabled:opacity-50 transition-all"
               >
                 {publishBusy ? "Publishing…" : "Publish"}
               </button>
@@ -491,17 +491,17 @@ export function MarkdownWorkspace() {
 
         {/* Dynamic Table of Contents Sidebar */}
         {!showCitations && toc.length > 0 && (
-          <div className="w-64 border-l border-white/5 bg-[var(--bg-950)]/30 backdrop-blur-md flex flex-col shrink-0 animate-in fade-in duration-500 overflow-y-auto">
-            <div className="p-6">
-              <h3 className="font-bold text-xs uppercase tracking-widest text-[var(--text-muted)] mb-4">On this page</h3>
-              <div className="flex flex-col gap-2">
+          <div className="w-56 border-l border-[var(--border-subtle)] bg-[var(--bg-900)] flex flex-col shrink-0 animate-in fade-in duration-300 overflow-y-auto">
+            <div className="p-5">
+              <h3 className="font-semibold text-[11px] uppercase tracking-widest text-[var(--text-dim)] mb-4">On this page</h3>
+              <div className="flex flex-col gap-1">
                 {toc.map((heading, idx) => (
                   <div
                     key={idx}
-                    className={`text-sm cursor-pointer hover:text-[var(--accent)] transition-colors ${
-                      heading.level === 1 ? "font-medium text-[var(--text-primary)]" :
-                      heading.level === 2 ? "pl-3 text-[var(--text-secondary)]" :
-                      "pl-6 text-[var(--text-muted)]"
+                    className={`text-[13px] cursor-pointer hover:text-[var(--accent)] transition-colors py-0.5 ${
+                      heading.level === 1 ? "font-medium text-[var(--text-secondary)]" :
+                      heading.level === 2 ? "pl-3 text-[var(--text-muted)]" :
+                      "pl-6 text-[var(--text-dim)]"
                     }`}
                     onClick={() => {
                       // simple scroll to implementation could go here
@@ -519,51 +519,51 @@ export function MarkdownWorkspace() {
 
         {/* Citations Sidebar */}
         {showCitations && page?.citations && page.citations.length > 0 && (
-          <div className="w-96 border-l border-white/5 bg-[var(--bg-950)]/50 backdrop-blur-2xl flex flex-col shrink-0 animate-in slide-in-from-right duration-500">
-            <div className="p-6 border-b border-white/5 flex justify-between items-center">
-              <h3 className="font-bold text-lg text-[var(--text-primary)] tracking-tight">Citations</h3>
-              <button 
+          <div className="w-80 border-l border-[var(--border-subtle)] bg-[var(--bg-900)] flex flex-col shrink-0 animate-in slide-in-from-right duration-300">
+            <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex justify-between items-center">
+              <h3 className="font-semibold text-[14px] text-[var(--text-primary)] tracking-tight">Citations</h3>
+              <button
                 onClick={() => setShowCitations(false)}
-                className="p-2 text-[var(--text-muted)] hover:text-white hover:bg-white/5 rounded-lg transition-all"
+                className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] rounded-lg transition-all"
               >
-                ✕
+                <span className="text-[13px]">✕</span>
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
               {page.citations.map((c) => (
-                <div key={c.id} className="group p-5 bg-white/[0.02] hover:bg-white/[0.05] rounded-2xl border border-white/5 transition-all duration-300">
-                  <div className="font-bold text-[var(--accent)] mb-2 flex items-center gap-2 group-hover:translate-x-1 transition-transform">
-                    {c.source_type === "pdf" ? "📄" : c.source_type === "youtube" ? "🎬" : "📝"}
+                <div key={c.id} className="group p-4 bg-[var(--bg-800)] hover:bg-[var(--bg-700)] rounded-xl border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-all shadow-[var(--shadow-sm)]">
+                  <div className="font-medium text-[var(--text-primary)] mb-3 flex items-center gap-2 text-[13px]">
+                    <span className="text-[var(--accent)]">{c.source_type === "pdf" ? "📄" : c.source_type === "youtube" ? "�" : "📝"}</span>
                     <span className="truncate" title={c.original_filename}>{c.original_filename}</span>
                   </div>
                   <div className="space-y-1.5">
                     {c.wiki_section && (
-                      <div className="text-[var(--text-secondary)] text-xs flex justify-between">
-                        <span className="text-[var(--text-muted)]">Section</span>
-                        <span className="font-medium text-[var(--text-primary)]">{c.wiki_section}</span>
+                      <div className="text-[12px] flex justify-between">
+                        <span className="text-[var(--text-dim)]">Section</span>
+                        <span className="font-medium text-[var(--text-secondary)]">{c.wiki_section}</span>
                       </div>
                     )}
                     {c.source_page_number && (
-                      <div className="text-[var(--text-secondary)] text-xs flex justify-between">
-                        <span className="text-[var(--text-muted)]">Page</span>
-                        <span className="font-medium text-[var(--text-primary)]">{c.source_page_number}</span>
+                      <div className="text-[12px] flex justify-between">
+                        <span className="text-[var(--text-dim)]">Page</span>
+                        <span className="font-medium text-[var(--text-secondary)]">{c.source_page_number}</span>
                       </div>
                     )}
                     {c.source_timestamp && (
-                      <div className="text-[var(--text-secondary)] text-xs flex justify-between">
-                        <span className="text-[var(--text-muted)]">Timestamp</span>
-                        <span className="font-medium text-[var(--text-primary)]">{c.source_timestamp}</span>
+                      <div className="text-[12px] flex justify-between">
+                        <span className="text-[var(--text-dim)]">Timestamp</span>
+                        <span className="font-medium text-[var(--text-secondary)]">{c.source_timestamp}</span>
                       </div>
                     )}
                   </div>
-                  <button 
+                  <button
                     onClick={() => {
                       setSelectedCitation(c);
                       setViewingRawSourceId(c.raw_source_id);
                     }}
-                    className="mt-4 w-full py-2 bg-white/5 hover:bg-[var(--accent)] hover:text-[var(--bg-950)] text-xs font-bold rounded-xl transition-all border border-white/5"
+                    className="mt-3 w-full py-1.5 rounded-lg bg-[var(--accent-subtle)] hover:bg-[var(--accent)] text-[var(--accent)] hover:text-white text-[12px] font-medium transition-all border border-[var(--accent)]/20"
                   >
-                    Explore Raw Source
+                    View Source
                   </button>
                 </div>
               ))}
@@ -573,8 +573,8 @@ export function MarkdownWorkspace() {
       </div>
 
       {viewingRawSourceId && currentTeamId && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-8 animate-in fade-in duration-300">
-          <div className="w-full max-w-6xl h-[90vh] bg-[var(--bg-900)] rounded-3xl overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.5)] border border-white/10 relative">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-8 animate-in fade-in duration-200">
+          <div className="w-full max-w-6xl h-[90vh] bg-[var(--bg-900)] rounded-2xl overflow-hidden shadow-[var(--shadow-lg)] border border-[var(--border-strong)] relative">
             <RawSourceViewer 
               teamId={currentTeamId} 
               sourceId={viewingRawSourceId} 

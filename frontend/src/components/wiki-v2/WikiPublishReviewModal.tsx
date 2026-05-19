@@ -72,7 +72,7 @@ export function WikiPublishReviewModal({ open, teamId, changeset, onClose, onApp
         role="dialog"
         aria-modal="true"
         aria-labelledby="wiki-review-title"
-        className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] shadow-2xl"
+        className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-800)] shadow-[var(--shadow-lg)]"
       >
         <div className="border-b border-[var(--border-subtle)] px-6 py-4">
           <h2 id="wiki-review-title" className="text-lg font-semibold text-[var(--text-primary)]">
@@ -166,7 +166,7 @@ export function WikiPublishReviewModal({ open, teamId, changeset, onClose, onApp
             type="button"
             onClick={() => void approve()}
             disabled={busy !== null}
-            className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-bold text-[var(--bg-950)] hover:opacity-90 disabled:opacity-50"
+            className="rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] px-4 py-2 text-sm font-bold text-white hover:shadow-[var(--shadow-glow)] active:scale-95 transition-all disabled:opacity-50"
           >
             {busy === "approve" ? "Applying…" : "Approve & apply"}
           </button>

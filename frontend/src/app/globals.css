@@ -2,37 +2,37 @@
 
 /* ─── Dark Theme (Default) ──────────────────────────────────────── */
 :root, [data-theme="dark"] {
-  /* Backgrounds — zinc scale, slightly warm */
-  --bg-950: #0d0d0f;
-  --bg-900: #111114;
-  --bg-800: #18181c;
-  --bg-700: #1e1e23;
-  --bg-600: #26262d;
-  --bg-500: #2e2e37;
+  /* Backgrounds — deep slate-violet, premium feel */
+  --bg-950: #08080c;
+  --bg-900: #0d0d12;
+  --bg-800: #13131a;
+  --bg-700: #1a1a23;
+  --bg-600: #22222e;
+  --bg-500: #2b2b3a;
 
-  /* Text — zinc scale */
-  --text-primary: #f4f4f5;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
-  --text-dim: #3f3f46;
+  /* Text */
+  --text-primary: #eeeef2;
+  --text-secondary: #a0a0b8;
+  --text-muted: #62627a;
+  --text-dim: #3d3d52;
 
-  /* Accent — Indigo (ElevenLabs-inspired) */
-  --accent: #6366f1;
-  --accent-rgb: 99, 102, 241;
-  --accent-light: #818cf8;
-  --accent-dark: #4f46e5;
-  --accent-glow: rgba(99, 102, 241, 0.25);
-  --accent-subtle: rgba(99, 102, 241, 0.1);
+  /* Accent — soft violet-purple, distinctive and warm */
+  --accent: #8b7ff4;
+  --accent-rgb: 139, 127, 244;
+  --accent-light: #a99cf7;
+  --accent-dark: #7165e0;
+  --accent-glow: rgba(139, 127, 244, 0.28);
+  --accent-subtle: rgba(139, 127, 244, 0.12);
 
   /* Status */
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --info: #3b82f6;
-  --success-bg: rgba(34, 197, 94, 0.08);
-  --danger-bg: rgba(239, 68, 68, 0.08);
-  --warning-bg: rgba(245, 158, 11, 0.08);
-  --info-bg: rgba(59, 130, 246, 0.08);
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --info: #60a5fa;
+  --success-bg: rgba(52, 211, 153, 0.1);
+  --danger-bg: rgba(248, 113, 113, 0.1);
+  --warning-bg: rgba(251, 191, 36, 0.1);
+  --info-bg: rgba(96, 165, 250, 0.1);
 
   /* Legacy aliases */
   --green: var(--success);
@@ -48,28 +48,28 @@
   --surface-2: var(--bg-700);
   --surface-3: var(--bg-600);
 
-  /* Borders — ElevenLabs-thin */
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-strong: rgba(255, 255, 255, 0.11);
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
   --border: var(--border-subtle);
   --border-hover: var(--border-strong);
   --ring: var(--accent);
 
-  /* Glass (kept for compat, rarely needed now) */
-  --glass-bg: rgba(13, 13, 15, 0.8);
-  --glass-bg-light: rgba(13, 13, 15, 0.5);
-  --glass-border: rgba(255, 255, 255, 0.06);
+  /* Glass */
+  --glass-bg: rgba(13, 13, 18, 0.82);
+  --glass-bg-light: rgba(13, 13, 18, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.07);
   --glass-blur: 20px;
-  --glass-heavy-bg: rgba(13, 13, 15, 0.92);
+  --glass-heavy-bg: rgba(13, 13, 18, 0.94);
 
-  /* Shadows — zeroed out by flat-design rule, kept as fallback vars */
-  --shadow-sm: none;
-  --shadow-md: none;
-  --shadow-lg: none;
-  --shadow-glow: none;
-  --shadow-1: none;
-  --shadow-2: none;
-  --shadow-3: none;
+  /* Shadows — real subtle depth */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.25);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.3);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.35);
+  --shadow-glow: 0 0 20px rgba(139, 127, 244, 0.3);
+  --shadow-1: var(--shadow-sm);
+  --shadow-2: var(--shadow-md);
+  --shadow-3: var(--shadow-lg);
 
   /* Typography — Geist (loaded in layout.tsx) */
   --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
@@ -95,17 +95,17 @@
   --page-padding-y: 48px;
   --reading-max-w: 760px;
 
-  /* Layout */
-  --radius-xs: 0px;
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
-  --radius-xl: 0px;
-  --radius-2xl: 0px;
-  --radius: 0px;
-  --sidebar-w: 220px;
-  --sidebar-w-collapsed: 56px;
-  --sidebar-w-rail: 56px;
+  /* Layout — proper radius restored */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius: 8px;
+  --sidebar-w: 240px;
+  --sidebar-w-collapsed: 58px;
+  --sidebar-w-rail: 58px;
   --header-h: 52px;
   --panel-max-w: 1024px;
 
@@ -120,41 +120,41 @@
   --t-slow: 400ms var(--ease);
 
   /* Compat */
-  --primary-50: #eef2ff;
-  --primary-100: #e0e7ff;
-  --primary-500: #6366f1;
-  --primary-900: #312e81;
+  --primary-50: #f0eeff;
+  --primary-100: #e0dcff;
+  --primary-500: #8b7ff4;
+  --primary-900: #3d3580;
 }
 
 /* ─── Light Theme ────────────────────────────────────────────────── */
 [data-theme="light"] {
-  --bg-950: #fafafa;
-  --bg-900: #f5f5f5;
+  --bg-950: #f8f8fb;
+  --bg-900: #f2f2f6;
   --bg-800: #ffffff;
-  --bg-700: #ececec;
-  --bg-600: #e4e4e7;
-  --bg-500: #d4d4d8;
+  --bg-700: #ebebf0;
+  --bg-600: #e2e2ea;
+  --bg-500: #d5d5e0;
 
-  --text-primary: #09090b;
-  --text-secondary: #3f3f46;
-  --text-muted: #71717a;
-  --text-dim: #a1a1aa;
+  --text-primary: #0f0f18;
+  --text-secondary: #3a3a52;
+  --text-muted: #68687e;
+  --text-dim: #a8a8bc;
 
-  --accent: #4f46e5;
-  --accent-rgb: 79, 70, 229;
-  --accent-light: #6366f1;
-  --accent-dark: #3730a3;
-  --accent-glow: rgba(79, 70, 229, 0.18);
-  --accent-subtle: rgba(79, 70, 229, 0.08);
+  --accent: #6d5fe8;
+  --accent-rgb: 109, 95, 232;
+  --accent-light: #8b7ff4;
+  --accent-dark: #5448d4;
+  --accent-glow: rgba(109, 95, 232, 0.2);
+  --accent-subtle: rgba(109, 95, 232, 0.09);
 
-  --success: #16a34a;
-  --warning: #d97706;
-  --danger: #dc2626;
-  --info: #2563eb;
-  --success-bg: rgba(22, 163, 74, 0.08);
-  --danger-bg: rgba(220, 38, 38, 0.08);
-  --warning-bg: rgba(217, 119, 6, 0.08);
-  --info-bg: rgba(37, 99, 235, 0.08);
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #3b82f6;
+  --success-bg: rgba(16, 185, 129, 0.08);
+  --danger-bg: rgba(239, 68, 68, 0.08);
+  --warning-bg: rgba(245, 158, 11, 0.08);
+  --info-bg: rgba(59, 130, 246, 0.08);
 
   --green: var(--success);
   --yellow: var(--warning);
@@ -164,27 +164,27 @@
   --red-bg: var(--danger-bg);
 
   --surface-1: #ffffff;
-  --surface-2: #f4f4f5;
+  --surface-2: #f4f4f9;
   --surface-3: var(--bg-700);
 
   --border-subtle: rgba(0, 0, 0, 0.07);
   --border-strong: rgba(0, 0, 0, 0.13);
 
-  --glass-bg: rgba(255, 255, 255, 0.85);
-  --glass-bg-light: rgba(255, 255, 255, 0.6);
+  --glass-bg: rgba(255, 255, 255, 0.88);
+  --glass-bg-light: rgba(255, 255, 255, 0.65);
   --glass-border: rgba(0, 0, 0, 0.06);
-  --glass-heavy-bg: rgba(250, 250, 250, 0.95);
+  --glass-heavy-bg: rgba(252, 252, 255, 0.96);
 
-  --shadow-sm: none;
-  --shadow-md: none;
-  --shadow-lg: none;
-  --shadow-glow: none;
-  --shadow-1: none;
-  --shadow-2: none;
-  --shadow-3: none;
+  --shadow-sm: 0 1px 3px rgba(15,15,30,0.08), 0 1px 2px rgba(15,15,30,0.05);
+  --shadow-md: 0 4px 12px rgba(15,15,30,0.1), 0 2px 4px rgba(15,15,30,0.07);
+  --shadow-lg: 0 12px 32px rgba(15,15,30,0.14), 0 4px 12px rgba(15,15,30,0.08);
+  --shadow-glow: 0 0 20px rgba(109, 95, 232, 0.2);
+  --shadow-1: var(--shadow-sm);
+  --shadow-2: var(--shadow-md);
+  --shadow-3: var(--shadow-lg);
 
-  --primary-500: #6366f1;
-  --primary-900: #312e81;
+  --primary-500: #8b7ff4;
+  --primary-900: #3d3580;
 }
 
 /* ─── Base Layer ─────────────────────────────────────────────────── */
@@ -271,7 +271,7 @@
   height: min(52vmin, 480px);
   left: -12%;
   top: 8%;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.18) 0%, transparent 72%);
+  background: radial-gradient(circle, rgba(139, 127, 244, 0.18) 0%, transparent 72%);
   animation: graph-ambient-drift-a 18s ease-in-out infinite;
 }
 
@@ -280,7 +280,7 @@
   height: min(44vmin, 400px);
   right: -8%;
   bottom: 5%;
-  background: radial-gradient(circle, rgba(129, 140, 248, 0.15) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(161, 156, 247, 0.14) 0%, transparent 70%);
   animation: graph-ambient-drift-b 22s ease-in-out infinite;
 }
 
@@ -289,7 +289,7 @@
   height: min(36vmin, 320px);
   left: 35%;
   bottom: 18%;
-  background: radial-gradient(circle, rgba(34, 197, 94, 0.12) 0%, transparent 68%);
+  background: radial-gradient(circle, rgba(52, 211, 153, 0.1) 0%, transparent 68%);
   animation: graph-ambient-drift-c 14s ease-in-out infinite;
 }
 
@@ -325,7 +325,7 @@
 }
 
 .text-gradient {
-  background: linear-gradient(to right, #818cf8, #6366f1);
+  background: linear-gradient(135deg, #a99cf7, #8b7ff4, #7165e0);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
