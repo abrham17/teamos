@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { Send, Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, BrainCircuit, Search, Calendar, BookOpen, Target } from "lucide-react";
+import { Send, Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, Mic, BrainCircuit, Search, Calendar, BookOpen, Target } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { ChatCitationList } from "@/components/chat/ChatCitationList";
 import { ChatAgentToolTimeline } from "@/components/chat/ChatAgentToolTimeline";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
-import { motion, AnimatePresence } from "motion/react";
+import { VoiceChatOverlay, VoiceOverlayPhase } from "@/components/chat/VoiceChatOverlay";
+import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentThinking, AgentReflection, AgentStep, AgentStrategy } from "@/components/chat/chatTypes";
 import { AgentThinkingPane } from "@/components/chat/AgentThinkingPane";
@@ -49,6 +50,58 @@ export function ChatInterface() {
   const [agentThoughts, setAgentThoughts] = useState<AgentThinking[]>([]);
   const [agentReflections, setAgentReflections] = useState<AgentReflection[]>([]);
 
+  // Voice overlay state
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [voicePhase, setVoicePhase] = useState<VoiceOverlayPhase>("idle");
+  const [voiceCaption, setVoiceCaption] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
+  const speechSupported = typeof window !== "undefined" &&
+    !!("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
+
+  const toggleListening = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) return;
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      setVoicePhase("idle");
+      return;
+    }
+    const recognition = new SR();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.onstart = () => { setIsListening(true); setVoicePhase("listening"); };
+    recognition.onend = () => { setIsListening(false); setVoicePhase("idle"); setInterimTranscript(""); };
+    recognition.onerror = () => { setIsListening(false); setVoicePhase("idle"); };
+    recognition.onresult = (e: { resultIndex: number; results: SpeechRecognitionResultList }) => {
+      let interim = "";
+      let final = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) final += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
+      setInterimTranscript(interim);
+      if (final.trim()) {
+        setVoiceCaption(final.trim());
+        setVoicePhase("thinking");
+        recognition.stop();
+        void sendUserMessage(final.trim());
+      }
+    };
+    recognition.start();
+    recognitionRef.current = recognition;
+  };
+
+  // Close voice overlay when stream finishes
+  useEffect(() => {
+    if (!isStreaming && voicePhase === "thinking") setVoicePhase("idle");
+  }, [isStreaming, voicePhase]);
+  
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editInput, setEditInput] = useState("");
 
@@ -364,87 +417,17 @@ export function ChatInterface() {
     await handleSend(editInput);
   };
 
-  const renderInput = () => {
-    const inputTypingDisabled = isStreaming || !sessionReady;
-    const sendDisabled = isStreaming || !sessionReady || !activeSessionId || !input.trim();
-
-    return (
-      <motion.div
-        layoutId="chat-input"
-        className="relative mx-auto flex w-full max-w-4xl flex-col gap-2 z-20"
-        transition={{ type: "spring", stiffness: 350, damping: 30 }}
-      >
-        <div className="flex items-center gap-2 mb-1 px-1 min-h-[30px]">
-          {strategy ? (
-            <motion.div
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-2 px-3 py-1.5 border border-[var(--border-subtle)] bg-transparent"
-            >
-              <div className="flex items-center gap-1.5">
-                {strategy.primary_agent === "lightweight" && <Search className="w-3.5 h-3.5 text-[var(--accent)]" />}
-                {strategy.primary_agent === "wiki" && <Bot className="w-3.5 h-3.5 text-[var(--accent)]" />}
-                {strategy.primary_agent === "plan" && <BrainCircuit className="w-3.5 h-3.5 text-[var(--accent)]" />}
-                {strategy.primary_agent === "strategic_planner" && <Calendar className="w-3.5 h-3.5 text-[var(--accent)]" />}
-                {strategy.primary_agent === "analyst" && <BrainCircuit className="w-3.5 h-3.5 text-[var(--accent)]" />}
-                
-                <span className="text-[10px] font-black uppercase tracking-widest text-[var(--accent)]">
-                  {strategy.primary_agent === "strategic_planner" ? "Architecting Strategy" : 
-                   strategy.primary_agent === "lightweight" ? "Knowledge Lookup" :
-                   "Operational Execution"}
-                </span>
-              </div>
-              
-              <div className="h-3 w-[1px] bg-[var(--border-subtle)]" />
-              
-              <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-tight">
-                {strategy.reasoning_depth} Reasoning
-              </span>
-            </motion.div>
-          ) : (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border-subtle)] bg-transparent">
-              <BrainCircuit className="w-3.5 h-3.5 text-[var(--text-dim)]" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)]">
-                Universal Intelligence
-              </span>
-            </div>
-          )}
-        </div>
-        <div className="relative group w-full">
-          <textarea
-            ref={inputRef}
-            rows={1}
-            className="relative w-full border border-[var(--border-strong)] bg-[var(--bg-950)] py-3 pl-5 pr-16 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/50 shadow-none disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden leading-relaxed"
-            style={{ maxHeight: "180px" }}
-            placeholder={!sessionReady ? "Initializing Intelligence…" : "Enter command or ask a question… (Shift+Enter for newline)"}
-            value={input}
-            onChange={(e) => {
-              setInput(e.target.value);
-              e.target.style.height = "auto";
-              e.target.style.height = Math.min(e.target.scrollHeight, 180) + "px";
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void handleSend();
-              }
-            }}
-            disabled={inputTypingDisabled}
-          />
-          <div className="absolute right-2 bottom-1.5 flex items-center gap-1">
-            <button onClick={() => void handleSend()} disabled={sendDisabled} className="h-9 w-9 flex items-center justify-center bg-[var(--accent)] text-[var(--bg-950)] disabled:cursor-not-allowed disabled:opacity-20"><Send className="h-4 w-4" /></button>
-          </div>
-        </div>
-      </motion.div>
-    );
-  };
-
   if (!currentTeamId) return <div className="flex flex-1 items-center justify-center text-[var(--text-muted)]">Select a team first</div>;
 
-  const isEmpty = sessionReady && messages.length === 0;
+  const inputTypingDisabled = isStreaming || !sessionReady;
+  const sendDisabled = isStreaming || !sessionReady || !activeSessionId || !input.trim();
 
   return (
-    <div className="flex h-full w-full flex-1 bg-[var(--bg-950)] relative overflow-hidden font-sans">
+    <div className="flex h-full w-full flex-1 bg-[var(--chat-page-bg)] relative overflow-hidden font-sans">
+      <div className="absolute top-0 right-[8%] w-[32%] h-[38%] rounded-full bg-[radial-gradient(circle,rgba(217,119,87,0.07)_0%,transparent_70%)] blur-[90px] pointer-events-none" />
+      <div className="absolute bottom-[12%] left-[2%] w-[24%] h-[28%] rounded-full bg-[radial-gradient(circle,rgba(0,212,232,0.05)_0%,transparent_70%)] blur-[90px] pointer-events-none" />
+
+
       <ChatSidebar
         sessions={sessions}
         activeSessionId={activeSessionId}
@@ -455,131 +438,133 @@ export function ChatInterface() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col relative z-10 overflow-hidden w-full h-full">
-        <div ref={scrollContainerRef} className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 sm:px-6 py-6 min-h-0 custom-scrollbar w-full">
+        <div ref={scrollContainerRef} className="flex flex-1 flex-col gap-6 overflow-y-auto px-4 sm:px-8 py-8 min-h-0 custom-scrollbar w-full">
           {!sessionReady && (
             <div className="flex flex-1 flex-col items-center justify-center gap-4 animate-fade-in my-auto">
               <Loader2 className="h-10 w-10 text-[var(--accent)] animate-spin" />
               <p className="text-sm text-[var(--text-muted)]">Initializing Intelligence…</p>
             </div>
           )}
-
-          <AnimatePresence mode="wait">
-            {isEmpty && (
-              <motion.div
-                key="empty-state"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex flex-1 flex-col items-center justify-center px-4 my-auto gap-10"
-              >
-                {/* Hero */}
-                <div className="text-center">
-                  <div className="mb-5 relative inline-block">
-                    <div className="relative flex h-20 w-20 items-center justify-center bg-[var(--surface-2)] border border-[var(--border-subtle)]">
-                      <Bot className="h-10 w-10 text-[var(--text-primary)]" />
-                    </div>
-                  </div>
-                  <h2 className="text-2xl font-black tracking-tight text-[var(--text-primary)]">Command Center</h2>
-                  <p className="mt-2 max-w-sm text-sm leading-relaxed text-[var(--text-muted)]">Connect your team&apos;s knowledge and execute complex workflows.</p>
+          {sessionReady && messages.length === 0 && (
+            <div className="flex flex-1 flex-col items-center justify-center px-4 my-auto gap-8 animate-fade-in">
+              {/* Greeting */}
+              <div className="flex flex-col items-center gap-4 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-[var(--surface-1)] border border-[var(--border-subtle)] flex items-center justify-center">
+                  <Bot className="w-6 h-6 text-[var(--text-muted)]" />
                 </div>
-                {/* Capability cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl">
-                  {[
-                    { icon: Search,   label: "Search knowledge",    desc: "Ask anything about your wiki",               prompt: "Summarize our key knowledge areas" },
-                    { icon: BookOpen, label: "Create wiki pages",   desc: "Draft or update knowledge base pages",        prompt: "Create a wiki page about our onboarding process" },
-                    { icon: Target,   label: "Build & manage plans",desc: "Generate tasks, milestones, and timelines",   prompt: "Show me the current project plans and highlight risks" },
-                  ].map(({ icon: Icon, label, desc, prompt }) => (
-                    <button
-                      key={label}
-                      onClick={() => { setInput(prompt); inputRef.current?.focus(); }}
-                      className="group flex flex-col gap-2.5 p-4 bg-[var(--surface-1)] border border-[var(--border-subtle)] hover:bg-[var(--surface-2)] text-left transition-colors duration-200"
-                    >
-                      <div className="w-9 h-9 bg-[var(--surface-2)] border border-[var(--border-subtle)] flex items-center justify-center">
-                        <Icon className="w-4.5 h-4.5 text-[var(--text-primary)]" />
-                      </div>
-                      <div>
-                        <div className="text-[13px] font-bold text-[var(--text-primary)]">{label}</div>
-                        <div className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-snug">{desc}</div>
-                      </div>
-                    </button>
-                  ))}
+                <div>
+                  <h2 className="text-2xl font-bold text-[var(--text-primary)] tracking-tight">What can I help with?</h2>
+                  <p className="mt-1.5 max-w-sm text-sm text-[var(--text-muted)] leading-relaxed">
+                    Search your wiki, manage projects, or build a strategic plan.
+                  </p>
                 </div>
+              </div>
+              {/* Pill suggestion chips */}
+              <div className="flex flex-wrap justify-center gap-2 max-w-lg">
+                {[
+                  { label: "Search knowledge base",  prompt: "Summarize our key knowledge areas" },
+                  { label: "Create a wiki page",     prompt: "Create a wiki page about our onboarding process" },
+                  { label: "Review project plans",   prompt: "Show me the current project plans and highlight risks" },
+                  { label: "Build a strategy",       prompt: "Help me build a strategic plan for Q3" },
+                  { label: "Analyze team capacity",  prompt: "Analyze our team's current workload and capacity" },
+                ].map(({ label, prompt }) => (
+                  <button
+                    key={label}
+                    onClick={() => { setInput(prompt); inputRef.current?.focus(); }}
+                    className="px-4 py-2 rounded-full border border-[var(--border-strong)] text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] hover:bg-[var(--surface-1)] transition-all"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
-                {/* Centered Input */}
-                <div className="w-full max-w-2xl mt-4">
-                  {renderInput()}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {!isEmpty && messages.map((m, i) => {
+          {messages.map((m, i) => {
             const isLiveAssistant = m.role === "assistant" && isStreaming && i === messages.length - 1;
             const isUser = m.role === "user";
             const isEditing = editingMessageId === m.id;
-            
+
             return (
-              <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} key={m.id || i} className={cn("mx-auto flex w-full max-w-4xl gap-3 group/msg", isUser ? "justify-end" : "justify-start")}>
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} key={m.id || i} className={cn("mx-auto flex w-full max-w-3xl gap-3 group/msg", isUser ? "justify-end" : "justify-start")}>
                 {!isUser && (
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--surface-2)] border border-[var(--border-subtle)]">
-                    <Bot className="h-4.5 w-4.5 text-[var(--text-primary)]" />
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-1)] border border-[var(--border-subtle)] mt-0.5">
+                    <Bot className="h-4 w-4 text-[var(--text-muted)]" />
                   </div>
                 )}
-                <div className={cn("flex max-w-[85%] flex-col gap-3", isUser ? "items-end" : "items-start")}>
+                <div className={cn("flex flex-col gap-2", isUser ? "items-end max-w-[78%]" : "items-start flex-1 min-w-0")}>
                   {!isUser && i === messages.length - 1 && isStreaming && (agentThoughts.length > 0 || agentReflections.length > 0) && (
-                    <AgentThinkingPane 
-                      thoughts={agentThoughts} 
-                      reflections={agentReflections} 
+                    <AgentThinkingPane
+                      thoughts={agentThoughts}
+                      reflections={agentReflections}
                       steps={agentSteps}
-                      isActive={isStreaming} 
+                      isActive={isStreaming}
                     />
                   )}
                   {!isUser && agentStepsForMessage(m).length > 0 && <ChatAgentToolTimeline steps={agentStepsForMessage(m)} />}
-                  <div className="relative group/msg-content">
-                    <div className={cn("px-4 py-3.5 text-[14.5px] leading-relaxed transition-all", isUser ? "bg-[var(--accent)] font-medium text-white max-w-[75%]" : "bg-transparent text-[var(--text-primary)] border-none px-0")}>
-                        {isEditing ? (
-                          <div className="flex flex-col gap-3 min-w-0 w-full">
-                            <textarea className="w-full bg-transparent border-none outline-none text-[var(--bg-950)] placeholder:text-[var(--bg-950)]/50 resize-none overflow-hidden" value={editInput} onChange={(e) => { setEditInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }} autoFocus />
-                            <div className="flex justify-end gap-2">
-                                <button onClick={() => setEditingMessageId(null)} className="p-1 hover:bg-white/20 transition-colors"><X className="w-4 h-4" /></button>
-                                <button onClick={() => handleSaveEdit(m.id)} className="p-1 bg-white/20 hover:bg-white/30 transition-colors"><Check className="w-4 h-4" /></button>
-                            </div>
+                  <div className="relative group/msg-content w-full">
+                    <div className={cn(
+                      "text-[14.5px] leading-relaxed transition-all",
+                      isUser
+                        ? "bg-[var(--user-bubble)] text-[var(--user-bubble-text)] font-medium rounded-2xl px-4 py-3"
+                        : "text-[var(--text-primary)] py-1"
+                    )}>
+                      {isEditing ? (
+                        <div className="flex flex-col gap-3 min-w-0 w-full">
+                          <textarea
+                            className="w-full bg-transparent border-none outline-none text-[var(--user-bubble-text)] placeholder:text-[var(--user-bubble-text)]/50 resize-none overflow-hidden"
+                            value={editInput}
+                            onChange={(e) => { setEditInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }}
+                            autoFocus
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button onClick={() => setEditingMessageId(null)} className="p-1 rounded-lg hover:bg-black/10 transition-colors"><X className="w-4 h-4" /></button>
+                            <button onClick={() => handleSaveEdit(m.id)} className="p-1 rounded-lg bg-black/10 hover:bg-black/20 transition-colors"><Check className="w-4 h-4" /></button>
                           </div>
-                        ) : m.role === "assistant" ? (
-                          <ChatMessageContent content={m.content} streaming={isLiveAssistant} />
-                        ) : (
-                          <span className="whitespace-pre-wrap break-words">{m.content}</span>
-                        )}
+                        </div>
+                      ) : m.role === "assistant" ? (
+                        <ChatMessageContent content={m.content} streaming={isLiveAssistant} />
+                      ) : (
+                        <span className="whitespace-pre-wrap break-words">{m.content}</span>
+                      )}
                     </div>
                     {isUser && !isEditing && (
-                        <button onClick={() => { setEditingMessageId(m.id); setEditInput(m.content); }} className="absolute -left-10 top-2 p-2 text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--surface-1)] opacity-0 group-hover/msg:opacity-100 transition-all" title="Edit Message">
-                            <Pencil className="w-3.5 h-3.5" />
-                        </button>
+                      <button
+                        onClick={() => { setEditingMessageId(m.id); setEditInput(m.content); }}
+                        className="absolute -left-9 top-1.5 p-1.5 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-1)] opacity-0 group-hover/msg:opacity-100 transition-all"
+                        title="Edit Message"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
                     )}
                     {!isUser && !isLiveAssistant && (
-                        <div className="absolute -right-1 -top-9 flex items-center gap-0.5 opacity-0 group-hover/msg-content:opacity-100 transition-all bg-[var(--bg-800)] p-0.5 border border-[var(--border-subtle)]">
-                            <button onClick={() => { navigator.clipboard.writeText(m.content); }} className="p-1.5 text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--surface-2)] transition-colors" title="Copy Response">
-                                <Copy className="w-3.5 h-3.5" />
-                            </button>
-                            {i === messages.length - 1 && (
-                                <button 
-                                    onClick={() => {
-                                        const lastUser = [...messages].reverse().find(msg => msg.role === "user");
-                                        if (lastUser) handleSaveEdit(lastUser.id);
-                                    }} 
-                                    className="p-1.5 text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--surface-2)] transition-colors" 
-                                    title="Regenerate"
-                                >
-                                    <RotateCcw className="w-3.5 h-3.5" />
-                                </button>
-                            )}
-                        </div>
+                      <div className="flex items-center gap-0.5 mt-2 opacity-0 group-hover/msg-content:opacity-100 transition-all">
+                        <button
+                          onClick={() => { navigator.clipboard.writeText(m.content); }}
+                          className="p-1.5 rounded-md text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-1)] transition-colors"
+                          title="Copy Response"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                        {i === messages.length - 1 && (
+                          <button
+                            onClick={() => {
+                              const lastUser = [...messages].reverse().find(msg => msg.role === "user");
+                              if (lastUser) handleSaveEdit(lastUser.id);
+                            }}
+                            className="p-1.5 rounded-md text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-1)] transition-colors"
+                            title="Regenerate"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                   {m.citations && m.citations.length > 0 && <div className="mt-1"><ChatCitationList citations={m.citations} /></div>}
                 </div>
                 {isUser && (
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center bg-[var(--surface-2)] border border-[var(--border-subtle)] text-[13px] font-bold text-[var(--text-primary)] uppercase select-none">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-1)] border border-[var(--border-subtle)] mt-0.5">
                     <User className="h-4 w-4 text-[var(--text-muted)]" />
                   </div>
                 )}
@@ -587,11 +572,23 @@ export function ChatInterface() {
             );
           })}
 
-          {isStreaming && status && (
-            <div className="mx-auto flex w-full max-w-4xl justify-start items-center gap-3 animate-fade-in">
-              <div className="flex items-center gap-2 px-3 py-1.5 border border-[var(--border-subtle)] bg-transparent overflow-hidden relative">
-                <Loader2 className="w-3 h-3 text-[var(--accent)] animate-spin shrink-0" />
-                <span className="text-[11px] font-semibold text-[var(--accent)] tracking-wide">{status}</span>
+          {isStreaming && (
+            <div className="mx-auto flex w-full max-w-3xl justify-start items-center gap-3">
+              <div className="w-8 h-8 shrink-0" />
+              <div className="py-2">
+                {status ? (
+                  <span className="text-[12px] text-[var(--text-muted)]">{status}</span>
+                ) : (
+                  <span className="flex items-center gap-1">
+                    {[0, 1, 2].map(i => (
+                      <span
+                        key={i}
+                        className="w-1.5 h-1.5 rounded-full bg-[var(--text-dim)] animate-bounce inline-block"
+                        style={{ animationDelay: `${i * 0.15}s`, animationDuration: "1s" }}
+                      />
+                    ))}
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -602,20 +599,80 @@ export function ChatInterface() {
         {showScrollBtn && (
           <button
             onClick={scrollToBottom}
-            className="absolute right-6 z-30 p-2.5 bg-[var(--surface-1)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-2)] transition-colors"
+            className="absolute right-6 z-30 p-2.5 rounded-full bg-[var(--surface-1)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-2)] transition-all"
             title="Scroll to bottom"
           >
             <ArrowDown className="w-4 h-4" />
           </button>
         )}
 
-        {/* Bottom Input Area */}
-        {!isEmpty && (
-          <div className="shrink-0 bg-[var(--bg-950)] px-4 pt-2 pb-3 w-full border-t border-[var(--border-subtle)] z-20">
-            {renderInput()}
+        <div className="shrink-0 bg-[var(--chat-page-bg)] px-4 pt-2 pb-4 w-full z-20 border-t border-[var(--border-subtle)]">
+          <div className="relative mx-auto flex w-full max-w-3xl flex-col gap-2">
+            {strategy && (
+              <div className="flex items-center gap-1.5 px-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-[var(--chat-accent)]" />
+                <span className="text-[11px] text-[var(--text-muted)]">
+                  {strategy.primary_agent === "strategic_planner" ? "Architect mode" :
+                   strategy.primary_agent === "lightweight" ? "Quick lookup" : "Execution mode"}
+                </span>
+              </div>
+            )}
+            <div className="relative w-full">
+              <textarea
+                ref={inputRef}
+                rows={1}
+                className="w-full rounded-2xl border border-[var(--chat-border)] bg-[var(--chat-input-bg)] py-3.5 pl-5 pr-24 text-sm text-[var(--text-primary)] outline-none transition-colors placeholder:text-[var(--text-dim)] focus:border-[var(--border-hover)] resize-none overflow-hidden leading-relaxed disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ maxHeight: "180px" }}
+                placeholder={!sessionReady ? "Initializing…" : "Message… (Shift+Enter for newline)"}
+                value={input}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = Math.min(e.target.scrollHeight, 180) + "px";
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleSend();
+                  }
+                }}
+                disabled={inputTypingDisabled}
+              />
+              <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                <button
+                  onClick={() => setVoiceOpen(true)}
+                  disabled={!sessionReady}
+                  title="Voice input"
+                  className="h-9 w-9 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-1)] transition-all disabled:opacity-30"
+                >
+                  <Mic className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => void handleSend()}
+                  disabled={sendDisabled}
+                  className="h-9 w-9 flex items-center justify-center rounded-xl bg-[var(--chat-accent)] text-white transition-all hover:opacity-90 active:scale-95 disabled:opacity-30"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <p className="text-center text-[10px] text-[var(--text-dim)]">TeamOS Intelligence · Shift+Enter for newline</p>
           </div>
-        )}
+        </div>
       </div>
+
+      {/* Voice chat overlay */}
+      <VoiceChatOverlay
+        open={voiceOpen}
+        onClose={() => { setVoiceOpen(false); recognitionRef.current?.stop(); }}
+        phase={voicePhase}
+        caption={voiceCaption}
+        interimTranscript={interimTranscript}
+        listening={isListening}
+        speechSupported={speechSupported}
+        micDisabled={isStreaming}
+        onOrbClick={toggleListening}
+      />
     </div>
   );
 }

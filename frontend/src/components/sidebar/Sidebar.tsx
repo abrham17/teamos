@@ -170,17 +170,17 @@ export function Sidebar() {
     const active = isActive(href);
     if (collapsed) {
       return [
-        "w-10 h-10 flex items-center justify-center transition-colors duration-150 shrink-0 relative",
+        "w-10 h-10 flex items-center justify-center transition-colors duration-150 shrink-0 rounded-xl",
         active
-          ? "bg-[var(--surface-2)] text-[var(--accent)] border-l-2 border-l-[var(--accent)]"
-          : "text-[var(--text-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)]",
+          ? "bg-[var(--surface-2)] text-[var(--accent)]"
+          : "text-[var(--text-muted)] hover:bg-[var(--surface-1)] hover:text-[var(--text-primary)]",
       ].join(" ");
     }
     return [
-      "flex items-center gap-3 px-3 py-2 w-full text-sm transition-colors duration-150 border-l-2",
+      "flex items-center gap-3 px-3 py-2 w-full text-sm transition-colors duration-150 rounded-lg",
       active
-        ? "bg-[var(--surface-2)] text-[var(--accent)] font-medium border-l-[var(--accent)]"
-        : "text-[var(--text-secondary)] hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)] border-l-transparent",
+        ? "bg-[var(--surface-2)] text-[var(--accent)] font-medium"
+        : "text-[var(--text-secondary)] hover:bg-[var(--surface-1)] hover:text-[var(--text-primary)]",
     ].join(" ");
   };
 

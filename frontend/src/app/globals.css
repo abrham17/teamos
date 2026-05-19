@@ -125,6 +125,15 @@
   --primary-100: #b3f2ff;
   --primary-500: #00d4e8;
   --primary-900: #004d66;
+
+  /* ── Claude-inspired Chat / Architect tokens ── */
+  --chat-page-bg: #1a1916;
+  --chat-sidebar-bg: #141310;
+  --user-bubble: #2d2b26;
+  --user-bubble-text: #f0ede8;
+  --chat-accent: #d97757;
+  --chat-input-bg: #211f1c;
+  --chat-border: rgba(255, 255, 255, 0.09);
 }
 
 /* ─── Light Theme ────────────────────────────────────────────────── */
@@ -186,6 +195,15 @@
 
   --primary-500: #0070f3;
   --primary-900: #003d8a;
+
+  /* ── Claude-inspired Chat / Architect tokens ── */
+  --chat-page-bg: #faf9f7;
+  --chat-sidebar-bg: #f2efe9;
+  --user-bubble: #edeae4;
+  --user-bubble-text: #1a1918;
+  --chat-accent: #c96a3a;
+  --chat-input-bg: #ffffff;
+  --chat-border: rgba(0, 0, 0, 0.09);
 }
 
 /* ─── Base Layer ─────────────────────────────────────────────────── */
@@ -791,19 +809,3 @@
   border-radius: 3px 3px 3px 0;
   white-space: nowrap;
 }
-
-/* ── Flat & Sharp Design Overrides ── */
-*, *::before, *::after {
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  text-shadow: none !important;
-}
-
-.blur-md, .blur-lg, .blur-xl, .blur-\[50px\], .blur-\[100px\] {
-  filter: none !important;
-}
-
-.shadow-2xl, .shadow-xl, .shadow-lg, .shadow-md, .shadow-sm, .shadow-inner {
-  box-shadow: none !important;
-}
-
