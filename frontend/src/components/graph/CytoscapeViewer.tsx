@@ -133,6 +133,14 @@ function getLayoutOptions(name: string): cytoscape.LayoutOptions {
   } as unknown as cytoscape.LayoutOptions;
 }
 
+/* ── Theme helpers ───────────────────────────────────────────────── */
+function getLabelColor(): string {
+  if (typeof document === "undefined") return "rgba(255,255,255,0.92)";
+  return document.documentElement.dataset.theme === "light"
+    ? "rgba(20,20,30,0.9)"
+    : "rgba(255,255,255,0.92)";
+}
+
 /* ── Color maps (dark-theme primary, theme-agnostic hex) ──────────── */
 const NODE_COLORS: Record<string, string> = {
   standard:  "#00d4e8",  // cyan
@@ -281,7 +289,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
               "background-color": (ele: NodeLike) =>
                 NODE_COLORS[ele.data("type") as string] ?? NODE_COLORS.default,
               "label":           "data(label)",
-              "color":           "rgba(255,255,255,0.92)",
+              "color":           getLabelColor() as unknown as string,
               "font-size":       "10px",
               "min-zoomed-font-size": 8,
               "font-family":     "Inter, system-ui, sans-serif",
@@ -393,6 +401,22 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
       });
 
       cyRef.current = cy;
+
+      /* ── Re-apply label colour when theme toggles ── */
+      const applyThemeStyle = () => {
+        const labelColor = getLabelColor();
+        cy.nodes().style({ "color": labelColor });
+      };
+      const themeObserver = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          if (m.type === "attributes" && m.attributeName === "data-theme") {
+            applyThemeStyle();
+          }
+        }
+      });
+      if (typeof document !== "undefined") {
+        themeObserver.observe(document.documentElement, { attributes: true });
+      }
 
       const hoverTargetRef = { kind: null as "node" | "edge" | null, id: null as string | null };
       let clearHoverTimer: ReturnType<typeof setTimeout> | null = null;
@@ -541,6 +565,7 @@ export const CytoscapeViewer = forwardRef<CytoscapeRef, Props>(
 
       return () => {
         cancelClearHover();
+        themeObserver.disconnect();
         cy.destroy();
         cyRef.current = null;
       };

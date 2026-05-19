@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { api } from "@/lib/api";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, ChevronLeft, X, ExternalLink, Download, Copy, Check, ZoomIn, ZoomOut, FileText, Eye } from "lucide-react";
 
 interface RawSourceSummary {
   id: string;
@@ -81,6 +81,8 @@ export default function RawSourceViewer({
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedHighlight, setCopiedHighlight] = useState(false);
   const [copiedFull, setCopiedFull] = useState(false);
+  const [copiedHighlightCheck, setCopiedHighlightCheck] = useState(false);
+  const [copiedFullCheck, setCopiedFullCheck] = useState(false);
   const markRef = useRef<HTMLElement>(null);
 
   const normalizeFileUrl = (url: string | null) => {
@@ -142,7 +144,8 @@ export default function RawSourceViewer({
     if (highlightStart !== undefined && highlightEnd !== undefined && detail) {
       navigator.clipboard.writeText(detail.extracted_text.slice(highlightStart, highlightEnd));
       setCopiedHighlight(true);
-      setTimeout(() => setCopiedHighlight(false), 2000);
+      setCopiedHighlightCheck(true);
+      setTimeout(() => { setCopiedHighlight(false); setCopiedHighlightCheck(false); }, 2000);
     }
   };
 
@@ -150,7 +153,8 @@ export default function RawSourceViewer({
     if (detail) {
       navigator.clipboard.writeText(detail.extracted_text);
       setCopiedFull(true);
-      setTimeout(() => setCopiedFull(false), 2000);
+      setCopiedFullCheck(true);
+      setTimeout(() => { setCopiedFull(false); setCopiedFullCheck(false); }, 2000);
     }
   };
 
@@ -195,307 +199,164 @@ export default function RawSourceViewer({
   // Detail view
   if (detail) {
     return (
-      <div className="raw-source-viewer-detail">
-        <div className="raw-source-header">
+      <div className={`flex flex-col bg-[var(--bg-800)] text-[var(--text-primary)] ${fullHeight ? 'h-full' : 'max-h-[80vh]'} overflow-y-auto`}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)] shrink-0 bg-[var(--bg-900)]">
           <button
-            className="raw-source-back"
-            onClick={() => {
-              setSelectedId(null);
-              setDetail(null);
-            }}
+            onClick={() => { setSelectedId(null); setDetail(null); }}
+            className="flex items-center gap-1.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors px-2 py-1 rounded-lg hover:bg-[var(--bg-700)]"
           >
-            ← Back to sources
+            <ChevronLeft className="w-3.5 h-3.5" />
+            Back to sources
           </button>
           {onClose && (
-            <button className="raw-source-close" onClick={onClose}>
-              ✕
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[var(--bg-700)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+              <X className="w-4 h-4" />
             </button>
           )}
         </div>
 
-        <div className="raw-source-meta">
-          <h3>
-            {SOURCE_TYPE_ICONS[detail.source_type] || "📁"}{" "}
-            {detail.original_filename || detail.source_url || "Raw Source"}
+        {/* Meta */}
+        <div className="px-5 py-4 border-b border-[var(--border-subtle)] space-y-3">
+          <h3 className="text-[15px] font-semibold text-[var(--text-primary)] flex items-start gap-2">
+            <span className="text-lg leading-none mt-0.5">{SOURCE_TYPE_ICONS[detail.source_type] || "📁"}</span>
+            <span className="break-all">{detail.original_filename || detail.source_url || "Raw Source"}</span>
           </h3>
-          <div className="raw-source-badges">
-            <span className="badge">{detail.source_type.toUpperCase()}</span>
-            <span className="badge-muted">
+          <div className="flex flex-wrap gap-2">
+            <span className="px-2.5 py-0.5 rounded-full bg-[var(--accent)]/15 text-[var(--accent)] text-[11px] font-bold uppercase tracking-wide">
+              {detail.source_type}
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full bg-[var(--bg-700)] text-[var(--text-muted)] text-[11px] border border-[var(--border-subtle)]">
               {detail.extracted_text.length.toLocaleString()} chars
             </span>
-            <span className="badge-muted">
+            <span className="px-2.5 py-0.5 rounded-full bg-[var(--bg-700)] text-[var(--text-muted)] text-[11px] border border-[var(--border-subtle)]">
               {new Date(detail.created_at).toLocaleDateString()}
             </span>
           </div>
-          {detail.source_url && (
-            <a
-              href={detail.source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="raw-source-link"
-            >
-              🔗 {detail.source_url}
-            </a>
-          )}
-          {detail.file_url && (
-            <a
-              href={detail.file_url}
-              download
-              target="_blank"
-              rel="noopener noreferrer"
-              className="raw-source-link font-bold text-white bg-[var(--accent)] px-3 py-1 rounded-md inline-flex items-center gap-2 mt-2"
-            >
-              ⬇️ Download Original
-            </a>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {detail.source_url && (
+              <a href={detail.source_url} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-[12px] text-[var(--accent)] hover:underline truncate max-w-xs">
+                <ExternalLink className="w-3 h-3 shrink-0" />
+                <span className="truncate">{detail.source_url}</span>
+              </a>
+            )}
+            {detail.file_url && (
+              <a href={detail.file_url} download target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-[12px] px-3 py-1 rounded-lg bg-[var(--accent)] text-white font-medium hover:bg-[var(--accent-dark)] transition-colors">
+                <Download className="w-3 h-3" /> Download Original
+              </a>
+            )}
+          </div>
         </div>
 
+        {/* Citations */}
         {detail.citing_pages.length > 0 && (
-          <div className="raw-source-citations">
-            <h4>📎 Wiki Pages Using This Source</h4>
-            <ul>
+          <div className="px-5 py-3 border-b border-[var(--border-subtle)] space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-dim)] flex items-center gap-1">
+              <FileText className="w-3 h-3" />Wiki pages using this source
+            </p>
+            <div className="space-y-1">
               {detail.citing_pages.map((c, i) => (
-                <li key={i}>
-                  <a href={`/wiki?page=${encodeURIComponent(c.page_slug)}`}>
+                <div key={i} className="flex items-baseline gap-2 text-[12px] pl-2 border-l-2 border-[var(--accent)]/30">
+                  <a href={`/wiki?page=${encodeURIComponent(c.page_slug)}`}
+                    className="text-[var(--accent)] hover:underline font-medium">
                     {c.page_title}
                   </a>
-                  {c.wiki_section && (
-                    <span className="citation-section"> § {c.wiki_section}</span>
-                  )}
-                  {c.source_page_number !== null && (
-                    <span className="citation-page">
-                      {" "}
-                      (p. {c.source_page_number})
-                    </span>
-                  )}
-                  {c.source_timestamp && (
-                    <span className="citation-timestamp">
-                      {" "}
-                      ⏱ {c.source_timestamp}
-                    </span>
-                  )}
-                </li>
+                  {c.wiki_section && <span className="text-[var(--text-dim)]">§ {c.wiki_section}</span>}
+                  {c.source_page_number !== null && <span className="text-[var(--text-dim)]">p.{c.source_page_number}</span>}
+                  {c.source_timestamp && <span className="text-[var(--text-dim)]">{c.source_timestamp}</span>}
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         )}
 
-
-        <div className="raw-source-toolbar flex items-center justify-between mb-4 mt-6 p-3 bg-[var(--bg-950)] rounded-lg border border-[var(--border-subtle)]">
-          <div className="flex items-center gap-2">
-            <button className="toolbar-btn" onClick={() => setZoomLevel(z => Math.max(50, z - 10))}>-</button>
-            <span className="text-xs text-[var(--text-muted)] w-12 text-center">{zoomLevel}%</span>
-            <button className="toolbar-btn" onClick={() => setZoomLevel(z => Math.min(200, z + 10))}>+</button>
+        {/* Toolbar */}
+        <div className="flex items-center justify-between px-5 py-2.5 border-b border-[var(--border-subtle)] bg-[var(--bg-900)] shrink-0">
+          <div className="flex items-center gap-1">
+            <button onClick={() => setZoomLevel(z => Math.max(50, z - 10))}
+              className="p-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-800)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] transition-all">
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <span className="w-12 text-center text-[11px] text-[var(--text-muted)] tabular-nums">{zoomLevel}%</span>
+            <button onClick={() => setZoomLevel(z => Math.min(200, z + 10))}
+              className="p-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-800)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] transition-all">
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <div className="flex items-center gap-3">
-            {(highlightStart !== undefined && highlightEnd !== undefined) && (
-              <button 
-                className="toolbar-btn text-xs"
-                onClick={handleCopyHighlight}
-              >
-                {copiedHighlight ? "✅ Copied!" : "📋 Copy Highlight"}
+          <div className="flex items-center gap-2">
+            {highlightStart !== undefined && highlightEnd !== undefined && (
+              <button onClick={handleCopyHighlight}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] border border-[var(--border-subtle)] bg-[var(--bg-800)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)]/40 transition-all">
+                {copiedHighlightCheck ? <Check className="w-3 h-3 text-[var(--success)]" /> : <Copy className="w-3 h-3" />}
+                {copiedHighlightCheck ? 'Copied!' : 'Copy highlight'}
               </button>
             )}
-            <button 
-              className="toolbar-btn text-xs"
-              onClick={handleCopyFull}
-            >
-              {copiedFull ? "✅ Copied!" : "📋 Copy Full Text"}
+            <button onClick={handleCopyFull}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] border border-[var(--border-subtle)] bg-[var(--bg-800)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)]/40 transition-all">
+              {copiedFullCheck ? <Check className="w-3 h-3 text-[var(--success)]" /> : <Copy className="w-3 h-3" />}
+              {copiedFullCheck ? 'Copied!' : 'Copy full text'}
             </button>
             {detail.file_url && (
-              <button 
-                className={`toolbar-btn text-xs font-bold ${showRealDoc ? 'bg-[var(--accent)] text-white' : ''}`}
-                onClick={() => setShowRealDoc(!showRealDoc)}
-              >
-                {showRealDoc ? "👀 View Parsed Text" : "🖼️ View Real Document"}
+              <button onClick={() => setShowRealDoc(!showRealDoc)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] border transition-all ${
+                  showRealDoc
+                    ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                    : 'border-[var(--border-subtle)] bg-[var(--bg-800)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                }`}>
+                <Eye className="w-3 h-3" />
+                {showRealDoc ? 'View parsed text' : 'View real doc'}
               </button>
             )}
           </div>
         </div>
 
-        {showRealDoc && detail.file_url ? (
-          <div 
-            className="real-doc-container w-full rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-white"
-            style={{ height: fullHeight ? '100%' : '75vh' }}
-          >
-            {detail.source_type === 'image' ? (
-              <img src={detail.file_url} className="w-full h-full object-contain" alt="Original source" />
-            ) : (
-              <iframe src={detail.file_url} className="w-full h-full border-0" title="Original source" />
-            )}
-          </div>
-        ) : (
-          <div className="raw-source-content">
-            <h4>Extracted Text</h4>
-            {detailError && (
-              <div className="mb-3 text-xs text-[var(--danger)]">
-                {detailError}
+        {/* Document body */}
+        <div className="flex-1 overflow-auto p-5">
+          {showRealDoc && detail.file_url ? (
+            <div className="w-full rounded-xl overflow-hidden border border-[var(--border-subtle)] bg-white"
+              style={{ height: fullHeight ? '100%' : '70vh', minHeight: '400px' }}>
+              {detail.source_type === 'image' ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={detail.file_url} className="w-full h-full object-contain" alt="Original source" />
+              ) : (
+                <iframe src={detail.file_url} className="w-full h-full border-0" title="Original source" />
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              <p className="text-[10px] uppercase tracking-widest font-semibold text-[var(--text-dim)] mb-4">Extracted Text</p>
+              {detailError && (
+                <div className="mb-3 text-[12px] text-[var(--danger)] px-3 py-2 rounded-lg bg-[var(--danger-bg)] border border-[var(--danger)]/20">
+                  {detailError}
+                </div>
+              )}
+              <div className="w-full max-w-[850px] mx-auto bg-white rounded-lg shadow-[0_10px_30px_rgba(0,0,0,0.5)] overflow-hidden">
+                {renderHighlightedText(detail.extracted_text)}
               </div>
-            )}
-            {renderHighlightedText(detail.extracted_text)}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
 
         <style jsx>{`
-          .raw-source-viewer-detail {
-            padding: 1.5rem;
-            background: var(--bg-surface, #1a1a2e);
-            border-radius: 12px;
-            color: var(--text-primary, #e0e0e0);
-            max-height: ${fullHeight ? 'none' : '80vh'};
-            height: ${fullHeight ? '100%' : 'auto'};
-            overflow-y: auto;
-          }
-          .raw-source-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-          }
-          .raw-source-back,
-          .raw-source-close {
-            background: transparent;
-            border: 1px solid var(--border-color, #333);
-            color: var(--text-secondary, #aaa);
-            padding: 0.4rem 0.8rem;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.85rem;
-          }
-          .raw-source-back:hover,
-          .raw-source-close:hover {
-            background: var(--bg-hover, #252545);
-          }
-          .toolbar-btn {
-            background: var(--surface-1);
-            border: 1px solid var(--border-subtle);
-            color: var(--text-primary);
-            padding: 0.3rem 0.6rem;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s;
-          }
-          .toolbar-btn:hover {
-            background: var(--surface-2);
-          }
-          .raw-source-meta h3 {
-            margin: 0 0 0.5rem;
-            font-size: 1.1rem;
-          }
-          .raw-source-badges {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 0.5rem;
-          }
-          .badge {
-            background: var(--accent-primary, #6c5ce7);
-            color: #fff;
-            padding: 0.2rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.7rem;
-            font-weight: 600;
-          }
-          .badge-muted {
-            background: var(--bg-elevated, #252545);
-            color: var(--text-secondary, #aaa);
-            padding: 0.2rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.7rem;
-          }
-          .raw-source-link {
-            color: var(--accent-primary, #6c5ce7);
-            text-decoration: none;
-            font-size: 0.85rem;
-          }
-          .raw-source-link:hover {
-            text-decoration: underline;
-          }
-          .raw-source-citations {
-            margin: 1rem 0;
-            padding: 1rem;
-            background: var(--bg-elevated, #252545);
-            border-radius: 8px;
-          }
-          .raw-source-citations h4 {
-            margin: 0 0 0.5rem;
-            font-size: 0.95rem;
-          }
-          .raw-source-citations ul {
-            list-style: none;
-            padding: 0;
-          }
-          .raw-source-citations li {
-            padding: 0.3rem 0;
-            font-size: 0.85rem;
-          }
-          .raw-source-citations a {
-            color: var(--accent-primary, #6c5ce7);
-            text-decoration: none;
-          }
-          .citation-section,
-          .citation-page,
-          .citation-timestamp {
-            color: var(--text-secondary, #888);
-            font-size: 0.8rem;
-          }
-          .raw-source-content {
-            margin-top: 1.5rem;
-            background: var(--bg-950, #0a0a0a);
-            padding: 2rem;
-            border-radius: 12px;
-            border: 1px solid var(--border-subtle, #333);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-          }
-          .raw-source-content h4 {
-            margin: 0 0 1.5rem;
-            font-size: 0.95rem;
-            align-self: flex-start;
-            color: var(--text-muted, #888);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-          }
-          .document-page-container {
-            width: 100%;
-            max-width: 850px;
-            background: #ffffff;
-            color: #111827;
-            border-radius: 4px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.2);
-            padding: 4rem 5rem;
-            margin: 0 auto;
-            position: relative;
-          }
           :global(.raw-source-text) {
-            font-family: 'Merriweather', 'Georgia', serif;
-            font-size: 14px;
+            font-family: 'Georgia', serif;
+            font-size: ${14 * (zoomLevel / 100)}px;
             line-height: 1.8;
             white-space: pre-wrap;
             word-break: break-word;
-            max-height: ${fullHeight ? 'none' : '50vh'};
-            overflow-y: auto;
             color: #1f2937;
             margin: 0;
-            padding: 0;
+            padding: 3rem 4rem;
             background: transparent;
-            /* Style scrollbar for the document */
-            scrollbar-width: thin;
-            scrollbar-color: #cbd5e1 transparent;
-          }
-          :global(.raw-source-text::-webkit-scrollbar) {
-            width: 6px;
-          }
-          :global(.raw-source-text::-webkit-scrollbar-thumb) {
-            background-color: #cbd5e1;
-            border-radius: 10px;
           }
           :global(.raw-source-highlight) {
-            background: rgba(253, 224, 71, 0.5); /* Yellow highlighter look */
-            color: #000;
+            background: rgba(253, 224, 71, 0.55);
+            color: #111827;
             border-bottom: 2px solid #eab308;
-            padding: 0.1rem 0;
-            font-weight: 500;
+            padding: 0.05rem 0.1rem;
+            font-weight: 600;
             border-radius: 2px;
           }
         `}</style>
@@ -505,167 +366,111 @@ export default function RawSourceViewer({
 
   // List view
   return (
-    <div className="raw-source-viewer-list">
-      <div className="raw-source-header">
-        <h3>📚 Raw Sources</h3>
+    <div className="flex flex-col bg-[var(--bg-800)] text-[var(--text-primary)] h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-900)] shrink-0">
+        <h3 className="text-[14px] font-semibold text-[var(--text-primary)] flex items-center gap-2">
+          <span>📚</span> Raw Sources
+        </h3>
         {onClose && (
-          <button className="raw-source-close" onClick={onClose}>
-            ✕
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[var(--bg-700)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+            <X className="w-4 h-4" />
           </button>
         )}
       </div>
 
-      <div className="relative mb-4">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] w-4 h-4" />
-        <input 
-          type="text"
-          placeholder="Search sources by name or type..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-lg py-2 pl-9 pr-4 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-        />
+      {/* Search */}
+      <div className="px-5 py-3 border-b border-[var(--border-subtle)] shrink-0">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] w-3.5 h-3.5" />
+          <input
+            type="text"
+            placeholder="Search sources by name or type…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl py-2 pl-9 pr-4 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)]/60 focus:ring-2 focus:ring-[var(--accent)]/10 transition-all"
+          />
+        </div>
       </div>
 
+      {/* Detail load error */}
       {detailError && selectedId && (
-        <div className="mb-3 p-3 rounded-lg border border-[var(--danger)]/40 bg-[var(--danger-bg)] text-xs text-[var(--danger)]">
-          <div>{detailError}</div>
+        <div className="mx-5 mt-3 p-3 rounded-xl border border-[var(--danger)]/40 bg-[var(--danger-bg)] text-[12px] text-[var(--danger)] flex items-center justify-between">
+          <span>{detailError}</span>
           <button
-            className="raw-source-close mt-2"
             onClick={() => {
               setLoadingDetail(true);
               setDetailError(null);
               api
                 .get<RawSourceDetail>(`/wiki/${teamId}/raw-sources/${selectedId}/`)
                 .then((data) => setDetail({ ...data, file_url: normalizeFileUrl(data.file_url) }))
-                .catch((err) =>
-                  setDetailError(err instanceof Error ? err.message : "Failed to load source detail."),
-                )
+                .catch((err) => setDetailError(err instanceof Error ? err.message : "Failed to load source detail."))
                 .finally(() => setLoadingDetail(false));
             }}
-          >
-            Retry detail
-          </button>
-        </div>
-      )}
-
-      {loadingList ? (
-        <div className="flex items-center justify-center py-10">
-          <Loader2 className="w-6 h-6 text-[var(--accent)] animate-spin" />
-        </div>
-      ) : listError ? (
-        <div className="raw-source-empty">
-          <p>{listError}</p>
-          <button
-            className="raw-source-close mt-3"
-            onClick={() => {
-              setListError(null);
-              setLoadingList(true);
-              api
-                .get<RawSourceSummary[]>(`/wiki/${teamId}/raw-sources/`)
-                .then(setSources)
-                .catch((err) =>
-                  setListError(err instanceof Error ? err.message : "Failed to load raw sources."),
-                )
-                .finally(() => setLoadingList(false));
-            }}
+            className="ml-3 px-2 py-1 rounded-lg border border-[var(--danger)]/40 text-[11px] hover:bg-[var(--danger)]/10 transition-colors"
           >
             Retry
           </button>
         </div>
-      ) : sources.length === 0 ? (
-        <p className="raw-source-empty">No raw sources yet. Ingest a document to get started.</p>
-      ) : filteredSources.length === 0 ? (
-        <p className="raw-source-empty">No sources match your search.</p>
-      ) : (
-        <div className="relative">
-          {loadingDetail && (
-            <div className="absolute inset-0 bg-[var(--bg-surface)]/80 backdrop-blur-sm flex items-center justify-center z-10 rounded-lg">
-              <Loader2 className="w-8 h-8 text-[var(--accent)] animate-spin" />
-            </div>
-          )}
-          <ul className="raw-source-list">
-            {filteredSources.map((s) => (
-              <li key={s.id} onClick={() => setSelectedId(s.id)}>
-              <span className="raw-source-icon">
-                {SOURCE_TYPE_ICONS[s.source_type] || "📁"}
-              </span>
-              <div className="raw-source-info">
-                <span className="raw-source-name">
-                  {s.original_filename || s.source_url || "Raw Source"}
-                </span>
-                <span className="raw-source-detail-text">
-                  {s.source_type.toUpperCase()} · {s.text_length.toLocaleString()} chars ·{" "}
-                  {new Date(s.created_at).toLocaleDateString()}
-                </span>
-              </div>
-              </li>
-            ))}
-          </ul>
-        </div>
       )}
 
-      <style jsx>{`
-        .raw-source-viewer-list {
-          padding: 1.5rem;
-          background: var(--bg-surface, #1a1a2e);
-          border-radius: 12px;
-          color: var(--text-primary, #e0e0e0);
-        }
-        .raw-source-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1rem;
-        }
-        .raw-source-header h3 {
-          margin: 0;
-          font-size: 1.1rem;
-        }
-        .raw-source-close {
-          background: transparent;
-          border: 1px solid var(--border-color, #333);
-          color: var(--text-secondary, #aaa);
-          padding: 0.4rem 0.8rem;
-          border-radius: 6px;
-          cursor: pointer;
-        }
-        .raw-source-empty {
-          color: var(--text-secondary, #888);
-          text-align: center;
-          padding: 2rem;
-        }
-        .raw-source-list {
-          list-style: none;
-          padding: 0;
-        }
-        .raw-source-list li {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          padding: 0.75rem;
-          border-radius: 8px;
-          cursor: pointer;
-          transition: background 0.15s;
-        }
-        .raw-source-list li:hover {
-          background: var(--bg-hover, #252545);
-        }
-        .raw-source-icon {
-          font-size: 1.5rem;
-        }
-        .raw-source-info {
-          display: flex;
-          flex-direction: column;
-        }
-        .raw-source-name {
-          font-size: 0.9rem;
-          font-weight: 500;
-        }
-        .raw-source-detail-text {
-          font-size: 0.75rem;
-          color: var(--text-secondary, #888);
-        }
-      `}</style>
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto px-5 py-4">
+        {loadingList ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-6 h-6 text-[var(--accent)] animate-spin" />
+          </div>
+        ) : listError ? (
+          <div className="flex flex-col items-center py-12 gap-3 text-center">
+            <p className="text-[13px] text-[var(--text-muted)]">{listError}</p>
+            <button
+              onClick={() => {
+                setListError(null);
+                setLoadingList(true);
+                api
+                  .get<RawSourceSummary[]>(`/wiki/${teamId}/raw-sources/`)
+                  .then(setSources)
+                  .catch((err) => setListError(err instanceof Error ? err.message : "Failed to load raw sources."))
+                  .finally(() => setLoadingList(false));
+              }}
+              className="px-3 py-1.5 rounded-lg border border-[var(--border-subtle)] text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] transition-all"
+            >
+              Retry
+            </button>
+          </div>
+        ) : sources.length === 0 ? (
+          <p className="text-center text-[13px] text-[var(--text-muted)] py-12">No raw sources yet. Ingest a document to get started.</p>
+        ) : filteredSources.length === 0 ? (
+          <p className="text-center text-[13px] text-[var(--text-muted)] py-12">No sources match your search.</p>
+        ) : (
+          <div className="relative space-y-2">
+            {loadingDetail && (
+              <div className="absolute inset-0 bg-[var(--bg-800)]/80 backdrop-blur-sm flex items-center justify-center z-10 rounded-xl">
+                <Loader2 className="w-7 h-7 text-[var(--accent)] animate-spin" />
+              </div>
+            )}
+            {filteredSources.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setSelectedId(s.id)}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-900)] hover:bg-[var(--bg-700)] hover:border-[var(--accent)]/30 text-left transition-all group"
+              >
+                <span className="text-2xl shrink-0">{SOURCE_TYPE_ICONS[s.source_type] || "📁"}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium text-[var(--text-primary)] truncate group-hover:text-[var(--accent)] transition-colors">
+                    {s.original_filename || s.source_url || "Raw Source"}
+                  </p>
+                  <p className="text-[11px] text-[var(--text-dim)] mt-0.5">
+                    <span className="text-[var(--accent)] font-semibold">{s.source_type.toUpperCase()}</span>
+                    {" · "}{s.text_length.toLocaleString()} chars{" · "}{new Date(s.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <ChevronLeft className="w-3.5 h-3.5 text-[var(--text-dim)] rotate-180 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

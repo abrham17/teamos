@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { Send, Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, BrainCircuit, Search, BookOpen, Target } from "lucide-react";
+import { Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, BrainCircuit, Search, BookOpen, Target, ArrowUp } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { ChatCitationList } from "@/components/chat/ChatCitationList";
 import { ChatAgentToolTimeline } from "@/components/chat/ChatAgentToolTimeline";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
 import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentThinking, AgentReflection, AgentStep, AgentStrategy } from "@/components/chat/chatTypes";
 import { AgentThinkingPane } from "@/components/chat/AgentThinkingPane";
@@ -369,6 +369,8 @@ export function ChatInterface() {
   const inputTypingDisabled = isStreaming || !sessionReady;
   const sendDisabled = isStreaming || !sessionReady || !activeSessionId || !input.trim();
 
+  const hasMessages = messages.length > 0;
+
   return (
     <div className="flex h-full w-full flex-1 bg-[var(--bg-950)] overflow-hidden">
       <ChatSidebar
@@ -380,35 +382,37 @@ export function ChatInterface() {
         onRenameSession={handleRenameSession}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden w-full h-full">
-        <div ref={scrollContainerRef} className="flex flex-1 flex-col gap-0 overflow-y-auto px-4 sm:px-6 py-8 min-h-0 custom-scrollbar w-full">
-          {!sessionReady && (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 my-auto">
-              <Loader2 className="h-6 w-6 text-[var(--text-dim)] animate-spin" />
-              <p className="text-[13px] text-[var(--text-dim)]">Initializing…</p>
-            </div>
-          )}
-          {sessionReady && messages.length === 0 && (
-            <div className="flex flex-1 flex-col items-center justify-center px-4 my-auto gap-10">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden w-full h-full">
+        {/* ── Empty / centered state ─────────────────────── */}
+        <AnimatePresence>
+          {sessionReady && !hasMessages && (
+            <motion.div
+              key="empty-state"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12, transition: { duration: 0.22 } }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+              className="absolute inset-0 flex flex-col items-center justify-center px-4 z-10 pointer-events-none"
+              style={{ paddingBottom: "96px" }}
+            >
               {/* Hero */}
-              <div className="text-center space-y-4">
-                <div className="relative mx-auto w-14 h-14">
-                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] opacity-20 blur-xl" />
-                  <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center shadow-[var(--shadow-glow)]">
-                    <Bot className="h-6 w-6 text-white" />
+              <div className="text-center space-y-3 pointer-events-auto">
+                <div className="relative mx-auto w-16 h-16 mb-1">
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] opacity-25 blur-2xl scale-125" />
+                  <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center shadow-[var(--shadow-glow)]">
+                    <Bot className="h-7 w-7 text-white" />
                   </div>
                 </div>
-                <div>
-                  <h2 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">Team Intelligence</h2>
-                  <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-[var(--text-muted)]">Ask anything about your wiki, plans, and team knowledge.</p>
-                </div>
+                <h2 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">Team Intelligence</h2>
+                <p className="text-[14px] leading-relaxed text-[var(--text-muted)] max-w-sm mx-auto">Ask anything about your wiki, plans, and team knowledge.</p>
               </div>
+
               {/* Capability cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl mt-8 pointer-events-auto">
                 {[
-                  { icon: Search,   label: "Search knowledge",    desc: "Ask anything about your wiki",               prompt: "Summarize our key knowledge areas" },
-                  { icon: BookOpen, label: "Create wiki pages",   desc: "Draft or update knowledge base pages",        prompt: "Create a wiki page about our onboarding process" },
-                  { icon: Target,   label: "Build & manage plans",desc: "Generate tasks, milestones, and timelines",   prompt: "Show me the current project plans and highlight risks" },
+                  { icon: Search,   label: "Search knowledge",    desc: "Ask anything about your wiki",             prompt: "Summarize our key knowledge areas" },
+                  { icon: BookOpen, label: "Create wiki pages",   desc: "Draft or update knowledge base pages",      prompt: "Create a wiki page about our onboarding process" },
+                  { icon: Target,   label: "Build & manage plans",desc: "Generate tasks, milestones, and timelines", prompt: "Show me the current project plans and highlight risks" },
                 ].map(({ icon: Icon, label, desc, prompt }) => (
                   <button
                     key={label}
@@ -425,10 +429,22 @@ export function ChatInterface() {
                   </button>
                 ))}
               </div>
-            </div>
+            </motion.div>
           )}
+        </AnimatePresence>
 
-          {messages.map((m, i) => {
+        {/* ── Loading ─────────────────────────────────────── */}
+        {!sessionReady && (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 my-auto">
+            <Loader2 className="h-6 w-6 text-[var(--text-dim)] animate-spin" />
+            <p className="text-[13px] text-[var(--text-dim)]">Initializing…</p>
+          </div>
+        )}
+
+        {/* ── Messages scroll area ─────────────────────────── */}
+        <div ref={scrollContainerRef} className={cn("flex flex-1 flex-col gap-0 overflow-y-auto px-4 sm:px-6 py-8 min-h-0 custom-scrollbar w-full", !hasMessages && "invisible pointer-events-none")}>
+
+          {hasMessages && messages.map((m, i) => {
             const isLiveAssistant = m.role === "assistant" && isStreaming && i === messages.length - 1;
             const isUser = m.role === "user";
             const isEditing = editingMessageId === m.id;
@@ -529,10 +545,14 @@ export function ChatInterface() {
           </button>
         )}
 
-        {/* Input bar */}
-        <div className="shrink-0 bg-[var(--bg-950)] px-4 pt-3 pb-5 w-full">
+        {/* ── Input bar — always at bottom, also renders inside centered state via AbsoluteInput ── */}
+        <motion.div
+          layout
+          className="shrink-0 bg-[var(--bg-950)] px-4 pt-3 pb-5 w-full"
+          animate={{ opacity: 1 }}
+        >
           <div className="mx-auto w-full max-w-3xl">
-            {strategy && (
+            {strategy && hasMessages && (
               <motion.div
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -551,9 +571,9 @@ export function ChatInterface() {
               <textarea
                 ref={inputRef}
                 rows={1}
-                className="w-full rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-800)] py-3.5 pl-4 pr-14 text-[14px] text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/60 focus:ring-2 focus:ring-[var(--accent)]/15 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden leading-relaxed shadow-[var(--shadow-md)]"
+                className="w-full rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-800)] py-4 pl-5 pr-16 text-[14px] text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/60 focus:ring-2 focus:ring-[var(--accent)]/15 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden leading-relaxed shadow-[var(--shadow-md)]"
                 style={{ maxHeight: "180px" }}
-                placeholder={!sessionReady ? "Initializing…" : "Ask anything… (Shift+Enter for newline)"}
+                placeholder={!sessionReady ? "Initializing…" : "Ask anything…"}
                 value={input}
                 onChange={(e) => {
                   setInput(e.target.value);
@@ -568,16 +588,20 @@ export function ChatInterface() {
                 }}
                 disabled={inputTypingDisabled}
               />
+              {/* Circular send button */}
               <button
                 onClick={() => void handleSend()}
                 disabled={sendDisabled}
-                className="absolute right-2.5 bottom-2.5 h-9 w-9 flex items-center justify-center rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white transition-all disabled:opacity-30 hover:shadow-[var(--shadow-glow)] active:scale-95"
+                className="absolute right-3 bottom-3 h-10 w-10 flex items-center justify-center rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white transition-all disabled:opacity-25 hover:shadow-[var(--shadow-glow)] hover:scale-105 active:scale-95 shadow-[var(--shadow-sm)]"
               >
-                {isStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {isStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
               </button>
             </div>
+            {!hasMessages && (
+              <p className="text-center text-[11px] text-[var(--text-dim)] mt-2">Press Enter to send · Shift+Enter for newline</p>
+            )}
           </div>
-        </div>
+        </motion.div>
       </div>
     </div>
   );

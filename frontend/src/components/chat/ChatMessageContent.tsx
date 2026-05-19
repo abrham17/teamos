@@ -22,6 +22,7 @@ const sanitizeSchema = {
     "td",
     "del",
     "input",
+    // SVG (for Mermaid output)
     "svg",
     "path",
     "g",
@@ -30,6 +31,14 @@ const sanitizeSchema = {
     "line",
     "text",
     "tspan",
+    "defs",
+    "marker",
+    "use",
+    "polygon",
+    "polyline",
+    "ellipse",
+    "foreignObject",
+    // MathML (preserved through KaTeX)
     "math",
     "annotation",
     "semantics",
@@ -49,6 +58,10 @@ const sanitizeSchema = {
     "mroot",
     "mrow",
     "mstyle",
+    "mtable",
+    "mtr",
+    "mtd",
+    "mpadded",
   ],
   attributes: {
     ...defaultSchema.attributes,
@@ -61,9 +74,20 @@ const sanitizeSchema = {
       "disabled",
       ...(defaultSchema.attributes?.input ?? []),
     ],
-    "*": ["className", "style"], // Allow math classes and styles
+    // Allow all class/style/aria/data attrs everywhere (needed for KaTeX & Mermaid)
+    "*": ["className", "style", "aria-hidden", "aria-label", "data-*", "role",
+          "xmlns", "viewBox", "width", "height", "fill", "stroke", "d",
+          "stroke-width", "stroke-linecap", "stroke-linejoin", "transform",
+          "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry",
+          "points", "marker-end", "marker-start", "id", "href",
+          "preserveAspectRatio", "encoding"],
   },
 };
+
+function getMermaidTheme(): "dark" | "neutral" {
+  if (typeof document === "undefined") return "dark";
+  return document.documentElement.dataset.theme === "light" ? "neutral" : "dark";
+}
 
 function MermaidBlock({ chart, deferRender }: { chart: string; deferRender?: boolean }) {
   const reactId = useId().replace(/:/g, "");
@@ -94,8 +118,8 @@ function MermaidBlock({ chart, deferRender }: { chart: string; deferRender?: boo
         const mermaid = (await import("mermaid")).default;
         mermaid.initialize({
           startOnLoad: false,
-          theme: "dark",
-          securityLevel: "strict",
+          theme: getMermaidTheme(),
+          securityLevel: "loose",
           fontFamily: "ui-sans-serif, system-ui, sans-serif",
         });
         const rid = `mer-${reactId}-${Math.random().toString(36).slice(2, 9)}`;
@@ -277,9 +301,8 @@ export function ChatMessageContent({ content, streaming }: ChatMessageContentPro
     <div className="chat-md max-w-none">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[[rehypeSanitize, sanitizeSchema], rehypeKatex]}
+        rehypePlugins={[rehypeKatex, [rehypeSanitize, sanitizeSchema]]}
         components={components}
-        skipHtml
       >
         {streaming ? closeIncompleteMermaidFence(content) : content}
       </ReactMarkdown>
