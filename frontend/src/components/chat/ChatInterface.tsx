@@ -3,13 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { Send, Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, Mic, BrainCircuit, Search, Calendar, BookOpen, Target } from "lucide-react";
+import { Send, Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { ChatCitationList } from "@/components/chat/ChatCitationList";
-import { ChatAgentToolTimeline } from "@/components/chat/ChatAgentToolTimeline";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
-import { VoiceChatOverlay, VoiceOverlayPhase } from "@/components/chat/VoiceChatOverlay";
+import { ChatAgentToolTimeline } from "@/components/chat/ChatAgentToolTimeline";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentThinking, AgentReflection, AgentStep, AgentStrategy } from "@/components/chat/chatTypes";
@@ -50,57 +49,7 @@ export function ChatInterface() {
   const [agentThoughts, setAgentThoughts] = useState<AgentThinking[]>([]);
   const [agentReflections, setAgentReflections] = useState<AgentReflection[]>([]);
 
-  // Voice overlay state
-  const [voiceOpen, setVoiceOpen] = useState(false);
-  const [voicePhase, setVoicePhase] = useState<VoiceOverlayPhase>("idle");
-  const [voiceCaption, setVoiceCaption] = useState("");
-  const [interimTranscript, setInterimTranscript] = useState("");
-  const [isListening, setIsListening] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recognitionRef = useRef<any>(null);
-  const speechSupported = typeof window !== "undefined" &&
-    !!("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
 
-  const toggleListening = () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) return;
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      setVoicePhase("idle");
-      return;
-    }
-    const recognition = new SR();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-    recognition.onstart = () => { setIsListening(true); setVoicePhase("listening"); };
-    recognition.onend = () => { setIsListening(false); setVoicePhase("idle"); setInterimTranscript(""); };
-    recognition.onerror = () => { setIsListening(false); setVoicePhase("idle"); };
-    recognition.onresult = (e: { resultIndex: number; results: SpeechRecognitionResultList }) => {
-      let interim = "";
-      let final = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) final += e.results[i][0].transcript;
-        else interim += e.results[i][0].transcript;
-      }
-      setInterimTranscript(interim);
-      if (final.trim()) {
-        setVoiceCaption(final.trim());
-        setVoicePhase("thinking");
-        recognition.stop();
-        void sendUserMessage(final.trim());
-      }
-    };
-    recognition.start();
-    recognitionRef.current = recognition;
-  };
-
-  // Close voice overlay when stream finishes
-  useEffect(() => {
-    if (!isStreaming && voicePhase === "thinking") setVoicePhase("idle");
-  }, [isStreaming, voicePhase]);
   
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editInput, setEditInput] = useState("");
@@ -640,14 +589,6 @@ export function ChatInterface() {
               />
               <div className="absolute right-2 bottom-2 flex items-center gap-1">
                 <button
-                  onClick={() => setVoiceOpen(true)}
-                  disabled={!sessionReady}
-                  title="Voice input"
-                  className="h-9 w-9 flex items-center justify-center rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-1)] transition-all disabled:opacity-30"
-                >
-                  <Mic className="h-4 w-4" />
-                </button>
-                <button
                   onClick={() => void handleSend()}
                   disabled={sendDisabled}
                   className="h-9 w-9 flex items-center justify-center rounded-xl bg-[var(--chat-accent)] text-white transition-all hover:opacity-90 active:scale-95 disabled:opacity-30"
@@ -660,19 +601,6 @@ export function ChatInterface() {
           </div>
         </div>
       </div>
-
-      {/* Voice chat overlay */}
-      <VoiceChatOverlay
-        open={voiceOpen}
-        onClose={() => { setVoiceOpen(false); recognitionRef.current?.stop(); }}
-        phase={voicePhase}
-        caption={voiceCaption}
-        interimTranscript={interimTranscript}
-        listening={isListening}
-        speechSupported={speechSupported}
-        micDisabled={isStreaming}
-        onOrbClick={toggleListening}
-      />
     </div>
   );
 }
