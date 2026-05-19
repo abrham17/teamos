@@ -23,7 +23,6 @@ export function VoiceChatOverlay({
   phase,
   caption,
   interimTranscript,
-  listening,
   speechSupported,
   micDisabled,
   onOrbClick,

@@ -82,7 +82,7 @@ export function PromptDialog({
               
               {validationValue && (
                 <div className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
-                  Type: <span className="text-[var(--text-primary)] select-all">"{validationValue}"</span>
+                  Type: <span className="text-[var(--text-primary)] select-all">&quot;{validationValue}&quot;</span>
                 </div>
               )}
 

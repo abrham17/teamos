@@ -143,11 +143,6 @@ function riskColor(score: number): string {
   return "text-[var(--danger)]";
 }
 
-function riskBg(score: number): string {
-  if (score <= 30) return "bg-[var(--success-bg)]";
-  if (score <= 60) return "bg-[var(--warning)]/10";
-  return "bg-[var(--danger-bg)]";
-}
 
 export function AIPlannerOverlay({
   teamId,
