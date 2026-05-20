@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MessageCircle, X, Send, Bot, User, Maximize2, Minimize2, Loader2, Plus, Layout, Mic, MicOff, Sparkles, ChevronDown, BrainCircuit, Compass, HelpCircle, Activity, ArrowUp } from "lucide-react";
+import { MessageCircle, X, Send, Bot, User, Maximize2, Minimize2, Loader2, Plus, Layout, Mic, MicOff } from "lucide-react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
 import { ChatMessageContent } from "./ChatMessageContent";
 import { cn } from "@/lib/utils";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 
 type ChatSession = {
   id: string;
@@ -39,6 +39,7 @@ export function FloatingAIChat() {
   const [isStreaming, setIsStreaming] = useState(false);
 
   const [isRecording, setIsRecording] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [recognition, setRecognition] = useState<any>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -82,12 +83,14 @@ export function FloatingAIChat() {
   // Web Speech recognition setup
   useEffect(() => {
     if (typeof window !== "undefined") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (SpeechRecognition) {
         const rec = new SpeechRecognition();
         rec.continuous = true;
         rec.interimResults = true;
         rec.lang = "en-US";
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         rec.onresult = (event: any) => {
           let transcript = "";
           for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -107,7 +110,7 @@ export function FloatingAIChat() {
     if (!recognition) {
       if (!isRecording) {
         setIsRecording(true);
-        let t = "Analyze our strategic workload logs and decompose task constraints.";
+        const t = "Analyze our strategic workload logs and decompose task constraints.";
         let current = "";
         let i = 0;
         const interval = setInterval(() => {

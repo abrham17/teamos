@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, BrainCircuit, Search, BookOpen, Target, ArrowUp, Mic, MicOff, Sparkles, ChevronDown, Compass, HelpCircle, Globe, Languages, Activity } from "lucide-react";
+import { Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, BrainCircuit, Search, BookOpen, Target, ArrowUp, Mic, MicOff, Sparkles, ChevronDown } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { ChatCitationList } from "@/components/chat/ChatCitationList";
 import { ChatAgentToolTimeline } from "@/components/chat/ChatAgentToolTimeline";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentThinking, AgentReflection, AgentStep, AgentStrategy } from "@/components/chat/chatTypes";
 import { AgentThinkingPane } from "@/components/chat/AgentThinkingPane";
@@ -68,6 +68,7 @@ export function ChatInterface() {
   const [isRecording, setIsRecording] = useState(false);
   const [selectedModel, setSelectedModel] = useState("planner");
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [recognition, setRecognition] = useState<any>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -77,12 +78,14 @@ export function ChatInterface() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (SpeechRecognition) {
         const rec = new SpeechRecognition();
         rec.continuous = true;
         rec.interimResults = true;
         rec.lang = "en-US";
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         rec.onresult = (event: any) => {
           let transcript = "";
           for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -102,7 +105,7 @@ export function ChatInterface() {
     if (!recognition) {
       if (!isRecording) {
         setIsRecording(true);
-        let t = "Create a project plan to resolve our critical workload bottlenecks and assign milestones.";
+        const t = "Create a project plan to resolve our workload bottlenecks and assign milestones.";
         let current = "";
         let i = 0;
         const interval = setInterval(() => {
@@ -118,7 +121,6 @@ export function ChatInterface() {
       } else {
         setIsRecording(false);
       }
-      return;
     }
 
     if (isRecording) {
