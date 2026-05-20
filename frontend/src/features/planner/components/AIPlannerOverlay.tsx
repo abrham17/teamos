@@ -10,7 +10,6 @@ import {
   AlertCircle,
   ArrowRight,
   Mic,
-  MicOff,
   PenTool,
   Shield,
   FileText,
@@ -24,6 +23,7 @@ import {
 } from "lucide-react";
 import { getApiAuthHeaders } from "@/lib/api";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
+import { cn } from "@/lib/utils";
 
 interface AIPlannerOverlayProps {
   teamId: string;
@@ -391,14 +391,14 @@ export function AIPlannerOverlay({
       <motion.div
         initial={{ scale: 0.94, opacity: 0, y: 16 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="w-full max-w-5xl bg-[var(--surface-1)] rounded-[28px] overflow-hidden flex flex-col h-[90vh] shadow-2xl border border-[var(--border-subtle)]"
+        className="w-full max-w-5xl bg-[var(--surface-1)] rounded-[28px] overflow-hidden flex flex-col h-[90vh] shadow-none border border-[var(--border-subtle)]"
       >
         {/* ── Header ── */}
         <header className="px-6 py-4 flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-900)] shrink-0">
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-600 opacity-30 blur-lg scale-110" />
-              <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-600 flex items-center justify-center shadow-[var(--shadow-glow)]">
+              <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-600 flex items-center justify-center shadow-none">
                 <BrainCircuit className="w-5 h-5 text-white" />
               </div>
             </div>
@@ -446,7 +446,7 @@ export function AIPlannerOverlay({
                       value={manualName}
                       onChange={(e) => setManualName(e.target.value)}
                       placeholder="Enter project name..."
-                      className="w-full bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 transition-all"
+                      className="w-full bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 transition-all shadow-none"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -455,7 +455,7 @@ export function AIPlannerOverlay({
                       value={manualDesc}
                       onChange={(e) => setManualDesc(e.target.value)}
                       placeholder="Optional details..."
-                      className="w-full h-32 bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 transition-all resize-none"
+                      className="w-full h-32 bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-xl p-4 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30 transition-all resize-none shadow-none"
                     />
                   </div>
                   <div className="flex gap-3 pt-2">
@@ -465,7 +465,7 @@ export function AIPlannerOverlay({
                     <button
                       onClick={handleManualSubmit}
                       disabled={!manualName.trim() || loading}
-                      className="flex-[2] h-12 bg-[var(--accent)] text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 transition-all shadow-lg"
+                      className="flex-[2] h-12 bg-[var(--accent)] text-[var(--bg-950)] font-bold rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 transition-all shadow-none"
                     >
                       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><span>Create Blank Project</span><ArrowRight className="w-4 h-4" /></>}
                     </button>
@@ -482,26 +482,26 @@ export function AIPlannerOverlay({
                 className="flex-1 flex overflow-hidden"
               >
                 {/* ── Left: Chat messages ── */}
-                <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-                  {/* Messages */}
-                  <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
+                <div className="flex-1 flex flex-col overflow-hidden min-w-0 relative">
+                  
+                  {/* Messages scroll area */}
+                  <div className={cn("flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar", messages.length <= 1 && "hidden")}>
                     {messages.map((msg) => (
-                      <div key={msg.id} className={`flex gap-3 ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
-                        {msg.sender === "architect" && (
-                          <div className="relative shrink-0 mt-0.5">
-                            <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-600 opacity-20 blur-md" />
-                            <div className="relative w-8 h-8 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-600 flex items-center justify-center shadow-md">
-                              <Bot className="w-4 h-4 text-white" />
-                            </div>
-                          </div>
-                        )}
-                        <div className="max-w-[80%]">
+                      <div key={msg.id} className={cn("flex gap-3", msg.sender === "user" ? "flex-row-reverse" : "flex-row")}>
+                        <div className={cn(
+                          "w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border",
+                          msg.sender === "architect" ? "bg-[var(--accent-subtle)] border-[var(--accent)]/20 text-[var(--accent)]" : "bg-white/5 border-white/5 text-[var(--text-muted)]"
+                        )}>
+                          {msg.sender === "architect" ? <Bot size={16} /> : <User size={16} />}
+                        </div>
+                        <div className="max-w-[85%]">
                           {(msg.text || msg.isStreaming) && (
-                            <div className={`${
+                            <div className={cn(
+                              "p-3 rounded-2xl text-sm leading-relaxed border-none shadow-none",
                               msg.sender === "user"
-                                ? "px-4 py-3 rounded-2xl rounded-br-sm bg-gradient-to-br from-[var(--accent)] to-purple-600 text-white text-[14px] leading-relaxed shadow-[var(--shadow-md)]"
-                                : "text-[var(--text-primary)] text-[14px] leading-relaxed"
-                            }`}>
+                                ? "bg-[var(--accent)] text-[var(--bg-950)] font-medium rounded-tr-none"
+                                : "bg-[var(--surface-2)]/50 backdrop-blur-md border border-white/5 text-[var(--text-primary)] rounded-tl-none"
+                            )}>
                               {msg.sender === "architect" ? (
                                 msg.text
                                   ? <ChatMessageContent content={msg.text} streaming={!!msg.isStreaming} />
@@ -510,81 +510,139 @@ export function AIPlannerOverlay({
                                       <span className="text-[12px]">Architect is thinking…</span>
                                     </span>
                               ) : (
-                                msg.text
+                                <p className="whitespace-pre-wrap">{msg.text}</p>
                               )}
                             </div>
                           )}
                         </div>
-                        {msg.sender === "user" && (
-                          <div className="w-8 h-8 rounded-full bg-[var(--bg-700)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0 mt-0.5">
-                            <User className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-                          </div>
-                        )}
                       </div>
                     ))}
                     <div ref={chatEndRef} />
                   </div>
 
-                  {/* Suggested starters */}
-                  {messages.length === 1 && (
-                    <div className="px-5 pb-3 flex flex-col gap-2">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-dim)] mb-1">Try asking</p>
-                      {[
-                        { icon: Sparkles, text: "Create a marketing launch strategy for our KYC feature" },
-                        { icon: Target,   text: "Analyze our team timeline risks and draft a mitigation roadmap" },
-                        { icon: BookOpen, text: "List our active wiki pages and suggest strategic updates" },
-                      ].map(({ icon: Icon, text }, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => handleSend(text)}
-                          className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-[var(--bg-900)] hover:bg-[var(--bg-800)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-left transition-all border border-[var(--border-subtle)] hover:border-[var(--accent)]/30 text-[12px] group"
-                        >
-                          <Icon className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-                          {text}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Input bar */}
-                  <div className="shrink-0 px-4 pb-4 pt-3 border-t border-[var(--border-subtle)] bg-[var(--bg-900)]">
-                    <div className="flex items-end gap-2">
-                      <button
-                        onClick={startVoiceMode}
-                        className={`p-2.5 rounded-full transition-all shrink-0 mb-0.5 ${isListening ? "bg-[var(--danger)] text-white animate-pulse" : "bg-[var(--bg-800)] text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)]"}`}
+                  {/* ── Empty Landing & Bottom Input Container ─────────────────────── */}
+                  <motion.div
+                    layout
+                    transition={{ type: "spring", stiffness: 240, damping: 28 }}
+                    className={cn(
+                      "w-full transition-all duration-300 border-none shadow-none flex flex-col items-center",
+                      messages.length > 1
+                        ? "shrink-0 bg-[var(--bg-950)]/50 p-4 border-t border-white/5" 
+                        : "flex-1 justify-center p-6 max-w-xl mx-auto overflow-y-auto"
+                    )}
+                  >
+                    {messages.length <= 1 && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-center space-y-2 mb-6"
                       >
-                        {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                      </button>
-                      <div className="relative flex-1">
-                        <textarea
-                          value={inputText}
-                          onChange={(e) => {
-                            setInputText(e.target.value);
-                            e.target.style.height = "auto";
-                            e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); }
-                          }}
-                          rows={1}
-                          placeholder="Ask a question or describe a strategic plan…"
-                          className="w-full bg-[var(--bg-800)] border border-[var(--border-strong)] rounded-2xl py-4 pl-5 pr-14 text-[var(--text-primary)] text-[14px] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/15 focus:border-[var(--accent)]/60 resize-none overflow-hidden leading-relaxed transition-all shadow-[var(--shadow-sm)] placeholder:text-[var(--text-dim)]"
-                          style={{ maxHeight: "120px" }}
-                        />
+                        <Bot size={40} className="mx-auto text-[var(--accent)] animate-pulse" />
+                        <h3 className="text-lg font-bold text-white">AI Planner Architect</h3>
+                        <p className="text-xs text-[var(--text-muted)] max-w-sm mx-auto">
+                          {mode === "manage"
+                            ? "Hello! Ask questions about your active projects, request a complete project plan, or assign tasks."
+                            : "Welcome! Let's build a new strategic project plan together. Tell me what you'd like to build."
+                          }
+                        </p>
+                      </motion.div>
+                    )}
+
+                    {/* Textarea Input Card */}
+                    <div className="relative w-full max-w-xl">
+                      <textarea
+                        value={inputText}
+                        onChange={(e) => {
+                          setInputText(e.target.value);
+                          e.target.style.height = "auto";
+                          e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); }
+                        }}
+                        rows={1}
+                        placeholder={isListening ? "" : "Describe a project plan or ask a question..."}
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-4 pr-24 text-sm text-white focus:outline-none focus:border-[var(--accent)]/50 transition-all placeholder:text-[var(--text-dim)] shadow-none resize-none overflow-hidden"
+                        style={{ maxHeight: "120px" }}
+                        title="AI Planner prompt"
+                      />
+
+                      {/* Soundwave Mic Indicator */}
+                      {isListening && (
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
+                          <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                          <span className="text-[10px] text-rose-500 font-bold uppercase tracking-wider animate-pulse">Listening...</span>
+                          <div className="flex items-end gap-0.5 h-3 ml-1.5">
+                            {[1, 2, 3, 4].map((n) => (
+                              <span
+                                key={n}
+                                className="w-0.5 bg-rose-500 rounded-full animate-bounce"
+                                style={{
+                                  height: "100%",
+                                  animationDuration: `${0.4 + n * 0.1}s`,
+                                  animationDelay: `${n * 0.05}s`
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={startVoiceMode}
+                          title={isListening ? "Stop voice input" : "Start voice input"}
+                          aria-label={isListening ? "Stop voice input" : "Start voice input"}
+                          className={cn(
+                            "p-2 rounded-xl transition-all border border-transparent",
+                            isListening 
+                              ? "text-rose-500 bg-rose-500/10 hover:bg-rose-500/20" 
+                              : "text-[var(--text-dim)] hover:text-white hover:bg-white/5"
+                          )}
+                        >
+                          <Mic size={16} />
+                        </button>
                         <button
                           onClick={() => void handleSend()}
                           disabled={!inputText.trim() || loading}
-                          className="absolute right-3 bottom-3 h-10 w-10 flex items-center justify-center rounded-full bg-gradient-to-br from-[var(--accent)] to-purple-600 text-white transition-all disabled:opacity-25 hover:shadow-[var(--shadow-glow)] hover:scale-105 active:scale-95 shadow-[var(--shadow-sm)]"
+                          title="Send message"
+                          aria-label="Send message"
+                          className="p-2 bg-[var(--accent)] text-[var(--bg-950)] rounded-xl hover:opacity-90 disabled:opacity-50 transition-all shadow-none"
                         >
-                          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUp className="w-4 h-4" />}
+                          {loading ? <Loader2 size={16} className="animate-spin" /> : <ArrowUp size={16} />}
                         </button>
                       </div>
                     </div>
-                  </div>
+
+                    {/* Starter Suggestions */}
+                    {messages.length <= 1 && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="grid grid-cols-1 gap-2 w-full max-w-xl mt-6"
+                      >
+                        {[
+                          { icon: Sparkles, text: "Create a marketing launch strategy for our KYC feature" },
+                          { icon: Target,   text: "Analyze our team timeline risks and draft a mitigation roadmap" },
+                          { icon: BookOpen, text: "List our active wiki pages and suggest strategic updates" },
+                        ].map(({ icon: Icon, text }, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => handleSend(text)}
+                            className="p-3 text-left text-xs text-[var(--text-muted)] bg-white/[0.01] hover:bg-white/[0.03] border border-white/5 hover:border-[var(--accent)]/20 rounded-xl transition-all flex items-center gap-2.5 group"
+                          >
+                            <Icon className="w-3.5 h-3.5 text-[var(--accent)] shrink-0 group-hover:scale-110 transition-transform" />
+                            <span>{text}</span>
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </motion.div>
                 </div>
 
                 {/* ── Right: Live Execution Panel ── */}
-                <div className="w-72 shrink-0 border-l border-[var(--border-subtle)] flex flex-col bg-[var(--bg-950)]/60 overflow-hidden">
+                <div className="w-72 shrink-0 border-l border-[var(--border-subtle)] flex flex-col bg-[var(--bg-950)]/60 overflow-hidden shadow-none">
                   <div className="px-4 py-3 border-b border-[var(--border-subtle)] shrink-0">
                     <div className="flex items-center gap-2">
                       <div className={`w-1.5 h-1.5 rounded-full ${loading ? "bg-[var(--accent)] animate-pulse" : latestPlanState?.planResult ? "bg-[var(--success)]" : "bg-[var(--border-strong)]"}`} />
@@ -673,7 +731,7 @@ export function AIPlannerOverlay({
                             { label: "Conflicts",  value: latestPlanState.planResult.conflictCount ?? 0,  color: (latestPlanState.planResult.conflictCount ?? 0) > 0 ? "text-[var(--warning)]" : "" },
                             { label: "Critique",   value: latestPlanState.planResult.critiqueScore != null ? `${latestPlanState.planResult.critiqueScore}/10` : "—", color: "" },
                           ].map(({ label, value, color }) => (
-                            <div key={label} className="bg-[var(--surface-1)] rounded-xl p-2.5 text-center border border-[var(--border-subtle)]">
+                            <div key={label} className="bg-[var(--surface-1)] rounded-xl p-2.5 text-center border border-[var(--border-subtle)] shadow-none">
                               <div className={`text-lg font-black text-[var(--text-primary)] ${color}`}>{value}</div>
                               <div className="text-[9px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">{label}</div>
                             </div>
@@ -736,7 +794,7 @@ export function AIPlannerOverlay({
                               milestones: [],
                             });
                           }}
-                          className="w-full h-10 bg-[var(--accent)] text-white text-[12px] font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-md"
+                          className="w-full h-10 bg-[var(--accent)] text-[var(--bg-950)] text-[12px] font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-none"
                         >
                           Open Project
                           <ArrowRight className="w-3.5 h-3.5" />
@@ -749,7 +807,7 @@ export function AIPlannerOverlay({
                       <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-4 py-8">
                         <div className="relative">
                           <div className="absolute inset-0 rounded-2xl bg-[var(--accent)]/10 blur-xl scale-150" />
-                          <div className="relative w-14 h-14 rounded-2xl bg-[var(--bg-800)] border border-[var(--border-subtle)] flex items-center justify-center">
+                          <div className="relative w-14 h-14 rounded-2xl bg-[var(--bg-800)] border border-[var(--border-subtle)] flex items-center justify-center shadow-none">
                             <BrainCircuit className="w-7 h-7 text-[var(--text-dim)]" />
                           </div>
                         </div>

@@ -25,11 +25,6 @@ const QUICK_PROMPTS = [
   { label: "Analyze Project Workload", desc: "Evaluate team distribution, assignee logs, and balance limits.", icon: User, prompt: "Provide a workload analysis overview for the engineering team and flag any over-allocated members." }
 ];
 
-const MODELS = [
-  { id: "planner", label: "Full Planner Core", desc: "Advanced reasoning for comprehensive plans & scheduling.", icon: Target },
-  { id: "reasoner", label: "Strategic Reasoner", desc: "Multi-layered logic logic for bottleneck solving.", icon: BrainCircuit },
-  { id: "wiki", label: "Knowledge Synthesizer", desc: "Active lookup across wiki docs & systems.", icon: BookOpen }
-];
 
 function agentStepsForMessage(m: ChatMessage): AgentToolStep[] {
   if (m.toolSteps?.length) return m.toolSteps;
@@ -66,8 +61,6 @@ export function ChatInterface() {
   const [editInput, setEditInput] = useState("");
 
   const [isRecording, setIsRecording] = useState(false);
-  const [selectedModel, setSelectedModel] = useState("planner");
-  const [showModelDropdown, setShowModelDropdown] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [recognition, setRecognition] = useState<any>(null);
 
@@ -627,10 +620,10 @@ export function ChatInterface() {
               layout
               transition={{ type: "spring", stiffness: 240, damping: 28 }}
               className={cn(
-                "w-full transition-all duration-300 border-none shadow-none",
+                "w-full transition-all duration-300 border-none shadow-none flex flex-col items-center",
                 hasMessages 
                   ? "shrink-0 bg-[var(--bg-950)] px-4 pt-3 pb-5 border-t border-white/5" 
-                  : "flex-1 flex flex-col items-center justify-center p-6 max-w-4xl mx-auto custom-scrollbar overflow-y-auto"
+                  : "flex-1 justify-center p-6 max-w-4xl mx-auto custom-scrollbar overflow-y-auto"
               )}
             >
               {/* Centered Landing elements (Only visible when empty) */}
@@ -640,44 +633,6 @@ export function ChatInterface() {
                   animate={{ opacity: 1, y: 0 }}
                   className="w-full flex flex-col items-center text-center space-y-6 mb-8"
                 >
-                  {/* Model selector dropdown */}
-                  <div className="relative">
-                    <button 
-                      type="button"
-                      onClick={() => setShowModelDropdown(!showModelDropdown)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 text-xs font-bold text-[var(--text-primary)] transition-all hover:border-[var(--accent)]/30"
-                      title="Select reasoning model"
-                      aria-label="Select reasoning model"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-[var(--accent)]" />
-                      <span>{MODELS.find(m => m.id === selectedModel)?.label}</span>
-                      <ChevronDown className="w-3 h-3 text-[var(--text-dim)]" />
-                    </button>
-                    {showModelDropdown && (
-                      <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-64 rounded-xl border border-white/10 bg-[var(--surface-2)]/95 backdrop-blur-md p-1.5 z-[100] text-left space-y-0.5 shadow-none">
-                        {MODELS.map((m) => (
-                          <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => { setSelectedModel(m.id); setShowModelDropdown(false); }}
-                            className={cn(
-                              "w-full flex items-start gap-2.5 px-3 py-2 rounded-lg text-xs transition-all",
-                              selectedModel === m.id
-                                ? "bg-[var(--accent-subtle)] text-[var(--accent)] font-bold"
-                                : "text-[var(--text-primary)] hover:bg-white/5"
-                            )}
-                          >
-                            <m.icon className="w-4 h-4 shrink-0 mt-0.5 text-[var(--accent)]" />
-                            <div>
-                              <div className="font-semibold">{m.label}</div>
-                              <div className="text-[10px] text-[var(--text-dim)] leading-tight mt-0.5">{m.desc}</div>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
                   {/* Hero */}
                   <div className="space-y-2 pointer-events-auto">
                     <h2 className="text-3xl font-bold tracking-tight text-[var(--text-primary)] flex items-center justify-center gap-2.5">
