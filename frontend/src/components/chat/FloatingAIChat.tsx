@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MessageCircle, X, Send, Bot, User, Maximize2, Minimize2, Loader2, Plus, Layout } from "lucide-react";
+import { MessageCircle, X, Send, Bot, User, Maximize2, Minimize2, Loader2, Plus, Layout, Mic, MicOff, Sparkles, ChevronDown, BrainCircuit, Compass, HelpCircle, Activity, ArrowUp } from "lucide-react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
 import { ChatMessageContent } from "./ChatMessageContent";
 import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "motion/react";
 
 type ChatSession = {
   id: string;
@@ -20,6 +21,11 @@ type ChatMessage = {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
+const STARTER_PROMPTS = [
+  { label: "Check Roadmap Scheduling", prompt: "Identify any overlapping roadmap milestones or scheduling conflicts in our current sprints." },
+  { label: "Analyze Workspace Workload", prompt: "Evaluate team task assignments and flag any over-allocated assignee allocations." }
+];
+
 export function FloatingAIChat() {
   const { currentTeamId } = useWikiStore();
   const [isOpen, setIsOpen] = useState(false);
@@ -31,6 +37,9 @@ export function FloatingAIChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+
+  const [isRecording, setIsRecording] = useState(false);
+  const [recognition, setRecognition] = useState<any>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -70,11 +79,69 @@ export function FloatingAIChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isStreaming]);
 
-  const handleSend = useCallback(async () => {
-    const text = input.trim();
+  // Web Speech recognition setup
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const rec = new SpeechRecognition();
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.lang = "en-US";
+        rec.onresult = (event: any) => {
+          let transcript = "";
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript;
+          }
+          setInput(transcript);
+        };
+        rec.onend = () => {
+          setIsRecording(false);
+        };
+        setRecognition(rec);
+      }
+    }
+  }, []);
+
+  const toggleRecording = () => {
+    if (!recognition) {
+      if (!isRecording) {
+        setIsRecording(true);
+        let t = "Analyze our strategic workload logs and decompose task constraints.";
+        let current = "";
+        let i = 0;
+        const interval = setInterval(() => {
+          if (i < t.length) {
+            current += t[i];
+            setInput(current);
+            i++;
+          } else {
+            clearInterval(interval);
+            setIsRecording(false);
+          }
+        }, 45);
+      } else {
+        setIsRecording(false);
+      }
+      return;
+    }
+
+    if (isRecording) {
+      recognition.stop();
+      setIsRecording(false);
+    } else {
+      recognition.start();
+      setIsRecording(true);
+    }
+  };
+
+  const handleSend = useCallback(async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim();
     if (!text || !currentTeamId || !activeSessionId || isStreaming) return;
 
-    setInput("");
+    if (!overrideText) {
+      setInput("");
+    }
     setIsStreaming(true);
     const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: "user", content: text };
     setMessages(prev => [...prev, userMsg]);
@@ -141,34 +208,49 @@ export function FloatingAIChat() {
 
   if (!currentTeamId) return null;
 
+  const hasMessages = messages.length > 0;
+
   return (
     <div className={cn(
-      "fixed z-[1000] transition-all duration-300 ease-in-out",
+      "fixed z-[1000] transition-all duration-300 ease-in-out border-none shadow-none",
       isOpen
-        ? "bottom-2 left-1/2 -translate-x-1/2 w-[98vw] max-w-[1100px] px-2"
+        ? "bottom-2 left-1/2 -translate-x-1/2 w-[98vw] max-w-[1200px] px-2"
         : "bottom-6 right-6"
     )}>
       {isOpen && !isMinimized && (
-        <div className="w-full h-[50vh] max-h-[85vh] bg-[var(--surface-1)] border border-white/10 rounded-t-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 duration-300 backdrop-blur-xl">
+        <div className="w-full h-[52vh] max-h-[85vh] bg-[var(--surface-1)]/95 border border-white/10 rounded-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 duration-300 backdrop-blur-xl shadow-none">
           {/* Header */}
           <div className="p-3 border-b border-white/5 bg-[var(--bg-950)]/50 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
+                type="button"
                 onClick={() => setShowSidebar(!showSidebar)}
-                className="p-1.5 hover:bg-white/5 rounded-lg text-[var(--text-muted)] transition-colors"
+                className="p-1.5 hover:bg-white/5 rounded-lg text-[var(--text-muted)] transition-colors border border-transparent hover:border-white/5"
+                title="Toggle sessions sidebar"
+                aria-label="Toggle sessions sidebar"
               >
                 <Layout size={18} />
               </button>
               <div className="flex items-center gap-2 font-bold text-sm text-[var(--text-primary)]">
                 <Bot size={18} className="text-[var(--accent)]" />
-                Intelligence Hub
+                AI Architect Hub
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <button onClick={() => setIsMinimized(true)} className="p-1.5 hover:bg-white/5 rounded-lg text-[var(--text-dim)] transition-colors">
+              <button 
+                onClick={() => setIsMinimized(true)} 
+                className="p-1.5 hover:bg-white/5 rounded-lg text-[var(--text-dim)] transition-colors border border-transparent hover:border-white/5"
+                title="Minimize chat"
+                aria-label="Minimize chat"
+              >
                 <Minimize2 size={16} />
               </button>
-              <button onClick={() => setIsOpen(false)} className="p-1.5 hover:bg-white/5 rounded-lg text-[var(--text-dim)] hover:text-rose-400 transition-colors">
+              <button 
+                onClick={() => setIsOpen(false)} 
+                className="p-1.5 hover:bg-white/5 rounded-lg text-[var(--text-dim)] hover:text-rose-400 transition-colors border border-transparent hover:border-white/5"
+                title="Close chat"
+                aria-label="Close chat"
+              >
                 <X size={16} />
               </button>
             </div>
@@ -181,7 +263,7 @@ export function FloatingAIChat() {
                 <div className="p-3">
                   <button
                     onClick={handleCreateSession}
-                    className="w-full flex items-center justify-center gap-2 py-1.5 rounded-lg border border-white/10 bg-white/5 text-[9px] font-bold uppercase tracking-wider text-[var(--text-primary)] hover:bg-white/10 hover:border-[var(--accent)] transition-all shrink-0"
+                    className="w-full flex items-center justify-center gap-2 py-1.5 rounded-lg border border-white/10 bg-white/5 text-[9px] font-bold uppercase tracking-wider text-[var(--text-primary)] hover:bg-white/10 hover:border-[var(--accent)] transition-all shrink-0 shadow-none"
                   >
                     <Plus size={14} /> New Chat
                   </button>
@@ -192,9 +274,9 @@ export function FloatingAIChat() {
                       key={s.id}
                       onClick={() => setActiveSessionId(s.id)}
                       className={cn(
-                        "w-full text-left px-3 py-2.5 rounded-lg text-xs transition-all truncate",
+                        "w-full text-left px-3 py-2.5 rounded-lg text-xs transition-all truncate border border-transparent",
                         activeSessionId === s.id
-                          ? "bg-[var(--accent-subtle)] text-[var(--accent)] font-bold border border-[var(--accent)]/20"
+                          ? "bg-[var(--accent-subtle)] text-[var(--accent)] font-bold border-[var(--accent)]/20"
                           : "text-[var(--text-muted)] hover:bg-white/5 hover:text-[var(--text-primary)]"
                       )}
                     >
@@ -206,15 +288,11 @@ export function FloatingAIChat() {
             )}
 
             {/* Main Chat Area */}
-            <div className="flex-1 flex flex-col min-w-0 relative bg-[var(--bg-950)]/30">
-              <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-                {messages.length === 0 && (
-                  <div className="flex flex-col items-center justify-center h-full text-center opacity-40">
-                    <Bot size={48} className="mb-4 text-[var(--accent)]" />
-                    <p className="text-sm">How can I assist your team today?</p>
-                  </div>
-                )}
-                {messages.map((m) => (
+            <div className="flex-1 flex flex-col min-w-0 relative bg-[var(--bg-950)]/30 border-none shadow-none">
+              
+              {/* Message scroll area (only visible if we have messages) */}
+              <div className={cn("flex-1 min-h-0 overflow-y-auto p-4 space-y-4 custom-scrollbar", !hasMessages && "hidden")}>
+                {hasMessages && messages.map((m) => (
                   <div key={m.id} className={cn("flex gap-3", m.role === "user" ? "flex-row-reverse" : "flex-row")}>
                     <div className={cn(
                       "w-8 h-8 rounded-full flex items-center justify-center shrink-0 border",
@@ -223,7 +301,7 @@ export function FloatingAIChat() {
                       {m.role === "assistant" ? <Bot size={16} /> : <User size={16} />}
                     </div>
                     <div className={cn(
-                      "max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed",
+                      "max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed border-none shadow-none",
                       m.role === "user" ? "bg-[var(--accent)] text-[var(--bg-950)] font-medium rounded-tr-none" : "bg-[var(--surface-2)]/50 backdrop-blur-md border border-white/5 text-[var(--text-primary)] rounded-tl-none"
                     )}>
                       {m.role === "assistant" ? (
@@ -247,25 +325,110 @@ export function FloatingAIChat() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input */}
-              <div className="p-4 border-t border-white/5 bg-[var(--bg-950)]/50">
-                <div className="relative max-w-3xl mx-auto">
+              {/* ── Landing & Bottom Input Transition ─────────────────────── */}
+              <motion.div
+                layout
+                transition={{ type: "spring", stiffness: 240, damping: 28 }}
+                className={cn(
+                  "w-full transition-all duration-300 border-none shadow-none",
+                  hasMessages 
+                    ? "shrink-0 p-4 border-t border-white/5 bg-[var(--bg-950)]/50" 
+                    : "flex-1 flex flex-col items-center justify-center p-6 max-w-2xl mx-auto overflow-y-auto"
+                )}
+              >
+                {!hasMessages && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-center space-y-2 mb-6"
+                  >
+                    <Bot size={40} className="mx-auto text-[var(--accent)] animate-pulse" />
+                    <h3 className="text-lg font-bold text-white">AI Architect Assistant</h3>
+                    <p className="text-xs text-[var(--text-muted)] max-w-sm mx-auto">Ask about your strategic roadmap, scheduling locks, and capacity bottlenecks.</p>
+                  </motion.div>
+                )}
+
+                {/* Input Area */}
+                <div className="relative w-full max-w-2xl">
                   <input
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-                    placeholder="Type a command or question..."
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 pl-4 pr-12 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-all placeholder:text-[var(--text-dim)] shadow-inner"
+                    placeholder={isRecording ? "" : "Ask a command or question..."}
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-4 pr-24 text-sm text-white focus:outline-none focus:border-[var(--accent)]/50 transition-all placeholder:text-[var(--text-dim)] shadow-none"
+                    title="AI Architect prompt"
                   />
-                  <button
-                    onClick={handleSend}
-                    disabled={!input.trim() || isStreaming}
-                    className="absolute right-2 top-1.5 p-2 bg-[var(--accent)] text-[var(--bg-950)] rounded-xl hover:opacity-90 disabled:opacity-50 transition-all shadow-lg"
-                  >
-                    <Send size={16} />
-                  </button>
+
+                  {/* Soundwave Mic Indicator */}
+                  {isRecording && (
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
+                      <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                      <span className="text-[10px] text-rose-500 font-bold uppercase tracking-wider animate-pulse">Listening...</span>
+                      <div className="flex items-end gap-0.5 h-3 ml-1.5">
+                        {[1, 2, 3, 4].map((n) => (
+                          <span
+                            key={n}
+                            className="w-0.5 bg-rose-500 rounded-full animate-bounce"
+                            style={{
+                              height: "100%",
+                              animationDuration: `${0.4 + n * 0.1}s`,
+                              animationDelay: `${n * 0.05}s`
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="absolute right-2 top-1.5 flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={toggleRecording}
+                      title={isRecording ? "Stop recording speech" : "Start recording speech"}
+                      aria-label={isRecording ? "Stop recording speech" : "Start recording speech"}
+                      className={cn(
+                        "p-2 rounded-xl transition-all border border-transparent",
+                        isRecording 
+                          ? "text-rose-500 bg-rose-500/10 hover:bg-rose-500/20" 
+                          : "text-[var(--text-dim)] hover:text-white hover:bg-white/5"
+                      )}
+                    >
+                      {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
+                    </button>
+                    <button
+                      onClick={() => handleSend()}
+                      disabled={!input.trim() || isStreaming}
+                      title="Send message"
+                      aria-label="Send message"
+                      className="p-2 bg-[var(--accent)] text-[var(--bg-950)] rounded-xl hover:opacity-90 disabled:opacity-50 transition-all shadow-none"
+                    >
+                      <Send size={16} />
+                    </button>
+                  </div>
                 </div>
-              </div>
+
+                {/* Starter Prompts */}
+                {!hasMessages && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="grid grid-cols-1 gap-2 w-full max-w-2xl mt-6"
+                  >
+                    {STARTER_PROMPTS.map((p) => (
+                      <button
+                        key={p.label}
+                        type="button"
+                        onClick={() => handleSend(p.prompt)}
+                        className="p-3 text-left text-xs text-[var(--text-muted)] bg-white/[0.01] hover:bg-white/[0.03] border border-white/5 hover:border-[var(--accent)]/20 rounded-xl transition-all"
+                      >
+                        <span className="font-semibold text-[var(--text-primary)] block mb-0.5">{p.label}</span>
+                        {p.prompt}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </motion.div>
+
             </div>
           </div>
         </div>
@@ -274,7 +437,7 @@ export function FloatingAIChat() {
       {isMinimized && isOpen && (
         <button
           onClick={() => setIsMinimized(false)}
-          className="bg-[var(--accent)] text-[var(--bg-950)] px-6 py-3 rounded-full font-bold shadow-2xl flex items-center gap-3 animate-in slide-in-from-right-8 transition-all hover:scale-105"
+          className="bg-[var(--accent)] text-[var(--bg-950)] px-6 py-3 rounded-full font-bold shadow-none flex items-center gap-3 animate-in slide-in-from-right-8 transition-all hover:scale-105"
         >
           <Bot size={20} />
           Intelligence Active
@@ -285,10 +448,12 @@ export function FloatingAIChat() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="w-14 h-14 bg-[var(--accent)] text-[var(--bg-950)] rounded-2xl shadow-2xl flex items-center justify-center hover:scale-110 transition-all active:scale-95 group relative"
+          title="Open AI Architect Chat"
+          aria-label="Open AI Architect Chat"
+          className="w-14 h-14 bg-[var(--accent)] text-[var(--bg-950)] rounded-2xl flex items-center justify-center hover:scale-110 transition-all active:scale-95 group relative shadow-none"
         >
           <MessageCircle size={28} className="group-hover:rotate-12 transition-transform" />
-          <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-[var(--bg-950)] animate-pulse" />
+          <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-[var(--bg-950)] animate-pulse animate-duration-1000" />
         </button>
       )}
     </div>
