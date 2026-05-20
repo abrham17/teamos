@@ -39,12 +39,12 @@ interface ClerkGlobal {
 }
 
 const NAV_ITEMS = [
-  { href: "/wiki",    icon: Book,           label: "Wiki"   },
-  { href: "/plan",    icon: Target,         label: "Plan"   },
-  { href: "/graph",   icon: Share2,         label: "Graph"  },
-  { href: "/chat",    icon: MessageSquare,  label: "Chat"   },
-  { href: "/ingest",  icon: Upload,         label: "Ingest" },
-  { href: "/analytics", icon: BarChart3,    label: "Analytics" },
+  { href: "/wiki", icon: Book, label: "Wiki" },
+  { href: "/plan", icon: Target, label: "Plan" },
+  { href: "/graph", icon: Share2, label: "Graph" },
+  { href: "/chat", icon: MessageSquare, label: "Chat" },
+  { href: "/ingest", icon: Upload, label: "Ingest" },
+  { href: "/analytics", icon: BarChart3, label: "Analytics" },
 ];
 
 interface User {
@@ -60,9 +60,9 @@ export function Sidebar() {
   const { currentTeamId, setCurrentTeamId } = useWikiStore();
   const { theme, toggle: toggleTheme } = useTheme();
 
-  const [user, setUser]                 = useState<User | null>(null);
-  const [teams, setTeams]               = useState<Team[]>([]);
-  const [collapsed, setCollapsed]       = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [collapsed, setCollapsed] = useState(false);
   const [teamDropOpen, setTeamDropOpen] = useState(false);
   const [teamLoadError, setTeamLoadError] = useState<string | null>(null);
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
@@ -84,13 +84,20 @@ export function Sidebar() {
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
 
-    api.get<User>("/auth/me/").then(setUser).catch(console.error);
+    api.get<User>("/auth/me/")
+      .then(setUser)
+      .catch(console.error);
+
     api
       .get<Team[]>("/auth/teams/")
       .then((data) => {
         setTeams(data);
         setTeamLoadError(null);
-        if (data.length > 0 && !currentTeamId) setCurrentTeamId(data[0].id);
+        if (data.length > 0) {
+          if (!currentTeamId || !data.some(t => t.id === currentTeamId)) {
+            setCurrentTeamId(data[0].id);
+          }
+        }
       })
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : "Failed to load teams.";
@@ -208,9 +215,8 @@ export function Sidebar() {
     >
       {/* ── Logo + Collapse toggle ── */}
       <div
-        className={`flex items-center h-[52px] border-b border-[var(--border-subtle)] shrink-0 ${
-          collapsed ? "justify-center px-2" : "px-4 justify-between"
-        }`}
+        className={`flex items-center h-[52px] border-b border-[var(--border-subtle)] shrink-0 ${collapsed ? "justify-center px-2" : "px-4 justify-between"
+          }`}
       >
         {collapsed ? (
           <button onClick={toggleCollapsed} title="Expand sidebar" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/[0.03] transition-colors">
@@ -241,9 +247,8 @@ export function Sidebar() {
 
       {/* ── Team selector ── */}
       <div
-        className={`border-b border-[var(--border-subtle)] ${
-          collapsed ? "py-2 flex justify-center" : "p-2"
-        }`}
+        className={`border-b border-[var(--border-subtle)] ${collapsed ? "py-2 flex justify-center" : "p-2"
+          }`}
         ref={teamDropRef}
       >
         {collapsed ? (
@@ -274,9 +279,8 @@ export function Sidebar() {
                 )}
               </div>
               <ChevronDown
-                className={`w-3.5 h-3.5 text-[var(--text-dim)] transition-transform duration-200 ${
-                  teamDropOpen ? "rotate-180" : ""
-                }`}
+                className={`w-3.5 h-3.5 text-[var(--text-dim)] transition-transform duration-200 ${teamDropOpen ? "rotate-180" : ""
+                  }`}
               />
             </button>
 
@@ -373,9 +377,8 @@ export function Sidebar() {
 
       {/* ── Navigation ── */}
       <nav
-        className={`flex-1 overflow-y-auto py-3 flex flex-col ${
-          collapsed ? "items-center px-2 gap-0.5" : "px-2 gap-0.5"
-        }`}
+        className={`flex-1 overflow-y-auto py-3 flex flex-col ${collapsed ? "items-center px-2 gap-0.5" : "px-2 gap-0.5"
+          }`}
         aria-label="Main navigation"
       >
         {!collapsed && (
@@ -426,9 +429,8 @@ export function Sidebar() {
 
       {/* ── Bottom actions ── */}
       <div
-        className={`border-t border-[var(--border-subtle)] pt-2 pb-3 flex flex-col gap-0.5 ${
-          collapsed ? "items-center px-2" : "px-2"
-        }`}
+        className={`border-t border-[var(--border-subtle)] pt-2 pb-3 flex flex-col gap-0.5 ${collapsed ? "items-center px-2" : "px-2"
+          }`}
       >
         <Link
           href="/settings"
@@ -467,7 +469,7 @@ export function Sidebar() {
               <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white font-semibold text-xs border border-white/10 shadow-sm">
                 {user?.avatar_url
                   ? /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
+                  <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
                   : (user?.display_name?.[0]?.toUpperCase() || "U")
                 }
               </div>
@@ -484,7 +486,7 @@ export function Sidebar() {
               <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center text-white font-semibold text-xs shrink-0 border border-white/10 shadow-sm">
                 {user?.avatar_url
                   ? /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
+                  <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
                   : (user?.display_name?.[0]?.toUpperCase() || "U")
                 }
               </div>

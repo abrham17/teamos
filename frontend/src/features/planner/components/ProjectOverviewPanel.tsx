@@ -69,12 +69,59 @@ export function ProjectOverviewPanel({
 
   if (loadingDetail) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-[var(--bg-950)]/50">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl border-4 border-[var(--accent-subtle)] border-t-[var(--accent)] animate-spin" />
-          <p className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest animate-pulse">
-            Syncing Roadmap...
-          </p>
+      <div className="flex-1 overflow-y-auto bg-[var(--bg-950)]/50 custom-scrollbar animate-pulse">
+        <div className="p-8 max-w-7xl mx-auto space-y-8">
+          {/* Header Skeleton */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="h-5 w-16 bg-white/[0.03] rounded-full" />
+              <div className="h-4.5 w-32 bg-white/[0.02] rounded" />
+            </div>
+            <div className="h-10 w-2/5 bg-white/[0.03] rounded-xl" />
+            <div className="h-4.5 w-3/5 bg-white/[0.02] rounded" />
+          </div>
+
+          {/* Stats Skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            {[1, 2, 3, 4].map((n) => (
+              <div key={n} className="bg-[var(--surface-1)] border border-[var(--border-subtle)] p-6 rounded-[32px] space-y-3.5">
+                <div className="h-3 w-16 bg-white/[0.02] rounded-full" />
+                <div className="h-7 w-12 bg-white/[0.03] rounded-lg" />
+                <div className="h-3 w-24 bg-white/[0.01] rounded-full" />
+              </div>
+            ))}
+          </div>
+
+          {/* Main Grid Skeleton */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-6">
+              <div className="h-6 w-36 bg-white/[0.03] rounded-lg" />
+              <div className="space-y-3.5">
+                {[1, 2, 3].map((n) => (
+                  <div key={n} className="h-20 bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className="h-6 w-6 rounded-lg bg-white/[0.03] shrink-0" />
+                      <div className="space-y-2 flex-1">
+                        <div className="h-4 w-1/3 bg-white/[0.02] rounded" />
+                        <div className="h-3 w-1/2 bg-white/[0.01] rounded" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-6">
+              <div className="h-6 w-24 bg-white/[0.03] rounded-lg" />
+              <div className="space-y-3.5">
+                {[1, 2, 3].map((n) => (
+                  <div key={n} className="h-14 bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl p-3 flex items-center gap-3">
+                    <div className="h-6 w-6 rounded bg-white/[0.03] shrink-0" />
+                    <div className="h-3.5 w-2/3 bg-white/[0.02] rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -378,6 +425,7 @@ export function ProjectOverviewPanel({
               onClick={handleDeleteProject}
               className="h-12 w-12 bg-[var(--danger)]/10 text-[var(--danger)] border border-[var(--danger)]/20 rounded-2xl hover:bg-[var(--danger)] hover:text-white transition-all group shadow-sm flex items-center justify-center"
               title="Delete Project"
+              aria-label="Delete Project"
             >
               <Trash2 className="w-5 h-5 group-hover:scale-110 transition-transform" />
             </button>
@@ -385,6 +433,7 @@ export function ProjectOverviewPanel({
               onClick={handleExportHTML}
               className="h-12 w-12 bg-[var(--surface-1)] text-[var(--text-muted)] rounded-2xl flex items-center justify-center border border-[var(--border-subtle)] hover:text-[var(--text-primary)] transition-all"
               title="Export to HTML"
+              aria-label="Export to HTML"
             >
               <Download className="w-4 h-4" />
             </button>
@@ -452,6 +501,8 @@ export function ProjectOverviewPanel({
                 </div>
                 <button 
                   onClick={() => onOpenAddTask(undefined)}
+                  title="Add Task"
+                  aria-label="Add Task"
                   className="h-10 w-10 bg-[var(--accent)] text-white rounded-xl flex items-center justify-center hover:opacity-90 transition-all shadow-lg shadow-[var(--accent-glow)]"
                 >
                   <Plus className="w-5 h-5" />
@@ -524,6 +575,8 @@ export function ProjectOverviewPanel({
                 </h3>
                 <button 
                   onClick={onOpenAddMilestone}
+                  title="Add Milestone"
+                  aria-label="Add Milestone"
                   className="p-1.5 hover:bg-[var(--surface-2)] rounded-lg text-[var(--accent)] transition-all"
                 >
                   <PlusCircle className="w-5 h-5" />
@@ -685,6 +738,8 @@ function TaskItem({
     `}>
       <button
         onClick={onToggle}
+        title="Toggle task completion"
+        aria-label="Toggle task completion"
         className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all shrink-0 mt-0.5 ${
           isDone
             ? "bg-emerald-500 border-emerald-500 text-white"
@@ -731,6 +786,7 @@ function TaskItem({
             disabled={isDecomposing}
             className="p-1.5 text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 rounded-lg transition-all flex items-center gap-1 disabled:opacity-50"
             title="Decompose task day-by-day"
+            aria-label="Decompose task day-by-day"
           >
             {isDecomposing ? (
               <Loader2 className="w-4 h-4 animate-spin text-[var(--accent)]" />
@@ -746,6 +802,7 @@ function TaskItem({
             onClick={(e) => { e.stopPropagation(); onAddSubTask(); }}
             className="p-1.5 text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 rounded-lg transition-all flex items-center gap-1"
             title="Add hierarchical sub-task"
+            aria-label="Add hierarchical sub-task"
           >
             <ListPlus className="w-4 h-4" />
             <span className="text-[9px] font-bold uppercase tracking-wider hidden md:inline">Sub-task</span>
@@ -759,6 +816,7 @@ function TaskItem({
           }}
           className="p-1.5 text-[var(--text-dim)] hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 rounded-lg transition-all"
           title="Delete Task"
+          aria-label="Delete Task"
         >
           <Trash2 className="w-4 h-4" />
         </button>
@@ -786,6 +844,8 @@ function MilestoneItem({ milestone, onToggle }: { milestone: PlanMilestone; onTo
       <div className="flex flex-col items-center gap-2">
         <button
           onClick={onToggle}
+          title="Toggle milestone status"
+          aria-label="Toggle milestone status"
           className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
             isReached
               ? "bg-[var(--accent)] border-[var(--accent)]"

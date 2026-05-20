@@ -50,9 +50,17 @@ export function ProjectListPanel({
         </label>
       </div>
 
-      <div className="overflow-y-auto h-[calc(100%-116px)] p-2">
+      <div className="overflow-y-auto h-[calc(100%-116px)] p-2 custom-scrollbar">
         {loading ? (
-          <div className="p-3 text-sm text-[var(--text-muted)]">Loading projects...</div>
+          <div className="space-y-2">
+            {[1, 2, 3].map((n) => (
+              <div key={n} className="p-3 rounded-xl border border-[var(--border-subtle)] bg-white/[0.01] animate-pulse space-y-2.5">
+                <div className="h-4 w-2/3 bg-white/[0.03] rounded" />
+                <div className="h-3 w-5/6 bg-white/[0.02] rounded" />
+                <div className="h-3.5 w-1/3 bg-white/[0.02] rounded-full" />
+              </div>
+            ))}
+          </div>
         ) : projects.length === 0 ? (
           <div className="p-3 text-sm text-[var(--text-muted)]">No projects yet.</div>
         ) : (

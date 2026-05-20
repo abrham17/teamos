@@ -85,9 +85,6 @@ export function PlannerWorkspace() {
     }
   }, [activeView, currentTeamId]);
 
-  if (!currentTeamId) {
-    return <div className="p-8 text-[var(--text-muted)]">Select a team first.</div>;
-  }
 
   const handlePlanGenerated = async () => {
     if (!currentTeamId) return;
@@ -235,7 +232,21 @@ export function PlannerWorkspace() {
         </div>
 
         <div className="flex-1 overflow-hidden flex flex-col">
-          {activeView === "overview" ? (
+          {!currentTeamId ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-[var(--bg-950)]/50">
+              <div className="max-w-md space-y-4">
+                <div className="w-16 h-16 bg-[var(--surface-1)] rounded-2xl flex items-center justify-center mx-auto border border-[var(--border-subtle)] shadow-inner">
+                  <LayoutGrid className="w-6 h-6 text-[var(--accent)]" />
+                </div>
+                <div className="space-y-1.5">
+                  <h3 className="text-lg font-semibold text-[var(--text-primary)]">Select a Team</h3>
+                  <p className="text-sm text-[var(--text-muted)] leading-relaxed">
+                    Select a team from the sidebar dropdown or create a new team to view active project boards, calendars, and strategic timelines.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : activeView === "overview" ? (
             <ProjectOverviewPanel
               activeProject={activeProject}
               loadingDetail={loadingProjectDetail}
@@ -325,7 +336,7 @@ export function PlannerWorkspace() {
 
       {isAIOverlayOpen && (
         <AIPlannerOverlay
-          teamId={currentTeamId}
+          teamId={currentTeamId || ""}
           mode={aiMode}
           projectId={aiMode === "manage" ? activeProject?.id ?? null : null}
           onClose={() => setIsAIOverlayOpen(false)}

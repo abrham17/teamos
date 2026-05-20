@@ -364,10 +364,8 @@ export function ChatInterface() {
     await handleSend(editInput);
   };
 
-  if (!currentTeamId) return <div className="flex flex-1 items-center justify-center text-[var(--text-muted)]">Select a team first</div>;
-
-  const inputTypingDisabled = isStreaming || !sessionReady;
-  const sendDisabled = isStreaming || !sessionReady || !activeSessionId || !input.trim();
+  const inputTypingDisabled = isStreaming || !sessionReady || !currentTeamId;
+  const sendDisabled = isStreaming || !sessionReady || !activeSessionId || !input.trim() || !currentTeamId;
 
   const hasMessages = messages.length > 0;
 
@@ -383,63 +381,87 @@ export function ChatInterface() {
       />
 
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden w-full h-full">
-        {/* ── Empty / centered state ─────────────────────── */}
-        <AnimatePresence>
-          {sessionReady && !hasMessages && (
-            <motion.div
-              key="empty-state"
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12, transition: { duration: 0.22 } }}
-              transition={{ duration: 0.35, ease: "easeOut" }}
-              className="absolute inset-0 flex flex-col items-center justify-center px-4 z-10 pointer-events-none"
-              style={{ paddingBottom: "96px" }}
-            >
-              {/* Hero */}
-              <div className="text-center space-y-3 pointer-events-auto">
-                <div className="relative mx-auto w-16 h-16 mb-1">
-                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] opacity-25 blur-2xl scale-125" />
-                  <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center shadow-[var(--shadow-glow)]">
-                    <Bot className="h-7 w-7 text-white" />
+        {!currentTeamId ? (
+          <div className="flex flex-1 flex-col items-center justify-center p-8 text-center space-y-4 my-auto">
+            <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--accent)]/10 to-[var(--accent)]/20 border border-[var(--accent)]/20 flex items-center justify-center shadow-lg">
+              <Bot className="h-7 w-7 text-[var(--accent)]" />
+            </div>
+            <div className="space-y-1.5 max-w-sm">
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">Select a Team</h3>
+              <p className="text-sm text-[var(--text-muted)]">Select a workspace team from the sidebar dropdown, or create a new team to begin chatting with TeamOS AI.</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* ── Empty / centered state ─────────────────────── */}
+            <AnimatePresence>
+              {sessionReady && !hasMessages && (
+                <motion.div
+                  key="empty-state"
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12, transition: { duration: 0.22 } }}
+                  transition={{ duration: 0.35, ease: "easeOut" }}
+                  className="absolute inset-0 flex flex-col items-center justify-center px-4 z-10 pointer-events-none"
+                  style={{ paddingBottom: "96px" }}
+                >
+                  {/* Hero */}
+                  <div className="text-center space-y-3 pointer-events-auto">
+                    <div className="relative mx-auto w-16 h-16 mb-1">
+                      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] opacity-25 blur-2xl scale-125" />
+                      <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center shadow-[var(--shadow-glow)]">
+                        <Bot className="h-7 w-7 text-white" />
+                      </div>
+                    </div>
+                    <h2 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">Team Intelligence</h2>
+                    <p className="text-[14px] leading-relaxed text-[var(--text-muted)] max-w-sm mx-auto">Ask anything about your wiki, plans, and team knowledge.</p>
                   </div>
-                </div>
-                <h2 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">Team Intelligence</h2>
-                <p className="text-[14px] leading-relaxed text-[var(--text-muted)] max-w-sm mx-auto">Ask anything about your wiki, plans, and team knowledge.</p>
-              </div>
 
-              {/* Capability cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl mt-8 pointer-events-auto">
-                {[
-                  { icon: Search,   label: "Search knowledge",    desc: "Ask anything about your wiki",             prompt: "Summarize our key knowledge areas" },
-                  { icon: BookOpen, label: "Create wiki pages",   desc: "Draft or update knowledge base pages",      prompt: "Create a wiki page about our onboarding process" },
-                  { icon: Target,   label: "Build & manage plans",desc: "Generate tasks, milestones, and timelines", prompt: "Show me the current project plans and highlight risks" },
-                ].map(({ icon: Icon, label, desc, prompt }) => (
-                  <button
-                    key={label}
-                    onClick={() => { setInput(prompt); inputRef.current?.focus(); }}
-                    className="group flex flex-col gap-3.5 p-5 rounded-2xl border border-[var(--border-subtle)] bg-white/[0.02] hover:bg-white/[0.04] hover:border-[var(--accent)]/30 text-left transition-all duration-200 shadow-md relative overflow-hidden"
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
-                      <Icon className="w-4 h-4 text-[var(--accent)]" />
+                  {/* Capability cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-2xl mt-8 pointer-events-auto">
+                    {[
+                      { icon: Search,   label: "Search knowledge",    desc: "Ask anything about your wiki",             prompt: "Summarize our key knowledge areas" },
+                      { icon: BookOpen, label: "Create wiki pages",   desc: "Draft or update knowledge base pages",      prompt: "Create a wiki page about our onboarding process" },
+                      { icon: Target,   label: "Build & manage plans",desc: "Generate tasks, milestones, and timelines", prompt: "Show me the current project plans and highlight risks" },
+                    ].map(({ icon: Icon, label, desc, prompt }) => (
+                      <button
+                        key={label}
+                        onClick={() => { setInput(prompt); inputRef.current?.focus(); }}
+                        className="group flex flex-col gap-3.5 p-5 rounded-2xl border border-[var(--border-subtle)] bg-white/[0.02] hover:bg-white/[0.04] hover:border-[var(--accent)]/30 text-left transition-all duration-200 shadow-md relative overflow-hidden"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
+                          <Icon className="w-4 h-4 text-[var(--accent)]" />
+                        </div>
+                        <div>
+                          <div className="text-[13px] font-semibold text-[var(--text-primary)]">{label}</div>
+                          <div className="text-[12px] text-[var(--text-muted)] mt-1 leading-snug">{desc}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* ── Loading Skeletons ───────────────────────────── */}
+            {!sessionReady && (
+              <div className="flex-1 flex flex-col gap-6 overflow-y-auto px-4 sm:px-6 py-8 w-full max-w-3xl mx-auto custom-scrollbar">
+                {[1, 2, 3].map((n) => (
+                  <div key={n} className={cn("flex gap-3 w-full animate-pulse", n % 2 === 0 ? "justify-end" : "justify-start")}>
+                    {n % 2 !== 0 && (
+                      <div className="h-8 w-8 rounded-xl bg-white/[0.03] shrink-0" />
+                    )}
+                    <div className={cn("flex flex-col gap-2 max-w-[70%]", n % 2 === 0 ? "items-end" : "items-start")}>
+                      <div className="h-3 w-16 bg-white/[0.02] rounded" />
+                      <div className={cn("h-16 w-80 rounded-2xl bg-white/[0.03]", n % 2 === 0 ? "rounded-br-sm" : "rounded-bl-sm")} />
                     </div>
-                    <div>
-                      <div className="text-[13px] font-semibold text-[var(--text-primary)]">{label}</div>
-                      <div className="text-[12px] text-[var(--text-muted)] mt-1 leading-snug">{desc}</div>
-                    </div>
-                  </button>
+                    {n % 2 === 0 && (
+                      <div className="h-8 w-8 rounded-xl bg-white/[0.03] shrink-0" />
+                    )}
+                  </div>
                 ))}
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* ── Loading ─────────────────────────────────────── */}
-        {!sessionReady && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 my-auto">
-            <Loader2 className="h-6 w-6 text-[var(--text-dim)] animate-spin" />
-            <p className="text-[13px] text-[var(--text-dim)]">Initializing…</p>
-          </div>
-        )}
+            )}
 
         {/* ── Messages scroll area ─────────────────────────── */}
         <div ref={scrollContainerRef} className={cn("flex flex-1 flex-col gap-0 overflow-y-auto px-4 sm:px-6 py-8 min-h-0 custom-scrollbar w-full", !hasMessages && "invisible pointer-events-none")}>
@@ -475,10 +497,32 @@ export function ChatInterface() {
                     )}>
                         {isEditing ? (
                           <div className="flex flex-col gap-3 min-w-0 w-full">
-                            <textarea className="w-full bg-transparent border-none outline-none text-white resize-none overflow-hidden" value={editInput} onChange={(e) => { setEditInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }} autoFocus />
+                            <textarea 
+                              className="w-full bg-transparent border-none outline-none text-white resize-none overflow-hidden" 
+                              value={editInput} 
+                              onChange={(e) => { setEditInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }} 
+                              autoFocus 
+                              title="Edit message content"
+                              placeholder="Edit message..."
+                              aria-label="Edit message content"
+                            />
                             <div className="flex justify-end gap-2">
-                                <button onClick={() => setEditingMessageId(null)} className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"><X className="w-3.5 h-3.5" /></button>
-                                <button onClick={() => handleSaveEdit(m.id)} className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"><Check className="w-3.5 h-3.5" /></button>
+                                <button 
+                                  onClick={() => setEditingMessageId(null)} 
+                                  title="Cancel"
+                                  aria-label="Cancel"
+                                  className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                                <button 
+                                  onClick={() => handleSaveEdit(m.id)} 
+                                  title="Save"
+                                  aria-label="Save"
+                                  className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                </button>
                             </div>
                           </div>
                         ) : m.role === "assistant" ? (
@@ -602,6 +646,8 @@ export function ChatInterface() {
             )}
           </div>
         </motion.div>
+          </>
+        )}
       </div>
     </div>
   );
