@@ -354,7 +354,7 @@ export function MarkdownWorkspace() {
   return (
     <div className="flex flex-col h-full bg-[var(--bg-950)] w-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-center h-14 border-b border-[var(--border-subtle)] bg-[var(--bg-900)]/90 backdrop-blur-sm px-4 gap-3 shrink-0 z-20">
+      <div className="flex items-center h-14 border-b border-[var(--border-subtle)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] px-6 gap-3 shrink-0 z-20">
         <button
           onClick={() => router.push("/wiki")}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] transition-all active:scale-95"
@@ -491,14 +491,14 @@ export function MarkdownWorkspace() {
 
         {/* Dynamic Table of Contents Sidebar */}
         {!showCitations && toc.length > 0 && (
-          <div className="w-56 border-l border-[var(--border-subtle)] bg-[var(--bg-900)] flex flex-col shrink-0 animate-in fade-in duration-300 overflow-y-auto">
+          <div className="w-56 border-l border-[var(--border-subtle)] bg-gradient-to-b from-[var(--bg-900)] to-[var(--bg-950)] flex flex-col shrink-0 animate-in fade-in duration-300 overflow-y-auto">
             <div className="p-5">
               <h3 className="font-semibold text-[11px] uppercase tracking-widest text-[var(--text-dim)] mb-4">On this page</h3>
               <div className="flex flex-col gap-1">
                 {toc.map((heading, idx) => (
                   <div
                     key={idx}
-                    className={`text-[13px] cursor-pointer hover:text-[var(--accent)] transition-colors py-0.5 ${
+                    className={`text-[12px] cursor-pointer hover:text-[var(--accent)] hover:translate-x-0.5 transition-all py-0.5 ${
                       heading.level === 1 ? "font-medium text-[var(--text-secondary)]" :
                       heading.level === 2 ? "pl-3 text-[var(--text-muted)]" :
                       "pl-6 text-[var(--text-dim)]"
@@ -519,7 +519,7 @@ export function MarkdownWorkspace() {
 
         {/* Citations Sidebar */}
         {showCitations && page?.citations && page.citations.length > 0 && (
-          <div className="w-80 border-l border-[var(--border-subtle)] bg-[var(--bg-900)] flex flex-col shrink-0 animate-in slide-in-from-right duration-300">
+          <div className="w-80 border-l border-[var(--border-subtle)] bg-gradient-to-b from-[var(--bg-900)] to-[var(--bg-950)] flex flex-col shrink-0 animate-in slide-in-from-right duration-300">
             <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex justify-between items-center">
               <h3 className="font-semibold text-[14px] text-[var(--text-primary)] tracking-tight">Citations</h3>
               <button
@@ -531,7 +531,7 @@ export function MarkdownWorkspace() {
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
               {page.citations.map((c) => (
-                <div key={c.id} className="group p-4 bg-[var(--bg-800)] hover:bg-[var(--bg-700)] rounded-xl border border-[var(--border-subtle)] hover:border-[var(--border-strong)] transition-all shadow-[var(--shadow-sm)]">
+                <div key={c.id} className="group p-4 bg-white/[0.02] hover:bg-white/[0.04] rounded-2xl border border-[var(--border-subtle)] hover:border-[var(--accent)]/30 transition-all shadow-md relative overflow-hidden">
                   <div className="font-medium text-[var(--text-primary)] mb-3 flex items-center gap-2 text-[13px]">
                     <span className="text-[var(--accent)]">{c.source_type === "pdf" ? "📄" : c.source_type === "youtube" ? "�" : "📝"}</span>
                     <span className="truncate" title={c.original_filename}>{c.original_filename}</span>
@@ -561,7 +561,7 @@ export function MarkdownWorkspace() {
                       setSelectedCitation(c);
                       setViewingRawSourceId(c.raw_source_id);
                     }}
-                    className="mt-3 w-full py-1.5 rounded-lg bg-[var(--accent-subtle)] hover:bg-[var(--accent)] text-[var(--accent)] hover:text-white text-[12px] font-medium transition-all border border-[var(--accent)]/20"
+                    className="mt-3.5 w-full py-2 rounded-xl bg-[var(--accent-subtle)] hover:bg-[var(--accent)] text-[var(--accent)] hover:text-[var(--bg-950)] text-[12px] font-bold transition-all border border-[var(--accent)]/10"
                   >
                     View Source
                   </button>

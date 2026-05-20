@@ -417,13 +417,13 @@ export function ChatInterface() {
                   <button
                     key={label}
                     onClick={() => { setInput(prompt); inputRef.current?.focus(); }}
-                    className="group flex flex-col gap-3 p-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-800)] hover:bg-[var(--bg-700)] hover:border-[var(--border-strong)] text-left transition-all duration-150 shadow-[var(--shadow-sm)]"
+                    className="group flex flex-col gap-3.5 p-5 rounded-2xl border border-[var(--border-subtle)] bg-white/[0.02] hover:bg-white/[0.04] hover:border-[var(--accent)]/30 text-left transition-all duration-200 shadow-md relative overflow-hidden"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
                       <Icon className="w-4 h-4 text-[var(--accent)]" />
                     </div>
                     <div>
-                      <div className="text-[13px] font-medium text-[var(--text-primary)]">{label}</div>
+                      <div className="text-[13px] font-semibold text-[var(--text-primary)]">{label}</div>
                       <div className="text-[12px] text-[var(--text-muted)] mt-1 leading-snug">{desc}</div>
                     </div>
                   </button>
@@ -571,7 +571,7 @@ export function ChatInterface() {
               <textarea
                 ref={inputRef}
                 rows={1}
-                className="w-full rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-800)] py-4 pl-5 pr-16 text-[14px] text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/60 focus:ring-2 focus:ring-[var(--accent)]/15 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden leading-relaxed shadow-[var(--shadow-md)]"
+                className="w-full rounded-2xl border border-white/[0.06] bg-white/[0.02] py-4 pl-5 pr-16 text-[14px] text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/50 focus:ring-4 focus:ring-[var(--accent)]/5 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden leading-relaxed shadow-lg backdrop-blur-md"
                 style={{ maxHeight: "180px" }}
                 placeholder={!sessionReady ? "Initializing…" : "Ask anything…"}
                 value={input}

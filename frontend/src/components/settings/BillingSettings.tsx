@@ -210,7 +210,7 @@ export function BillingSettings() {
           </h3>
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-6 md:p-8">
+        <div className="relative overflow-hidden rounded-2xl border border-white/[0.05] bg-white/[0.02] p-6 md:p-8 shadow-md backdrop-blur-md">
           {/* Decorative blur - ensure it doesn't collide with text */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-[var(--accent)]/5 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
           
@@ -301,7 +301,7 @@ export function BillingSettings() {
                   className={`relative flex flex-col p-6 rounded-2xl border transition-all text-left group overflow-hidden ${
                     prefs.plan_key === p.key 
                       ? "border-[var(--accent)] bg-[var(--accent)]/5 shadow-[0_0_40px_rgba(0,212,232,0.08)]" 
-                      : "border-[var(--border-subtle)] bg-[var(--surface-1)] hover:border-[var(--border-strong)]"
+                      : "border-white/[0.05] bg-white/[0.02] hover:border-white/[0.1]"
                   }`}
                 >
                   {prefs.plan_key === p.key && (
@@ -326,11 +326,9 @@ export function BillingSettings() {
                   </div>
                 </button>
               ))}
-            </div>
-
-            <motion.div 
+            </div>            <motion.div 
                 layout
-                className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl p-6 md:p-8 space-y-10"
+                className="bg-white/[0.02] border border-white/[0.05] rounded-2xl p-6 md:p-8 space-y-10 shadow-md backdrop-blur-md"
             >
                 <div className="space-y-8">
                     <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
@@ -359,8 +357,8 @@ export function BillingSettings() {
                 </div>
             </motion.div>
           </div>
-
-          <div className="lg:col-span-4 bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl p-6 md:p-8 flex flex-col justify-between shadow-2xl relative overflow-hidden h-fit sticky top-6">
+ 
+          <div className="lg:col-span-4 bg-white/[0.02] border border-white/[0.05] rounded-2xl p-6 md:p-8 flex flex-col justify-between shadow-2xl relative overflow-hidden h-fit sticky top-6 backdrop-blur-md">
              <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--accent)]/5 rounded-full blur-2xl -mr-16 -mt-16 pointer-events-none" />
              
             <div className="relative z-10 space-y-8">

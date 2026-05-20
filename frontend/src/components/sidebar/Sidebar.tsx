@@ -170,41 +170,41 @@ export function Sidebar() {
     const active = isActive(href);
     if (collapsed) {
       return [
-        "w-10 h-9 flex items-center justify-center rounded-lg transition-all duration-150 shrink-0",
+        "w-11 h-10 flex items-center justify-center rounded-xl transition-all duration-200 shrink-0 relative group",
         active
-          ? "bg-[var(--accent-subtle)] text-[var(--accent)]"
-          : "text-[var(--text-muted)] hover:bg-[var(--bg-700)] hover:text-[var(--text-secondary)]",
+          ? "bg-[var(--accent-subtle)] text-[var(--accent)] shadow-[inset_0_0_12px_rgba(139,127,244,0.15)]"
+          : "text-[var(--text-muted)] hover:bg-white/[0.03] hover:text-[var(--text-secondary)]",
       ].join(" ");
     }
     return [
-      "flex items-center gap-3 px-3 py-2 w-full text-[13px] rounded-lg transition-all duration-150",
+      "flex items-center gap-3 px-3.5 py-2.5 w-full text-[13px] rounded-xl transition-all duration-200 relative group",
       active
-        ? "bg-[var(--accent-subtle)] text-[var(--accent)] font-medium"
-        : "text-[var(--text-muted)] hover:bg-[var(--bg-700)] hover:text-[var(--text-secondary)]",
+        ? "bg-[var(--accent-subtle)] text-[var(--accent)] font-semibold shadow-[inset_0_0_12px_rgba(139,127,244,0.15)]"
+        : "text-[var(--text-muted)] hover:bg-white/[0.03] hover:text-[var(--text-secondary)]",
     ].join(" ");
   };
 
   const bottomBtnCls = (danger = false) => {
     if (collapsed) {
       return [
-        "w-10 h-9 flex items-center justify-center rounded-lg transition-all duration-150 shrink-0",
+        "w-11 h-10 flex items-center justify-center rounded-xl transition-all duration-200 shrink-0",
         danger
           ? "text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)]"
-          : "text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-700)]",
+          : "text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/[0.03]",
       ].join(" ");
     }
     return [
-      "flex items-center gap-3 px-3 py-2 w-full text-[13px] rounded-lg transition-all duration-150",
+      "flex items-center gap-3 px-3.5 py-2.5 w-full text-[13px] rounded-xl transition-all duration-200",
       danger
         ? "text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)]"
-        : "text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-700)]",
+        : "text-[var(--text-muted)] hover:text-[var(--text-secondary)] hover:bg-white/[0.03]",
     ].join(" ");
   };
 
   return (
     <div
-      style={{ width: collapsed ? "58px" : "240px" }}
-      className="bg-[var(--bg-900)] border-r border-[var(--border-subtle)] flex flex-col h-full shrink-0 transition-[width] duration-200 ease-in-out overflow-hidden"
+      style={{ width: collapsed ? "64px" : "240px" }}
+      className="bg-gradient-to-b from-[var(--bg-900)] to-[var(--bg-950)] border-r border-[var(--border-subtle)] flex flex-col h-full shrink-0 transition-[width] duration-300 ease-in-out overflow-hidden"
     >
       {/* ── Logo + Collapse toggle ── */}
       <div
@@ -213,8 +213,8 @@ export function Sidebar() {
         }`}
       >
         {collapsed ? (
-          <button onClick={toggleCollapsed} title="Expand sidebar" className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-[var(--bg-700)] transition-colors">
-            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center shadow-[var(--shadow-glow)]">
+          <button onClick={toggleCollapsed} title="Expand sidebar" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/[0.03] transition-colors">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center shadow-[var(--shadow-glow)]">
               <span className="text-white font-bold text-[10px]">T</span>
             </div>
           </button>
@@ -231,7 +231,7 @@ export function Sidebar() {
             <button
               onClick={toggleCollapsed}
               title="Collapse sidebar"
-              className="p-1.5 rounded-md text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-700)] transition-colors"
+              className="p-1.5 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-white/[0.03] transition-colors"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
@@ -250,7 +250,7 @@ export function Sidebar() {
           <button
             onClick={toggleCollapsed}
             title={currentTeam?.name || "Expand to switch team"}
-            className="w-10 h-9 rounded-lg bg-[var(--bg-700)] flex items-center justify-center text-[var(--text-secondary)] font-semibold text-xs hover:bg-[var(--bg-600)] transition-colors"
+            className="w-10 h-10 rounded-xl bg-white/[0.02] border border-white/[0.04] flex items-center justify-center text-[var(--text-secondary)] font-semibold text-xs hover:bg-white/[0.05] transition-colors"
           >
             {currentTeam?.name?.[0]?.toUpperCase() ?? "T"}
           </button>
@@ -258,7 +258,7 @@ export function Sidebar() {
           <div className="relative">
             <button
               onClick={() => setTeamDropOpen(v => !v)}
-              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[var(--bg-700)] transition-colors text-left"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.04] hover:border-white/[0.08] transition-all text-left shadow-sm"
             >
               <div className="w-7 h-7 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center text-[var(--accent)] font-bold text-xs shrink-0">
                 {currentTeam?.name?.[0]?.toUpperCase() ?? "T"}
@@ -281,7 +281,7 @@ export function Sidebar() {
             </button>
 
             {teamDropOpen && (
-              <div className="absolute top-full left-0 right-0 mt-1.5 bg-[var(--bg-800)] border border-[var(--border-strong)] rounded-xl z-50 overflow-hidden shadow-[var(--shadow-lg)] py-1">
+              <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--bg-800)] border border-[var(--border-strong)] rounded-2xl z-50 overflow-hidden shadow-[var(--shadow-lg)] py-1.5 backdrop-blur-md">
                 {teamLoadError && (
                   <div className="px-3 py-2 text-xs text-[var(--danger)] border-b border-[var(--border-subtle)]">
                     {teamLoadError}
@@ -291,7 +291,7 @@ export function Sidebar() {
                   <button
                     key={t.id}
                     onClick={() => { setCurrentTeamId(t.id); setTeamDropOpen(false); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] hover:bg-[var(--bg-700)] text-[var(--text-primary)] transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] hover:bg-white/[0.03] text-[var(--text-primary)] transition-colors"
                   >
                     <div className="w-6 h-6 rounded-md bg-[var(--accent-subtle)] flex items-center justify-center text-[var(--accent)] text-[10px] font-bold">
                       {t.name[0].toUpperCase()}
@@ -302,14 +302,14 @@ export function Sidebar() {
                     )}
                   </button>
                 ))}
-                <div className="border-t border-[var(--border-subtle)] mt-1 pt-1 px-1.5">
+                <div className="border-t border-[var(--border-subtle)] mt-1.5 pt-1.5 px-1.5">
                   {!createTeamOpen ? (
                     <button
                       onClick={() => {
                         setCreateTeamOpen(true);
                         setCreateTeamError(null);
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-2 text-[13px] text-[var(--accent)] hover:bg-[var(--bg-700)] rounded-lg transition-colors"
+                      className="w-full flex items-center gap-2 px-2.5 py-2 text-[13px] text-[var(--accent)] hover:bg-white/[0.03] rounded-lg transition-colors"
                     >
                       <PlusCircle className="w-3.5 h-3.5" />
                       Create Team
@@ -383,17 +383,23 @@ export function Sidebar() {
             <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-dim)]">Workspace</span>
           </div>
         )}
-        {NAV_ITEMS.map(({ href, icon: Icon, label }) => (
-          <Link
-            key={href}
-            href={href}
-            title={collapsed ? label : undefined}
-            className={navCls(href)}
-          >
-            <Icon className="w-4 h-4 shrink-0" />
-            {!collapsed && <span>{label}</span>}
-          </Link>
-        ))}
+        {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
+          const active = isActive(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              title={collapsed ? label : undefined}
+              className={navCls(href)}
+            >
+              {active && (
+                <div className="absolute left-0 top-2.5 bottom-2.5 w-0.5 bg-[var(--accent)] rounded-r-md shadow-[0_0_8px_var(--accent)]" />
+              )}
+              <Icon className={`w-4 h-4 shrink-0 transition-transform duration-200 ${active ? "scale-110" : "group-hover:scale-105"}`} />
+              {!collapsed && <span className="transition-all duration-200">{label}</span>}
+            </Link>
+          );
+        })}
 
         {/* New Page button inline in nav */}
         {!collapsed && (
@@ -455,10 +461,10 @@ export function Sidebar() {
         </button>
 
         {/* User Profile */}
-        <div className={`mt-2 pt-2 border-t border-[var(--border-subtle)] ${collapsed ? "flex flex-col items-center gap-1" : ""}`}>
+        <div className={`mt-3 pt-3 border-t border-[var(--border-subtle)] ${collapsed ? "flex flex-col items-center gap-2" : ""}`}>
           {collapsed ? (
             <>
-              <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white font-semibold text-xs">
+              <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white font-semibold text-xs border border-white/10 shadow-sm">
                 {user?.avatar_url
                   ? /* eslint-disable-next-line @next/next/no-img-element */
                     <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
@@ -468,14 +474,14 @@ export function Sidebar() {
               <button
                 onClick={toggleCollapsed}
                 title="Expand sidebar"
-                className="w-10 h-9 flex items-center justify-center rounded-lg text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-700)] transition-colors"
+                className="w-10 h-10 flex items-center justify-center rounded-xl text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-white/[0.03] transition-colors"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </>
           ) : (
-            <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-[var(--bg-700)] transition-colors cursor-default">
-              <div className="w-7 h-7 rounded-full overflow-hidden bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center text-white font-semibold text-xs shrink-0">
+            <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-white/[0.03] transition-colors cursor-default border border-transparent hover:border-white/[0.04]">
+              <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center text-white font-semibold text-xs shrink-0 border border-white/10 shadow-sm">
                 {user?.avatar_url
                   ? /* eslint-disable-next-line @next/next/no-img-element */
                     <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
@@ -486,7 +492,7 @@ export function Sidebar() {
                 <div className="text-[13px] font-medium text-[var(--text-primary)] truncate leading-tight">
                   {user?.display_name || "Anonymous"}
                 </div>
-                <div className="text-[11px] text-[var(--text-dim)] truncate leading-tight">
+                <div className="text-[11px] text-[var(--text-muted)] truncate leading-tight mt-0.5">
                   {user?.email || ""}
                 </div>
               </div>

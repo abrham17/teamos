@@ -43,12 +43,11 @@ export function GraphLegend({
   return (
     <div className="select-none">
       <div
-        className="bg-[var(--glass-heavy-bg)] backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl overflow-hidden"
-        style={{ boxShadow: "var(--shadow-md)" }}
+        className="bg-white/[0.02] backdrop-blur-md border border-white/[0.05] rounded-2xl overflow-hidden shadow-lg"
       >
         <button
           onClick={() => setExpanded(v => !v)}
-          className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] w-full transition-colors"
+          className="flex items-center gap-2 px-4 py-3 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] w-full transition-colors bg-white/[0.01]"
         >
           <span className="uppercase tracking-wider">Legend</span>
           <ChevronDown
@@ -69,7 +68,7 @@ export function GraphLegend({
                   <button
                     key={label}
                     onClick={() => onToggleNodeType(value)}
-                    className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-[var(--surface-2)] transition-colors"
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-white/[0.03] transition-colors"
                   >
                     <div className="w-3 h-3 rounded-full shrink-0" style={{ background: color }} />
                     <span className="text-xs text-[var(--text-secondary)]">{label}</span>
@@ -91,7 +90,7 @@ export function GraphLegend({
                   <button
                     key={label}
                     onClick={() => onToggleEdgeType(value)}
-                    className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-[var(--surface-2)] transition-colors"
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-white/[0.03] transition-colors"
                   >
                     <div className="w-5 h-0.5 rounded-full shrink-0" style={{ background: color }} />
                     <span className="text-xs text-[var(--text-secondary)]">
@@ -111,13 +110,13 @@ export function GraphLegend({
             <div className="border-t border-[var(--border-subtle)] pt-2">
               <button
                 onClick={onToggleIsolateSelection}
-                className="w-full text-left text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1 py-1 hover:bg-[var(--surface-2)] transition-colors"
+                className="w-full text-left text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-lg px-2 py-1.5 hover:bg-white/[0.03] transition-colors"
               >
                 Isolate selected node: {isolateSelection ? "on" : "off"}
               </button>
               <button
                 onClick={onResetFilters}
-                className="w-full text-left text-xs text-[var(--text-dim)] hover:text-[var(--text-primary)] rounded px-1 py-1 hover:bg-[var(--surface-2)] transition-colors"
+                className="w-full text-left text-xs text-[var(--text-dim)] hover:text-[var(--text-primary)] rounded-lg px-2 py-1.5 hover:bg-white/[0.03] transition-colors"
               >
                 Reset filters
               </button>

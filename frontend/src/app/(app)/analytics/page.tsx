@@ -102,8 +102,8 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[var(--bg-900)] overflow-y-auto">
-      <div className="flex items-center h-14 border-b border-[var(--border-subtle)] px-6 shrink-0 bg-[var(--surface-1)]">
+    <div className="flex flex-col h-full bg-[var(--bg-950)] overflow-y-auto">
+      <div className="flex items-center h-14 border-b border-[var(--border-subtle)] px-6 shrink-0 bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] z-20">
         <h2 className="font-semibold text-[var(--text-primary)] flex items-center gap-2">
           <BarChart3 className="w-5 h-5" /> Product Analytics
         </h2>
@@ -117,37 +117,37 @@ export default function AnalyticsPage() {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4">
-            <div className="text-xs text-[var(--text-muted)]">Team plan</div>
-            <div className="mt-2 text-2xl font-semibold capitalize">{teamPlan}</div>
+          <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-6 shadow-md backdrop-blur-md">
+            <div className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Team plan</div>
+            <div className="mt-2 text-3xl font-bold capitalize text-[var(--text-primary)]">{teamPlan}</div>
           </div>
-          <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4">
-            <div className="text-xs text-[var(--text-muted)]">Tracked event rows</div>
-            <div className="mt-2 text-2xl font-semibold">{funnelRows.length}</div>
+          <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-6 shadow-md backdrop-blur-md">
+            <div className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Tracked event rows</div>
+            <div className="mt-2 text-3xl font-bold text-[var(--text-primary)]">{funnelRows.length}</div>
           </div>
-          <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-4">
-            <div className="text-xs text-[var(--text-muted)]">Admin cohorts available</div>
-            <div className="mt-2 text-2xl font-semibold">{cohorts.length}</div>
+          <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-6 shadow-md backdrop-blur-md">
+            <div className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Admin cohorts available</div>
+            <div className="mt-2 text-3xl font-bold text-[var(--text-primary)]">{cohorts.length}</div>
           </div>
         </div>
 
-        <section className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-5">
-          <div className="flex items-center gap-2 text-[var(--text-primary)] font-medium">
-            <TrendingUp className="w-4 h-4" /> Top Funnel Events
+        <section className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-6 shadow-md backdrop-blur-md">
+          <div className="flex items-center gap-2 text-[var(--text-primary)] font-semibold">
+            <TrendingUp className="w-4 h-4 text-[var(--accent)]" /> Top Funnel Events
           </div>
           {topEvents.length === 0 ? (
             <div className="mt-4 text-sm text-[var(--text-muted)]">No analytics events recorded yet.</div>
           ) : (
-            <div className="mt-4 space-y-3">
+            <div className="mt-4 space-y-4">
               {topEvents.map(([eventName, count]) => (
                 <div key={eventName}>
                   <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
-                    <span>{EVENT_LABELS[eventName] || eventName}</span>
-                    <span>{count}</span>
+                    <span className="text-[var(--text-secondary)] font-medium">{EVENT_LABELS[eventName] || eventName}</span>
+                    <span className="font-mono text-[var(--text-primary)]">{count}</span>
                   </div>
-                  <div className="mt-1 h-2 rounded bg-[var(--bg-800)] overflow-hidden">
+                  <div className="mt-2 h-2 rounded-full bg-white/[0.04] overflow-hidden">
                     <div
-                      className="h-full bg-[var(--accent)]"
+                      className="h-full bg-gradient-to-r from-[var(--accent)] to-[var(--accent-dark)] rounded-full shadow-[0_0_8px_var(--accent)]"
                       style={{ width: `${Math.max((count / maxTopCount) * 100, 6)}%` }}
                     />
                   </div>
@@ -157,30 +157,30 @@ export default function AnalyticsPage() {
           )}
         </section>
 
-        <section className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-5">
-          <div className="flex items-center gap-2 text-[var(--text-primary)] font-medium">
-            <Users className="w-4 h-4" /> Weekly Cohort Conversion (Admin)
+        <section className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-6 shadow-md backdrop-blur-md">
+          <div className="flex items-center gap-2 text-[var(--text-primary)] font-semibold">
+            <Users className="w-4 h-4 text-[var(--accent)]" /> Weekly Cohort Conversion (Admin)
           </div>
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-            <label className="text-xs text-[var(--text-muted)]">
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <label className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
               Start date
               <input
                 type="date"
                 value={cohortStartDate}
                 onChange={(e) => setCohortStartDate(e.target.value)}
-                className="mt-1 w-full rounded-md border border-[var(--border-subtle)] bg-[var(--bg-900)] px-2 py-1.5 text-[var(--text-primary)]"
+                className="mt-1.5 w-full rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/50 focus:ring-4 focus:ring-[var(--accent)]/5 transition-all text-xs"
               />
             </label>
-            <label className="text-xs text-[var(--text-muted)]">
+            <label className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
               End date
               <input
                 type="date"
                 value={cohortEndDate}
                 onChange={(e) => setCohortEndDate(e.target.value)}
-                className="mt-1 w-full rounded-md border border-[var(--border-subtle)] bg-[var(--bg-900)] px-2 py-1.5 text-[var(--text-primary)]"
+                className="mt-1.5 w-full rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/50 focus:ring-4 focus:ring-[var(--accent)]/5 transition-all text-xs"
               />
             </label>
-            <label className="text-xs text-[var(--text-muted)]">
+            <label className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
               Conversion window (days)
               <input
                 type="number"
@@ -188,7 +188,7 @@ export default function AnalyticsPage() {
                 max={180}
                 value={cohortWindowDays}
                 onChange={(e) => setCohortWindowDays(e.target.value)}
-                className="mt-1 w-full rounded-md border border-[var(--border-subtle)] bg-[var(--bg-900)] px-2 py-1.5 text-[var(--text-primary)]"
+                className="mt-1.5 w-full rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/50 focus:ring-4 focus:ring-[var(--accent)]/5 transition-all text-xs"
               />
             </label>
             <div className="flex items-end">
@@ -199,7 +199,7 @@ export default function AnalyticsPage() {
                   setCohortEndDate("");
                   setCohortWindowDays("28");
                 }}
-                className="h-8 px-3 rounded-md border border-[var(--border-subtle)] text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                className="h-9 px-4 rounded-xl border border-white/[0.08] text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.03] transition-colors"
               >
                 Reset filters
               </button>
@@ -210,29 +210,29 @@ export default function AnalyticsPage() {
               Cohort data not available for this account (admin-only endpoint) or no cohort records yet.
             </div>
           ) : (
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[760px] text-sm">
-                <thead>
-                  <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border-subtle)]">
-                    <th className="py-2 pr-3">Cohort week</th>
-                    <th className="py-2 pr-3">Teams</th>
-                    <th className="py-2 pr-3">First page</th>
-                    <th className="py-2 pr-3">First ingest</th>
-                    <th className="py-2 pr-3">First chat</th>
-                    <th className="py-2 pr-3">Invite accepted</th>
-                    <th className="py-2 pr-3">Subscription started</th>
+            <div className="mt-6 overflow-x-auto rounded-xl border border-white/[0.05] bg-white/[0.01]">
+              <table className="w-full min-w-[760px] text-sm text-left">
+                <thead className="bg-white/[0.01] border-b border-[var(--border-subtle)]">
+                  <tr className="text-[var(--text-dim)] text-xs font-bold uppercase tracking-wider">
+                    <th className="px-4 py-3">Cohort week</th>
+                    <th className="px-4 py-3">Teams</th>
+                    <th className="px-4 py-3">First page</th>
+                    <th className="px-4 py-3">First ingest</th>
+                    <th className="px-4 py-3">First chat</th>
+                    <th className="px-4 py-3">Invite accepted</th>
+                    <th className="px-4 py-3">Subscription started</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-[var(--border-subtle)]/30">
                   {cohorts.map((row) => (
-                    <tr key={row.cohort_week_start || "unknown"} className="border-b border-[var(--border-subtle)]/50">
-                      <td className="py-2 pr-3">{row.cohort_week_start ? row.cohort_week_start.slice(0, 10) : "n/a"}</td>
-                      <td className="py-2 pr-3">{row.teams_created}</td>
-                      <td className="py-2 pr-3">{row.first_page_created}</td>
-                      <td className="py-2 pr-3">{row.first_ingest_completed}</td>
-                      <td className="py-2 pr-3">{row.first_chat_answer_received}</td>
-                      <td className="py-2 pr-3">{row.invite_accepted}</td>
-                      <td className="py-2 pr-3">{row.subscription_started}</td>
+                    <tr key={row.cohort_week_start || "unknown"} className="hover:bg-white/[0.02] transition-colors">
+                      <td className="px-4 py-3 font-mono text-xs text-[var(--text-secondary)]">{row.cohort_week_start ? row.cohort_week_start.slice(0, 10) : "n/a"}</td>
+                      <td className="px-4 py-3 text-[var(--text-primary)] font-medium">{row.teams_created}</td>
+                      <td className="px-4 py-3 text-[var(--text-primary)] font-medium">{row.first_page_created}</td>
+                      <td className="px-4 py-3 text-[var(--text-primary)] font-medium">{row.first_ingest_completed}</td>
+                      <td className="px-4 py-3 text-[var(--text-primary)] font-medium">{row.first_chat_answer_received}</td>
+                      <td className="px-4 py-3 text-[var(--text-primary)] font-medium">{row.invite_accepted}</td>
+                      <td className="px-4 py-3 text-[var(--text-primary)] font-medium">{row.subscription_started}</td>
                     </tr>
                   ))}
                 </tbody>

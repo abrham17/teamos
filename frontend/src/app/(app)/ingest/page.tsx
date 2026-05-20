@@ -143,9 +143,9 @@ export default function IngestPage() {
   if (!currentTeamId) return <div className="p-8">Select a team first</div>;
 
   return (
-    <div className="flex flex-col h-full bg-[var(--bg-900)] overflow-y-auto">
+    <div className="flex flex-col h-full bg-[var(--bg-950)] overflow-y-auto">
       {/* Header */}
-      <div className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--surface-1)] px-6">
+      <div className="flex h-14 shrink-0 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] px-6 z-20">
         <h2 className="flex items-center gap-2 font-semibold text-[var(--text-primary)]">
           <Upload className="h-5 w-5" /> Knowledge Ingestion
         </h2>
@@ -198,16 +198,16 @@ export default function IngestPage() {
             </div>
 
             {/* Ingest Form */}
-            <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl p-8 shadow-sm">
+            <div className="bg-white/[0.02] border border-[var(--border-subtle)] rounded-2xl p-8 shadow-md backdrop-blur-md">
               {activeTab === "file" ? (
-                <div className="flex flex-col items-center justify-center border-2 border-dashed border-[var(--border-strong)] rounded-xl py-12 px-4 hover:border-[var(--accent)] transition-colors cursor-pointer group relative">
+                <div className="flex flex-col items-center justify-center border border-dashed border-white/[0.08] hover:border-[var(--accent)]/50 rounded-2xl py-12 px-4 hover:bg-white/[0.01] transition-all cursor-pointer group relative">
                   <input 
                     type="file" 
                     onChange={handleFileUpload}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                     accept=".md,.pdf,.docx,.txt"
                   />
-                  <div className="w-16 h-16 rounded-full bg-[var(--accent-subtle)] flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <div className="w-16 h-16 rounded-full bg-[var(--accent-subtle)] flex items-center justify-center mb-4 group-hover:scale-105 transition-transform duration-200">
                     <Upload className="w-8 h-8 text-[var(--accent)]" />
                   </div>
                   <h3 className="text-lg font-semibold mb-1">
@@ -226,14 +226,14 @@ export default function IngestPage() {
                       placeholder="https://docs.example.com/getting-started"
                       value={url}
                       onChange={e => setUrl(e.target.value)}
-                      className="w-full bg-[var(--bg-800)] border border-[var(--border-subtle)] rounded-xl py-3.5 pl-12 pr-4 text-[var(--text-primary)] focus:border-[var(--accent)] outline-none transition-colors"
+                      className="w-full bg-white/[0.02] border border-white/[0.06] rounded-xl py-3.5 pl-12 pr-4 text-[var(--text-primary)] focus:border-[var(--accent)]/50 focus:ring-4 focus:ring-[var(--accent)]/5 outline-none transition-all placeholder:text-[var(--text-dim)]"
                       required
                     />
                   </div>
                   <button 
                     type="submit"
                     disabled={loading || !url.trim()}
-                    className="flex items-center justify-center gap-2 py-3 bg-[var(--accent)] text-[var(--bg-950)] font-bold rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50"
+                    className="flex items-center justify-center gap-2 py-3 bg-[var(--accent)] text-[var(--bg-950)] font-bold rounded-xl hover:shadow-[var(--shadow-glow)] hover:scale-[1.01] transition-all disabled:opacity-50"
                   >
                     {loading ? "Starting Crawler..." : "Start Ingestion"}
                     <ArrowRight className="w-4 h-4" />
@@ -278,9 +278,9 @@ export default function IngestPage() {
               <p>No recent ingestion activity</p>
             </div>
           ) : (
-            <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl overflow-hidden shadow-sm">
+            <div className="bg-white/[0.02] border border-[var(--border-subtle)] rounded-2xl overflow-hidden shadow-md backdrop-blur-md">
               <table className="w-full text-left">
-                <thead className="bg-[var(--bg-800)] border-b border-[var(--border-subtle)]">
+                <thead className="bg-white/[0.01] border-b border-[var(--border-subtle)]">
                   <tr>
                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">Source</th>
                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">Type</th>

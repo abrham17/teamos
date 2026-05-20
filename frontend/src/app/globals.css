@@ -324,12 +324,90 @@
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.glass-premium {
+  background: radial-gradient(120% 120% at 50% 10%, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  transition: border-color var(--t-normal), box-shadow var(--t-normal), transform var(--t-normal);
+}
+
+.glass-premium:hover {
+  border-color: rgba(139, 127, 244, 0.25);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 25px rgba(139, 127, 244, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.08);
+}
+
 .text-gradient {
-  background: linear-gradient(135deg, #a99cf7, #8b7ff4, #7165e0);
+  background: linear-gradient(135deg, #a99cf7 0%, #8b7ff4 50%, #4f46e5 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+
+.text-gradient-cyan {
+  background: linear-gradient(135deg, #a5f3fc 0%, #00d4e8 50%, #0891b2 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Floating Animation */
+@keyframes float-slow {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(0.5deg);
+  }
+}
+
+.animate-float-slow {
+  animation: float-slow 6s ease-in-out infinite;
+}
+
+/* SVG Line Data Flow Animation */
+@keyframes svg-flow {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.svg-flow-line {
+  stroke-dasharray: 8, 4;
+  animation: svg-flow 2s linear infinite;
+}
+
+.svg-flow-line-reverse {
+  stroke-dasharray: 8, 4;
+  animation: svg-flow 2s linear infinite reverse;
+}
+
+/* Mesh Drift Background Glows */
+@keyframes mesh-drift {
+  0%, 100% {
+    transform: translate(0px, 0px) scale(1);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.95);
+  }
+}
+
+.ambient-glow-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.15;
+  mix-blend-mode: plus-lighter;
+  pointer-events: none;
+  animation: mesh-drift 15s ease-in-out infinite;
+}
+
 
 /* ─── Editor Callouts (Obsidian Style) ─────────────────────────────────── */
 .callout-block {

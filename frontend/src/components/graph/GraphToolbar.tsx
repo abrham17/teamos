@@ -33,7 +33,7 @@ export function GraphToolbar({
   isolateSelection, onToggleIsolateSelection,
 }: Props) {
   return (
-    <div className="flex items-center h-[var(--header-h)] border-b border-[var(--border-subtle)] bg-[var(--surface-1)] px-4 gap-2 shrink-0">
+    <div className="flex items-center h-14 border-b border-[var(--border-subtle)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] px-6 gap-2 shrink-0 z-20">
 
       {/* Zoom controls */}
       <div className="flex items-center gap-0.5">
@@ -50,7 +50,7 @@ export function GraphToolbar({
         <select
           value={layout}
           onChange={e => onLayoutChange(e.target.value)}
-          className="bg-[var(--bg-800)] border border-[var(--border-subtle)] text-[var(--text-secondary)] text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:border-[var(--border-strong)] hover:text-[var(--text-primary)] transition-colors appearance-none"
+          className="bg-[var(--bg-900)] border border-[var(--border-subtle)] text-[var(--text-secondary)] text-xs rounded-lg px-2.5 py-1.5 outline-none cursor-pointer hover:border-[var(--border-strong)] hover:text-[var(--text-primary)] transition-colors"
           style={{ colorScheme: "dark" }}
         >
           {LAYOUTS.map(l => (
@@ -69,7 +69,7 @@ export function GraphToolbar({
           value={searchQuery}
           onChange={e => onSearch(e.target.value)}
           placeholder="Search nodes…"
-          className="bg-[var(--surface-2)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-xs rounded-lg pl-8 pr-7 py-1.5 w-44 outline-none focus:border-[var(--accent)] placeholder:text-[var(--text-dim)] transition-colors"
+          className="bg-white/[0.02] border border-[var(--border-subtle)] text-[var(--text-primary)] text-xs rounded-lg pl-8 pr-7 py-1.5 w-44 outline-none focus:border-[var(--accent)] placeholder:text-[var(--text-dim)] transition-colors"
         />
         {searchQuery && (
           <button
@@ -91,7 +91,7 @@ export function GraphToolbar({
         className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
           isolateSelection
             ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-subtle)]"
-            : "border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-2)]"
+            : "border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.03]"
         }`}
       >
         Isolate
@@ -118,7 +118,7 @@ export function GraphToolbar({
       <button
         onClick={onExportPng}
         title="Export as PNG"
-        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-2)] rounded-lg transition-colors border border-transparent hover:border-[var(--border-subtle)]"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.03] rounded-lg transition-colors border border-transparent hover:border-[var(--border-subtle)]"
       >
         <Download className="w-3.5 h-3.5" />
         Export
@@ -133,7 +133,7 @@ function ToolBtn({ onClick, title, icon }: { onClick(): void; title: string; ico
     <button
       onClick={onClick}
       title={title}
-      className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-2)] transition-colors"
+      className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.03] transition-colors"
     >
       {icon}
     </button>

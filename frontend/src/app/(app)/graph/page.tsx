@@ -306,7 +306,7 @@ export default function GraphPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[var(--bg-900)]">
+    <div className="flex flex-col h-full bg-[var(--bg-950)]">
       {/* Toolbar */}
       <div ref={toolbarRef} className="shrink-0">
         <GraphToolbar
@@ -402,25 +402,25 @@ export default function GraphPage() {
         {analytics && data && data.nodes.length > 0 && (
           <div
             ref={analyticsColRef}
-            className="absolute top-3 left-3 z-10 flex flex-col gap-2 max-w-sm"
+            className="absolute top-4 left-4 z-10 flex flex-col gap-2 max-w-sm"
           >
             <div
               data-graph-chrome-card
-              className="bg-[var(--glass-heavy-bg)] backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-secondary)]"
+              className="bg-white/[0.02] backdrop-blur-md border border-white/[0.05] rounded-2xl p-4 text-xs text-[var(--text-secondary)] shadow-lg"
             >
-              <div className="font-semibold text-[var(--text-primary)] mb-1">Graph Insights</div>
-              <div className="mb-1">
-                <label className="text-[10px] uppercase tracking-wide text-[var(--text-dim)] mr-2">Mode</label>
+              <div className="font-semibold text-[var(--text-primary)] mb-1 text-[13px]">Graph Insights</div>
+              <div className="mb-2 mt-2 flex items-center justify-between">
+                <label className="text-[10px] uppercase tracking-wider text-[var(--text-dim)] mr-2">Mode</label>
                 <select
                   value={analyticsMode}
                   onChange={(e) => setAnalyticsMode((e.target.value as "simple" | "advanced"))}
-                  className="bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded px-1.5 py-0.5 text-[10px]"
+                  className="bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-lg px-2 py-1 text-[11px] text-[var(--text-primary)]"
                 >
                   <option value="simple">simple</option>
                   <option value="advanced">advanced</option>
                 </select>
               </div>
-              <div>
+              <div className="text-[11px] text-[var(--text-muted)] pt-1">
                 {Object.keys(analytics.cluster_sizes || {}).length} clusters ·{" "}
                 {analytics.orphans.length} orphan pages
               </div>
@@ -429,10 +429,10 @@ export default function GraphPage() {
             {analytics.orphans.length > 0 && (
               <div
                 data-graph-chrome-card
-                className="bg-amber-500/10 border border-amber-500/25 rounded-xl px-3 py-2 text-xs text-amber-300"
+                className="bg-amber-500/5 backdrop-blur-md border border-amber-500/20 rounded-2xl p-4 text-xs text-amber-300 shadow-lg"
               >
-                <div className="font-semibold mb-1">Orphan Warning</div>
-                <div>
+                <div className="font-semibold mb-1 text-[13px]">Orphan Warning</div>
+                <div className="text-[11px] text-amber-200/80 leading-relaxed">
                   {analytics.orphans.length} pages have no graph links yet. Add wikilinks to
                   improve discoverability.
                 </div>
@@ -442,13 +442,14 @@ export default function GraphPage() {
             {analytics.hubs.length > 0 && (
               <div
                 data-graph-chrome-card
-                className="bg-[var(--glass-heavy-bg)] backdrop-blur-sm border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-xs text-[var(--text-secondary)]"
+                className="bg-white/[0.02] backdrop-blur-md border border-white/[0.05] rounded-2xl p-4 text-xs text-[var(--text-secondary)] shadow-lg"
               >
-                <div className="font-semibold text-[var(--text-primary)] mb-1">Top hubs</div>
-                <div className="space-y-1">
+                <div className="font-semibold text-[var(--text-primary)] mb-2 text-[13px]">Top hubs</div>
+                <div className="space-y-1.5 text-[11px]">
                   {analytics.hubs.slice(0, 3).map((h) => (
-                    <div key={h.to_page_id} className="truncate">
-                      {h.to_page__title} <span className="text-[var(--text-dim)]">({h.score.toFixed(3)})</span>
+                    <div key={h.to_page_id} className="truncate flex justify-between">
+                      <span className="text-[var(--text-primary)] font-medium truncate">{h.to_page__title}</span>
+                      <span className="text-[var(--accent)] font-mono ml-2 shrink-0">({h.score.toFixed(3)})</span>
                     </div>
                   ))}
                 </div>

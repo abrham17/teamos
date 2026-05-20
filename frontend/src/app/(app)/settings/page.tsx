@@ -365,27 +365,27 @@ export default function SettingsPage() {
   if (!currentTeamId) return <div className="p-8">Select a team first</div>;
 
   return (
-    <div className="flex flex-col h-full bg-[var(--bg-900)] overflow-y-auto">
-      <div className="flex items-center h-14 border-b border-[var(--border-subtle)] px-6 shrink-0 bg-[var(--bg-900)] justify-between">
+    <div className="flex flex-col h-full bg-[var(--bg-950)] overflow-y-auto">
+      <div className="flex items-center h-14 border-b border-[var(--border-subtle)] px-6 shrink-0 bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] justify-between z-20">
         <h2 className="text-[14px] font-semibold text-[var(--text-primary)] flex items-center gap-2">
           <Settings2 className="w-4 h-4 text-[var(--accent)]" /> Settings
         </h2>
-        <div className="flex items-center gap-1 bg-[var(--bg-800)] border border-[var(--border-subtle)] rounded-xl p-1">
+        <div className="flex items-center gap-1 bg-white/[0.02] border border-white/[0.06] rounded-xl p-1">
           <button
             onClick={() => setActiveTab("profile")}
-            className={`px-4 py-1.5 text-[12px] font-medium rounded-lg transition-all ${activeTab === 'profile' ? 'bg-[var(--accent)] text-white shadow-[var(--shadow-sm)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)]'}`}
+            className={`px-4 py-1.5 text-[12px] font-semibold rounded-lg transition-all ${activeTab === 'profile' ? 'bg-[var(--accent)] text-[var(--bg-950)] shadow-[var(--shadow-glow)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.04]'}`}
           >
             Profile
           </button>
           <button
             onClick={() => setActiveTab("members")}
-            className={`px-4 py-1.5 text-[12px] font-medium rounded-lg transition-all ${activeTab === 'members' ? 'bg-[var(--accent)] text-white shadow-[var(--shadow-sm)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)]'}`}
+            className={`px-4 py-1.5 text-[12px] font-semibold rounded-lg transition-all ${activeTab === 'members' ? 'bg-[var(--accent)] text-[var(--bg-950)] shadow-[var(--shadow-glow)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.04]'}`}
           >
             Members
           </button>
           <button
             onClick={() => setActiveTab("billing")}
-            className={`px-4 py-1.5 text-[12px] font-medium rounded-lg transition-all ${activeTab === 'billing' ? 'bg-[var(--accent)] text-white shadow-[var(--shadow-sm)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)]'}`}
+            className={`px-4 py-1.5 text-[12px] font-semibold rounded-lg transition-all ${activeTab === 'billing' ? 'bg-[var(--accent)] text-[var(--bg-950)] shadow-[var(--shadow-glow)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/[0.04]'}`}
           >
             Billing
           </button>
@@ -411,12 +411,13 @@ export default function SettingsPage() {
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                   placeholder="name@company.com"
-                  className="px-3 py-2 rounded-lg bg-[var(--bg-800)] border border-[var(--border-subtle)] text-[13px] outline-none focus:border-[var(--accent)]/60 focus:ring-2 focus:ring-[var(--accent)]/15 transition-all"
+                  className="px-3 py-2 rounded-xl bg-white/[0.02] border border-white/[0.06] text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/50 focus:ring-4 focus:ring-[var(--accent)]/5 transition-all"
                 />
                 <select
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-[var(--bg-800)] border border-[var(--border-subtle)] text-[13px] capitalize outline-none"
+                  className="px-3 py-2 rounded-xl bg-white/[0.02] border border-white/[0.06] text-[13px] text-[var(--text-primary)] capitalize outline-none"
+                  style={{ colorScheme: "dark" }}
                 >
                   <option value="viewer">viewer</option>
                   <option value="editor">editor</option>
@@ -424,17 +425,17 @@ export default function SettingsPage() {
                 </select>
                 <button
                   onClick={handleInviteMember}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-[13px] font-medium hover:bg-[var(--accent-dark)] hover:shadow-[var(--shadow-glow)] transition-all active:scale-95"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--bg-950)] text-[13px] font-bold hover:shadow-[var(--shadow-glow)] transition-all active:scale-95"
                 >
                   <Plus className="w-4 h-4" /> Invite
                 </button>
               </div>
             </div>
-            <div className="rounded-xl border border-[var(--border-subtle)] overflow-hidden shadow-[var(--shadow-sm)]">
+            <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] overflow-hidden shadow-md backdrop-blur-md">
               {members.map(m => (
-                <div key={m.id} className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)] last:border-0 hover:bg-[var(--bg-800)] transition-colors">
+                <div key={m.id} className="flex items-center justify-between p-4 border-b border-white/[0.04] last:border-0 hover:bg-white/[0.01] transition-colors">
                   <div className="flex items-center gap-4">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center font-semibold text-[13px] text-white">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center font-semibold text-[13px] text-[var(--bg-950)]">
                       {(m.user?.display_name?.[0] || m.user?.email?.[0] || '?').toUpperCase()}
                     </div>
                     <div>
@@ -443,7 +444,7 @@ export default function SettingsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--bg-700)] text-[11px] font-medium text-[var(--text-secondary)] border border-[var(--border-subtle)] capitalize">
+                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.03] text-[11px] font-medium text-[var(--text-secondary)] border border-white/[0.05] capitalize">
                       {m.role === 'owner' && <Shield className="w-3 h-3 text-amber-400" />}
                       {m.role}
                     </span>
@@ -482,8 +483,8 @@ export default function SettingsPage() {
                 </div>
               ))}
             </div>
-            <div className="mt-4 rounded-xl border border-[var(--border-subtle)] overflow-hidden shadow-[var(--shadow-sm)]">
-              <div className="px-4 py-3 border-b border-[var(--border-subtle)] text-[11px] font-semibold uppercase tracking-widest text-[var(--text-dim)]">
+            <div className="mt-4 rounded-2xl border border-white/[0.05] bg-white/[0.02] overflow-hidden shadow-md backdrop-blur-md">
+              <div className="px-4 py-3 border-b border-white/[0.04] bg-white/[0.01] text-[11px] font-semibold uppercase tracking-widest text-[var(--text-dim)]">
                 Pending invites
               </div>
               {invites.length === 0 ? (
@@ -491,14 +492,14 @@ export default function SettingsPage() {
                   <span>No invites yet.</span>
                   <button
                     onClick={openInviteComposer}
-                    className="px-3 py-1.5 rounded border border-[var(--border-subtle)] hover:border-[var(--accent)] text-xs"
+                    className="px-3.5 py-1.5 rounded-xl border border-white/[0.08] hover:border-[var(--accent)]/50 text-xs transition-all"
                   >
                     Invite first teammate
                   </button>
                 </div>
               ) : (
                 invites.map((invite) => (
-                  <div key={invite.id} className="px-4 py-3 border-b border-[var(--border-subtle)] last:border-0 text-sm">
+                  <div key={invite.id} className="px-4 py-3 border-b border-white/[0.04] last:border-0 text-sm">
                     <div className="flex items-center justify-between gap-4">
                       <div>
                         <div className="font-medium">{invite.invitee_email}</div>
@@ -541,7 +542,7 @@ export default function SettingsPage() {
                 <h3 className="text-lg font-medium text-[var(--text-primary)]">Personal Profile</h3>
                 <p className="text-sm text-[var(--text-muted)] mt-1">Manage your identity across TeamOS.</p>
               </div>
-              <div className="rounded-xl border border-[var(--border-subtle)] p-6 space-y-6 shadow-[var(--shadow-sm)]">
+              <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-6 space-y-6 shadow-md backdrop-blur-md">
                 {/* Avatar Section */}
                 <div className="space-y-3">
                   <label className="text-[11px] uppercase tracking-widest font-semibold text-[var(--text-dim)] px-1">Avatar</label>
@@ -570,7 +571,7 @@ export default function SettingsPage() {
                         className={`relative w-full aspect-square overflow-hidden rounded-lg border-2 transition-all ${
                           profileAvatarUrl === avatar.svg
                             ? "border-[var(--accent)] shadow-[var(--shadow-glow)]"
-                            : "border-transparent hover:border-[var(--border-strong)]"
+                            : "border-transparent hover:border-white/[0.2]"
                         }`}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -590,7 +591,7 @@ export default function SettingsPage() {
                       type="text"
                       value={profileFirstName}
                       onChange={(e) => setProfileFirstName(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg-800)] border border-[var(--border-subtle)] focus:border-[var(--accent)]/60 focus:ring-2 focus:ring-[var(--accent)]/15 outline-none text-[13px] transition-all"
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] focus:border-[var(--accent)]/50 focus:ring-4 focus:ring-[var(--accent)]/5 outline-none text-[13px] text-[var(--text-primary)] transition-all"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -601,7 +602,7 @@ export default function SettingsPage() {
                       type="text"
                       value={profileLastName}
                       onChange={(e) => setProfileLastName(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-lg bg-[var(--bg-800)] border border-[var(--border-subtle)] focus:border-[var(--accent)]/60 focus:ring-2 focus:ring-[var(--accent)]/15 outline-none text-[13px] transition-all"
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] focus:border-[var(--accent)]/50 focus:ring-4 focus:ring-[var(--accent)]/5 outline-none text-[13px] text-[var(--text-primary)] transition-all"
                     />
                   </div>
                 </div>
@@ -611,7 +612,7 @@ export default function SettingsPage() {
                   <button
                     onClick={handleSaveProfile}
                     disabled={profileSaving}
-                    className="px-6 py-2.5 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white font-medium text-[13px] hover:shadow-[var(--shadow-glow)] active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2"
+                    className="px-6 py-2.5 rounded-xl bg-[var(--accent)] text-[var(--bg-950)] font-bold text-[13px] hover:shadow-[var(--shadow-glow)] active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2"
                   >
                     {profileSaving ? "Saving..." : "Save Changes"}
                   </button>
@@ -625,7 +626,7 @@ export default function SettingsPage() {
                 <h3 className="text-lg font-medium text-[var(--text-primary)]">Team Profile</h3>
                 <p className="text-sm text-[var(--text-muted)] mt-1">Manage your team&apos;s identity and subscription plan.</p>
               </div>
-              <div className="rounded-xl border border-[var(--border-subtle)] p-6 shadow-[var(--shadow-sm)]">
+              <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-6 shadow-md backdrop-blur-md">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-[12px] text-[var(--text-muted)] mb-1 uppercase tracking-wider">Team Name</div>
@@ -644,7 +645,8 @@ export default function SettingsPage() {
                                 plan_key: e.target.value as "team" | "pro" | "enterprise",
                               }))
                             }
-                            className="border border-[var(--border-subtle)] bg-[var(--bg-800)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] capitalize outline-none"
+                            className="border border-white/[0.06] bg-white/[0.02] rounded-lg px-2.5 py-1.5 text-[11px] text-[var(--text-primary)] capitalize outline-none"
+                            style={{ colorScheme: "dark" }}
                           >
                             <option value="team">Team</option>
                             <option value="pro">Pro</option>
@@ -664,7 +666,7 @@ export default function SettingsPage() {
                                 seat_count: Math.max(1, Math.min(250, Number(e.target.value) || 1)),
                               }))
                             }
-                            className="w-16 border border-[var(--border-subtle)] bg-[var(--bg-800)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] outline-none"
+                            className="w-16 border border-white/[0.06] bg-white/[0.02] rounded-lg px-2.5 py-1.5 text-[11px] text-[var(--text-primary)] outline-none"
                           />
                         </label>
                         <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-[var(--text-dim)]">
@@ -677,7 +679,8 @@ export default function SettingsPage() {
                                 usage_tier: e.target.value as "low" | "standard" | "high",
                               }))
                             }
-                            className="border border-[var(--border-subtle)] bg-[var(--bg-800)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] outline-none"
+                            className="border border-white/[0.06] bg-white/[0.02] rounded-lg px-2.5 py-1.5 text-[11px] text-[var(--text-primary)] outline-none"
+                            style={{ colorScheme: "dark" }}
                           >
                             <option value="low">Light</option>
                             <option value="standard">Standard</option>
@@ -687,7 +690,7 @@ export default function SettingsPage() {
                         <button
                           type="button"
                           onClick={handleUpgradePlan}
-                          className="px-3 py-2 border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent-subtle)] text-[12px] transition-colors"
+                          className="px-3 py-2 rounded-xl border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent-subtle)] text-[12px] transition-colors"
                         >
                           Upgrade plan
                         </button>
@@ -695,7 +698,7 @@ export default function SettingsPage() {
                     )}
                     <div>
                       <div className="text-[var(--text-muted)] text-sm mb-1">Current Plan</div>
-                      <div className="px-3 py-1 bg-[var(--accent)] text-white text-[11px] font-bold uppercase tracking-wide">
+                      <div className="px-3 py-1.5 bg-[var(--accent)] text-[var(--bg-950)] text-[11px] font-bold uppercase tracking-wide rounded-lg">
                         {team?.plan || 'FREE'}
                       </div>
                     </div>
@@ -710,28 +713,28 @@ export default function SettingsPage() {
                 <h3 className="text-lg font-medium text-[var(--text-primary)]">Workflow Shortcuts</h3>
                 <p className="text-sm text-[var(--text-muted)] mt-1">Quickly continue common team workflows.</p>
               </div>
-              <div className="border border-[var(--border-subtle)] grid grid-cols-1 md:grid-cols-4">
+              <div className="border border-white/[0.05] rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-4 bg-white/[0.02]">
                 <button
                   onClick={openInviteComposer}
-                  className="px-3 py-2.5 border-r border-[var(--border-subtle)] hover:bg-[var(--bg-700)] text-[13px] transition-colors"
+                  className="px-3 py-3.5 border-r border-white/[0.05] hover:bg-white/[0.02] text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors font-medium"
                 >
                   Invite teammate
                 </button>
                 <button
                   onClick={() => (window.location.href = "/wiki")}
-                  className="px-3 py-2.5 border-r border-[var(--border-subtle)] hover:bg-[var(--bg-700)] text-[13px] transition-colors"
+                  className="px-3 py-3.5 border-r border-white/[0.05] hover:bg-white/[0.02] text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors font-medium"
                 >
                   Open wiki
                 </button>
                 <button
                   onClick={() => (window.location.href = "/chat")}
-                  className="px-3 py-2.5 border-r border-[var(--border-subtle)] hover:bg-[var(--bg-700)] text-[13px] transition-colors"
+                  className="px-3 py-3.5 border-r border-white/[0.05] hover:bg-white/[0.02] text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors font-medium"
                 >
                   Open chat
                 </button>
                 <button
                   onClick={handleExportWiki}
-                  className="px-3 py-2.5 hover:bg-[var(--bg-700)] text-[13px] transition-colors"
+                  className="px-3 py-3.5 hover:bg-white/[0.02] text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors font-medium"
                 >
                   Export wiki
                 </button>
@@ -744,17 +747,17 @@ export default function SettingsPage() {
                 <h3 className="text-lg font-medium text-[var(--text-primary)]">Data Management</h3>
                 <p className="text-sm text-[var(--text-muted)] mt-1">Export your data for portability or backup.</p>
               </div>
-              <div className="border border-[var(--border-subtle)] p-6">
+              <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-6 shadow-md backdrop-blur-md">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="font-medium text-[13px]">Export Full Wiki</h4>
-                    <p className="text-[12px] text-[var(--text-muted)] mt-1 max-w-md">
+                    <h4 className="font-medium text-[13px] text-[var(--text-primary)]">Export Full Wiki</h4>
+                    <p className="text-[12px] text-[var(--text-muted)] mt-1.5 max-w-md leading-relaxed">
                       Download a ZIP of all wiki pages as Markdown, including the semantic graph mapping.
                     </p>
                   </div>
                   <button 
                     onClick={handleExportWiki}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-[var(--accent)] text-white font-medium text-[13px] hover:bg-[var(--accent-dark)] transition-colors"
+                    className="flex items-center gap-2 px-5 py-2.5 bg-[var(--accent)] text-[var(--bg-950)] font-bold text-[13px] rounded-xl hover:shadow-[var(--shadow-glow)] transition-all"
                   >
                     <Download className="w-4 h-4" /> Download ZIP
                   </button>
@@ -765,22 +768,22 @@ export default function SettingsPage() {
             {/* Danger Zone */}
             <section className="mb-12">
               <div className="mb-4">
-                <h3 className="text-lg font-medium text-red-500 flex items-center gap-2">
+                <h3 className="text-lg font-medium text-rose-500 flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5" /> Danger Zone
                 </h3>
                 <p className="text-sm text-[var(--text-muted)] mt-1">Irreversible actions that affect your entire team.</p>
               </div>
-              <div className="border border-[var(--danger)]/20 p-6">
+              <div className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.02] p-6 shadow-md backdrop-blur-md">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="font-medium text-[13px] text-[var(--danger)]">Delete this team</h4>
-                    <p className="text-[12px] text-[var(--text-muted)] mt-1 max-w-md">
+                    <h4 className="font-medium text-[13px] text-rose-400">Delete this team</h4>
+                    <p className="text-[12px] text-[var(--text-muted)] mt-1.5 max-w-md leading-relaxed">
                       All data will be permanently removed. This cannot be undone.
                     </p>
                   </div>
                   <button 
                     onClick={handleDeleteTeam}
-                    className="flex items-center gap-2 px-5 py-2.5 border border-[var(--danger)]/30 text-[var(--danger)] font-medium text-[13px] hover:bg-[var(--danger)] hover:text-white transition-colors"
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-rose-500/30 text-rose-400 font-medium text-[13px] hover:bg-rose-500 hover:text-[var(--bg-950)] hover:font-bold transition-all"
                   >
                     <Trash2 className="w-4 h-4" /> Delete Team
                   </button>

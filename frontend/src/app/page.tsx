@@ -4,6 +4,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { SignInButton, SignUpButton, useUser } from "@clerk/nextjs";
 import Link from 'next/link';
+import { ArrowRight, Sparkles, Database, Shield } from 'lucide-react';
 import ProcessShowcase from '@/components/landing/ProcessShowcase';
 import AgentShowcase from '@/components/landing/AgentShowcase';
 import NeuralConvergence from '@/components/landing/NeuralConvergence';
@@ -12,99 +13,129 @@ import HeroMockup from '@/components/landing/HeroMockup';
 import { HomePricing } from "@/components/home/HomePricing";
 import LandingFooter from '@/components/landing/LandingFooter';
 
-
 export default function Home() {
   const { isSignedIn } = useUser();
 
   return (
-    <div data-theme="dark" className="min-h-screen bg-[var(--bg-950)] text-[var(--text-primary)]">
+    <div data-theme="dark" className="min-h-screen bg-[#06060a] text-[var(--text-primary)] font-sans relative overflow-x-hidden">
+      
+      {/* Floating Ambient Glow Orbs */}
+      <div className="absolute top-[10%] left-[-10%] w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[120px] animate-float-slow pointer-events-none" />
+      <div className="absolute top-[40%] right-[-10%] w-[600px] h-[600px] bg-purple-500/10 rounded-full blur-[140px] animate-float-slow pointer-events-none" style={{ animationDelay: '2s' }} />
+      <div className="absolute top-[75%] left-[10%] w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-[130px] animate-float-slow pointer-events-none" style={{ animationDelay: '4s' }} />
 
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 h-14 border-b border-[var(--border-subtle)] bg-[var(--bg-950)]/95 backdrop-blur-sm">
-        <div className="max-w-6xl mx-auto h-full flex items-center justify-between px-6">
+      {/* Floating Glassmorphic Navbar */}
+      <header className="fixed top-4 left-4 right-4 z-50 max-w-5xl mx-auto">
+        <nav className="h-16 px-6 rounded-2xl border border-white/[0.08] bg-slate-950/75 backdrop-blur-md flex items-center justify-between shadow-lg">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center font-bold text-white text-[11px] shadow-[var(--shadow-glow)]">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center font-bold text-white text-[12px] shadow-[var(--shadow-glow)]">
               T
             </div>
-            <span className="font-semibold tracking-tight text-[15px]">TeamOS</span>
+            <span className="font-extrabold tracking-tight text-[16px] text-white">TeamOS</span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             {!isSignedIn ? (
               <>
                 <SignInButton mode="modal">
-                  <button className="text-[13px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+                  <button className="text-[13px] font-bold text-slate-400 hover:text-white transition-colors cursor-pointer">
                     Sign in
                   </button>
                 </SignInButton>
                 <SignUpButton mode="modal">
-                  <button className="bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white px-5 py-2 text-[13px] font-medium rounded-lg hover:shadow-[var(--shadow-glow)] transition-all active:scale-95">
+                  <button className="bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white px-5 py-2.5 text-[12px] font-bold uppercase tracking-widest rounded-xl hover:shadow-[var(--shadow-glow)] transition-all active:scale-95 cursor-pointer">
                     Get started
                   </button>
                 </SignUpButton>
               </>
             ) : (
-              <Link href="/wiki" className="bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white px-5 py-2 text-[13px] font-medium rounded-lg hover:shadow-[var(--shadow-glow)] transition-all">
-                Open workspace
+              <Link href="/wiki" className="bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white px-5 py-2.5 text-[12px] font-bold uppercase tracking-widest rounded-xl hover:shadow-[var(--shadow-glow)] transition-all active:scale-95">
+                Open Workspace
               </Link>
             )}
           </div>
-        </div>
-      </nav>
+        </nav>
+      </header>
 
-      {/* Hero Section */}
-      <main className="pt-14">
-        <section className="px-6 min-h-[calc(100vh-56px)] flex items-center justify-center">
-          <div className="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-20 items-center py-24">
+      {/* Main Sections */}
+      <main className="pt-24">
+        {/* Hero Section */}
+        <section className="px-6 min-h-[calc(100vh-96px)] flex items-center justify-center relative">
+          <div className="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-16 items-center py-20">
+            {/* Left Info Column */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, ease: "easeOut" }}
-              className="space-y-8"
+              className="lg:col-span-5 space-y-8 text-left"
             >
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[var(--border-strong)] bg-[var(--bg-800)] shadow-[var(--shadow-sm)]">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"></span>
-                <span className="text-[11px] uppercase font-medium tracking-widest text-[var(--text-muted)]">Team Intelligence</span>
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/[0.06] bg-white/[0.02] shadow-[0_2px_10px_rgba(0,0,0,0.2)]">
+                <Sparkles className="w-3.5 h-3.5 text-[var(--accent-light)] animate-pulse" />
+                <span className="text-[11px] uppercase font-bold tracking-widest text-slate-400">Team Intelligence Workspace</span>
               </div>
 
-              <h1 className="text-5xl md:text-6xl font-bold leading-[1.05] tracking-tight">
+              <h1 className="text-5xl md:text-6xl font-black leading-[1.05] tracking-tight text-white">
                 Wiki meets<br/>
-                <span className="text-[var(--accent)]">Planning.</span>
+                <span className="text-gradient">Planning.</span>
               </h1>
 
-              <p className="text-[var(--text-muted)] text-base max-w-sm leading-relaxed">
-                The knowledge engine that doesn&apos;t just store documentation — it uses it to architect and execute your team&apos;s projects.
+              <p className="text-slate-400 text-sm md:text-base leading-relaxed max-w-md">
+                The knowledge engine that doesn&apos;t just store documentation — it parses wiki context, maps files to tasks, and enables autonomous agents to execute your team&apos;s projects.
               </p>
 
-              <div className="flex items-center gap-4 pt-2">
+              <div className="flex flex-wrap items-center gap-4 pt-2">
                 {!isSignedIn ? (
                   <SignUpButton mode="modal">
-                    <button className="bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white px-8 py-3 text-[14px] font-semibold rounded-xl hover:shadow-[var(--shadow-glow)] active:scale-95 transition-all">
-                      Get started free
+                    <button className="bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white px-8 py-3.5 text-[12px] font-bold uppercase tracking-widest rounded-xl hover:shadow-[var(--shadow-glow)] active:scale-95 transition-all flex items-center gap-2 group cursor-pointer">
+                      <span>Get started free</span>
+                      <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                     </button>
                   </SignUpButton>
                 ) : (
-                  <Link href="/wiki" className="bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white px-8 py-3 text-[14px] font-semibold rounded-xl hover:shadow-[var(--shadow-glow)] active:scale-95 transition-all">
-                    Open workspace
+                  <Link href="/wiki" className="bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white px-8 py-3.5 text-[12px] font-bold uppercase tracking-widest rounded-xl hover:shadow-[var(--shadow-glow)] active:scale-95 transition-all flex items-center gap-2 group">
+                    <span>Open workspace</span>
+                    <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                   </Link>
                 )}
-                <span className="text-[11px] font-medium tracking-widest text-[var(--text-dim)] uppercase">Wiki · Graph · Plans · AI</span>
+              </div>
+
+              <div className="flex items-center gap-3 text-[10px] font-bold font-mono tracking-widest text-slate-500 uppercase pt-2 select-none">
+                <span>Wiki</span>
+                <span>·</span>
+                <span>Graph</span>
+                <span>·</span>
+                <span>Plans</span>
+                <span>·</span>
+                <span>Agent AI</span>
               </div>
             </motion.div>
 
-            {/* Hero Mockup */}
+            {/* Right Graphic Mockup Column */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3, duration: 0.7 }}
-              className="relative lg:block hidden"
+              className="lg:col-span-7 relative"
             >
-              <div className="rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-800)] overflow-hidden shadow-[var(--shadow-lg)]">
-                <HeroMockup />
+              <HeroMockup />
+              
+              {/* Floating micro indicators */}
+              <div className="absolute -top-4 -left-4 p-3 rounded-xl border border-white/[0.06] bg-slate-950/90 backdrop-blur shadow-2xl w-44 text-left hidden md:block animate-float-slow">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Database className="w-3.5 h-3.5 text-[var(--accent-light)]" />
+                  <span className="text-[9px] text-[var(--accent-light)] font-bold uppercase tracking-wider">Semantic Nodes</span>
+                </div>
+                <div className="text-2xl font-black tracking-tight text-white">4,285</div>
+                <div className="text-[8px] text-slate-500 font-mono mt-0.5">Updated: seconds ago</div>
               </div>
-              <div className="absolute -top-4 -left-4 p-3 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-800)] w-44 shadow-[var(--shadow-md)]">
-                <div className="text-[10px] text-[var(--accent)] font-semibold uppercase tracking-wider mb-1">Knowledge Nodes</div>
-                <div className="text-2xl font-bold tracking-tight">4,285</div>
+
+              <div className="absolute -bottom-4 -right-4 p-3 rounded-xl border border-white/[0.06] bg-slate-950/90 backdrop-blur shadow-2xl w-48 text-left hidden md:block animate-float-slow" style={{ animationDelay: '3s' }}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-[9px] text-emerald-400 font-bold uppercase tracking-wider">Security State</span>
+                </div>
+                <div className="text-[12px] font-extrabold text-white">SOC-2 Type II Certified</div>
+                <div className="text-[8px] text-slate-500 font-mono mt-0.5">Encrypted Knowledge Graphs</div>
               </div>
             </motion.div>
           </div>
@@ -114,63 +145,56 @@ export default function Home() {
         <NeuralConvergence />
 
         {/* Phase 1: Ingestion & Synthesis */}
-        <section className="py-28 px-6 border-t border-[var(--border-subtle)]">
-          <div className="max-w-6xl mx-auto text-center mb-20 space-y-4">
+        <section className="py-28 px-6 border-t border-white/[0.05]">
+          <div className="max-w-6xl mx-auto text-center mb-16 space-y-4">
             <motion.span
               initial={{ opacity: 0 }}
               whileInView={{ opacity: 1 }}
-              className="text-[var(--accent)] font-mono text-[10px] tracking-[0.5em] uppercase font-semibold block"
+              className="text-[var(--accent)] font-mono text-[10px] tracking-[0.5em] uppercase font-bold block"
             >
               Phase 01 — Synthesis
             </motion.span>
-            <h2 className="text-4xl md:text-5xl font-bold tracking-tight">
+            <h2 className="text-4xl md:text-5xl font-black tracking-tight text-white leading-tight">
               Ingestion &amp; Mapping
             </h2>
-            <p className="text-[var(--text-muted)] text-base max-w-xl mx-auto">
-              Ingest raw docs, build semantic vectors, and wire relationships into a live knowledge graph.
+            <p className="text-slate-400 text-sm md:text-base max-w-xl mx-auto leading-relaxed">
+              Ingest raw docs, build semantic vectors, and map relationships automatically into a live, interactive knowledge graph.
             </p>
           </div>
           <ProcessShowcase />
-        </section>
-
-        {/* Bridging Narrative */}
-        <section className="py-16 flex flex-col items-center border-t border-[var(--border-subtle)]">
-          <div className="py-8 text-center max-w-xl px-6">
-            <h3 className="text-lg font-semibold text-[var(--text-secondary)]">Context meets Action.</h3>
-            <p className="text-[13px] text-[var(--text-dim)] mt-2 leading-relaxed">Knowledge synthesized in Phase 01 feeds directly into the Agentic Planner — turning static docs into dynamic roadmaps.</p>
-          </div>
         </section>
 
         {/* Use Cases Bento */}
         <UseCaseGrid />
 
         {/* Phase 2: Agentic Planning */}
-        <section className="py-28 px-6 border-t border-[var(--border-subtle)]">
-          <div className="max-w-6xl mx-auto text-center mb-20 space-y-4">
+        <section className="py-28 px-6 border-t border-white/[0.05]">
+          <div className="max-w-6xl mx-auto text-center mb-16 space-y-4">
             <motion.span
               initial={{ opacity: 0 }}
               whileInView={{ opacity: 1 }}
-              className="text-[var(--accent)] font-mono text-[10px] tracking-[0.5em] uppercase font-semibold block"
+              className="text-[var(--accent)] font-mono text-[10px] tracking-[0.5em] uppercase font-bold block"
             >
               Phase 02 — Execution
             </motion.span>
-            <h2 className="text-4xl md:text-5xl font-bold tracking-tight">
+            <h2 className="text-4xl md:text-5xl font-black tracking-tight text-white leading-tight">
               Project Architecting
             </h2>
-            <p className="text-[var(--text-muted)] text-base max-w-xl mx-auto">
-              Autonomous agents leverage your wiki context to plan, resource, and deploy initiatives with full alignment.
+            <p className="text-slate-400 text-sm md:text-base max-w-xl mx-auto leading-relaxed">
+              Autonomous agents leverage your wiki context to define milestones, optimize resource allocation, and commit roadmaps.
             </p>
           </div>
           <AgentShowcase />
         </section>
 
         {/* Pricing */}
-        <section className="py-20 px-6 border-t border-[var(--border-subtle)]">
+        <section className="py-12 px-6 border-t border-white/[0.05] relative overflow-hidden">
           <div className="mx-auto w-full max-w-5xl">
             <HomePricing />
           </div>
         </section>
 
+        {/* Footer */}
         <LandingFooter />
       </main>
     </div>

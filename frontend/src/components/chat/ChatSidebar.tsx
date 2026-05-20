@@ -45,17 +45,17 @@ export function ChatSidebar({
   const sessionCls = (isActive: boolean) => {
     if (collapsed) {
       return [
-        "w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-150 shrink-0",
+        "w-11 h-10 rounded-xl flex items-center justify-center transition-all duration-200 shrink-0 relative group",
         isActive
-          ? "bg-[var(--accent-subtle)] text-[var(--accent)]"
-          : "text-[var(--text-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)]",
+          ? "bg-[var(--accent-subtle)] text-[var(--accent)] shadow-[inset_0_0_12px_rgba(139,127,244,0.15)]"
+          : "text-[var(--text-muted)] hover:bg-white/[0.03] hover:text-[var(--text-primary)]",
       ].join(" ");
     }
     return [
-      "flex items-center gap-3 px-3 py-2 w-full rounded-xl text-sm transition-colors duration-150 text-left truncate group/sess",
+      "flex items-center gap-3 px-3.5 py-2.5 w-full rounded-xl text-sm transition-all duration-200 text-left truncate group/sess relative",
       isActive
-        ? "bg-[var(--accent-subtle)] text-[var(--accent)] font-medium"
-        : "text-[var(--text-secondary)] hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)]",
+        ? "bg-[var(--accent-subtle)] text-[var(--accent)] font-semibold shadow-[inset_0_0_12px_rgba(139,127,244,0.15)] border border-[var(--accent)]/10"
+        : "text-[var(--text-secondary)] hover:bg-white/[0.03] hover:text-[var(--text-primary)] border border-transparent",
     ].join(" ");
   };
 
@@ -102,14 +102,14 @@ export function ChatSidebar({
       {/* Single sidebar element — positioned differently for mobile vs desktop via CSS */}
       <div
         className={cn(
-          "bg-[var(--bg-800)] border-r border-[var(--border-subtle)] flex flex-col h-full shrink-0 transition-[width] duration-[220ms] ease-in-out overflow-hidden",
+          "bg-gradient-to-b from-[var(--bg-900)] to-[var(--bg-950)] border-r border-[var(--border-subtle)] flex flex-col h-full shrink-0 transition-[width] duration-300 ease-in-out overflow-hidden",
           /* Mobile: fixed slide-in */
           "max-md:fixed max-md:top-0 max-md:left-0 max-md:z-50 max-md:transition-transform max-md:duration-300",
           mobileOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full",
           /* Desktop: always visible */
           "md:translate-x-0"
         )}
-        style={{ width: collapsed ? "72px" : "240px" }}
+        style={{ width: collapsed ? "64px" : "240px" }}
       >
         {/* ── Header ── */}
         <div
