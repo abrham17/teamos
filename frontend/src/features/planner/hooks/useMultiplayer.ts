@@ -11,7 +11,12 @@ export interface CursorPosition {
 
 const COLORS = ["#f43f5e", "#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ec4899"];
 
-export function useMultiplayer(teamId: string | null, projectId: string | null, onStateChange?: () => void) {
+export function useMultiplayer(
+  teamId: string | null,
+  projectId: string | null,
+  onStateChange?: () => void,
+  onNodeMove?: (nodeId: string, position: { x: number; y: number }) => void
+) {
   const { user } = useUser();
   const [cursors, setCursors] = useState<Record<string, CursorPosition>>({});
   const wsRef = useRef<WebSocket | null>(null);
@@ -44,6 +49,9 @@ export function useMultiplayer(teamId: string | null, projectId: string | null, 
               name: data.name,
             },
           }));
+        } else if (data.type === "node_move") {
+          if (data.userId === user?.id) return; // ignore our own
+          onNodeMove?.(data.nodeId, data.position);
         } else if (data.type === "state_change") {
           onStateChange?.();
         }
@@ -61,7 +69,7 @@ export function useMultiplayer(teamId: string | null, projectId: string | null, 
       ws.close();
       clearInterval(interval);
     };
-  }, [teamId, projectId, user?.id, onStateChange]);
+  }, [teamId, projectId, user?.id, onStateChange, onNodeMove]);
 
   const sendCursorMove = (e: React.MouseEvent | MouseEvent) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
@@ -80,5 +88,15 @@ export function useMultiplayer(teamId: string | null, projectId: string | null, 
     }));
   };
 
-  return { cursors, sendCursorMove };
+  const sendNodeMove = (nodeId: string, position: { x: number; y: number }) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({
+      type: "node_move",
+      userId: user?.id,
+      nodeId: nodeId,
+      position: position,
+    }));
+  };
+
+  return { cursors, sendCursorMove, sendNodeMove };
 }

@@ -67,6 +67,7 @@ export function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   useEffect(() => {
@@ -129,11 +130,35 @@ export function ChatInterface() {
     if (!currentTeamId) return;
     let cancelled = false;
     setSessionReady(false);
+
+    // Optimistically load from local cache (Phase 6.3)
+    const cacheKey = `teamos:chat:sessions:${currentTeamId}`;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSessions(parsed);
+          setActiveSessionId((prev) =>
+            prev && parsed.some((s: any) => s.id === prev) ? prev : parsed[0].id
+          );
+          setSessionReady(true);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load cached sessions from localStorage", e);
+    }
+
     (async () => {
       try {
         const data = await api.get<ChatSession[]>(`/chat/${currentTeamId}/sessions/`);
         if (cancelled) return;
         setSessions(data);
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(data));
+        } catch (e) {
+          console.error(e);
+        }
         if (data.length > 0) {
           setActiveSessionId((prev) =>
             prev && data.some((s) => s.id === prev) ? prev : data[0].id,
@@ -155,7 +180,13 @@ export function ChatInterface() {
           if (!created) {
             throw lastErr instanceof Error ? lastErr : new Error("Could not create chat session");
           }
-          setSessions([created]);
+          const finalSessions = [created];
+          setSessions(finalSessions);
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify(finalSessions));
+          } catch (e) {
+            console.error(e);
+          }
           setActiveSessionId(created.id);
         }
       } catch (e) {
@@ -227,6 +258,7 @@ export function ChatInterface() {
       setMessages((prev) => [...prev, assistantMsg]);
 
       try {
+        abortControllerRef.current = new AbortController();
         const res = await fetch(
           `${API_BASE}/chat/${currentTeamId}/sessions/${activeSessionId}/query/`,
           {
@@ -234,6 +266,7 @@ export function ChatInterface() {
             headers: { "Content-Type": "application/json", ...auth },
             credentials: "include",
             body: JSON.stringify({ message: trimmed }),
+            signal: abortControllerRef.current.signal,
           },
         );
 
@@ -357,7 +390,12 @@ export function ChatInterface() {
             }
           }
         }
-      } catch (e) {
+      } catch (e: any) {
+        if (e.name === "AbortError") {
+          setIsStreaming(false);
+          setStatus("Cancelled.");
+          return;
+        }
         console.error(e);
         setIsStreaming(false);
         setStatus("Error fetching response.");
@@ -371,7 +409,15 @@ export function ChatInterface() {
     if (!currentTeamId) return;
     try {
       const data = await api.post<ChatSession>(`/chat/${currentTeamId}/sessions/`, { title: "New Chat" });
-      setSessions((prev) => [data, ...prev]);
+      setSessions((prev) => {
+        const next = [data, ...prev];
+        try {
+          localStorage.setItem(`teamos:chat:sessions:${currentTeamId}`, JSON.stringify(next));
+        } catch (e) {
+          console.error(e);
+        }
+        return next;
+      });
       setActiveSessionId(data.id);
       setMessages([]);
     } catch (e) {
@@ -384,7 +430,15 @@ export function ChatInterface() {
     if (!currentTeamId) return;
     try {
       await api.delete(`/chat/${currentTeamId}/sessions/${id}/`);
-      setSessions((prev) => prev.filter((s) => s.id !== id));
+      setSessions((prev) => {
+        const next = prev.filter((s) => s.id !== id);
+        try {
+          localStorage.setItem(`teamos:chat:sessions:${currentTeamId}`, JSON.stringify(next));
+        } catch (e) {
+          console.error(e);
+        }
+        return next;
+      });
       if (activeSessionId === id) {
         const remaining = sessions.filter((s) => s.id !== id);
         setActiveSessionId(remaining.length > 0 ? remaining[0].id : null);
@@ -400,7 +454,15 @@ export function ChatInterface() {
     if (!currentTeamId) return;
     try {
       await api.patch(`/chat/${currentTeamId}/sessions/${id}/`, { title });
-      setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)));
+      setSessions((prev) => {
+        const next = prev.map((s) => (s.id === id ? { ...s, title } : s));
+        try {
+          localStorage.setItem(`teamos:chat:sessions:${currentTeamId}`, JSON.stringify(next));
+        } catch (e) {
+          console.error(e);
+        }
+        return next;
+      });
     } catch (e) {
       console.error(e);
       toastError("Could not rename chat.");
@@ -433,7 +495,7 @@ export function ChatInterface() {
   };
 
   const inputTypingDisabled = isStreaming || !sessionReady || !currentTeamId;
-  const sendDisabled = isStreaming || !sessionReady || !activeSessionId || !input.trim() || !currentTeamId;
+  const sendDisabled = (!isStreaming && !input.trim()) || !sessionReady || !activeSessionId || !currentTeamId;
 
   const hasMessages = messages.length > 0;
 
@@ -725,13 +787,19 @@ export function ChatInterface() {
 
                     {/* Circular send button */}
                     <button
-                      onClick={() => void handleSend()}
+                      onClick={() => {
+                        if (isStreaming) {
+                          abortControllerRef.current?.abort();
+                        } else {
+                          void handleSend();
+                        }
+                      }}
                       disabled={sendDisabled}
-                      title="Send message"
-                      aria-label="Send message"
+                      title={isStreaming ? "Stop generation" : "Send message"}
+                      aria-label={isStreaming ? "Stop generation" : "Send message"}
                       className="h-10 w-10 flex items-center justify-center rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white transition-all disabled:opacity-25 hover:scale-105 active:scale-95 shadow-none"
                     >
-                      {isStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+                      {isStreaming ? <X className="h-4.5 w-4.5" /> : <ArrowUp className="h-4.5 w-4.5" />}
                     </button>
                   </div>
                 </div>

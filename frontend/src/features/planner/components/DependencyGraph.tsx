@@ -4,6 +4,7 @@ import { PlanProjectDetail } from "../types";
 import { Maximize2, Minimize2, ZoomIn, ZoomOut, Link as LinkIcon, Loader2 } from "lucide-react";
 import { updatePlanTask } from "../api";
 import { useWikiStore } from "@/stores/useWikiStore";
+import { useMultiplayer } from "../hooks/useMultiplayer";
 
 interface DependencyGraphProps {
   project: PlanProjectDetail;
@@ -19,10 +20,36 @@ export function DependencyGraph({ project, onRefresh }: DependencyGraphProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
 
+  // Hook real-time collaborative canvas coordinates & sync over WebSockets
+  const { sendNodeMove } = useMultiplayer(
+    currentTeamId,
+    project.id,
+    onRefresh,
+    (nodeId, position) => {
+      if (cyRef.current) {
+        const node = cyRef.current.$(`#${nodeId}`);
+        if (node.length > 0) {
+          node.stop(); // Stop any active transitions
+          node.animate({
+            position: position,
+            duration: 250,
+          });
+        }
+      }
+    }
+  );
+
   useEffect(() => {
     if (!containerRef.current) return;
 
     const elements: cytoscape.ElementDefinition[] = [];
+
+    // Load saved coordinates from localStorage for canvas persistence
+    const savedPositionsKey = `teamos:canvas:${project.id}:positions`;
+    let savedPositions: Record<string, { x: number; y: number }> = {};
+    try {
+      savedPositions = JSON.parse(localStorage.getItem(savedPositionsKey) || "{}");
+    } catch {}
 
     // Add nodes
     project.tasks.forEach((t) => {
@@ -33,6 +60,7 @@ export function DependencyGraph({ project, onRefresh }: DependencyGraphProps) {
           status: t.status,
           priority: t.priority,
         },
+        position: savedPositions[t.id] || undefined,
       });
 
       // Add edges
@@ -84,7 +112,7 @@ export function DependencyGraph({ project, onRefresh }: DependencyGraphProps) {
           },
         },
       ],
-      layout: {
+      layout: Object.keys(savedPositions).length > 0 ? { name: "preset" } : {
         name: "breadthfirst",
         directed: true,
         padding: 50,
@@ -92,6 +120,25 @@ export function DependencyGraph({ project, onRefresh }: DependencyGraphProps) {
       },
       minZoom: 0.2,
       maxZoom: 3,
+    });
+
+    // Broadcast node drag events to collaborators
+    cy.on("dragfree", "node", (evt) => {
+      const node = evt.target;
+      const id = node.id();
+      const pos = node.position();
+
+      // Emit to WebSocket channel
+      sendNodeMove(id, pos);
+
+      // Save locally to preserve custom spatial layout
+      try {
+        const saved = JSON.parse(localStorage.getItem(savedPositionsKey) || "{}");
+        saved[id] = pos;
+        localStorage.setItem(savedPositionsKey, JSON.stringify(saved));
+      } catch (err) {
+        console.error("Failed to save position", err);
+      }
     });
 
     cy.on("tap", "node", async (evt) => {
@@ -138,7 +185,7 @@ export function DependencyGraph({ project, onRefresh }: DependencyGraphProps) {
     return () => {
       cy.destroy();
     };
-  }, [project, linkMode, selectedNodeId, currentTeamId, onRefresh]);
+  }, [project, linkMode, selectedNodeId, currentTeamId, onRefresh, sendNodeMove]);
 
   return (
     <div className={`flex flex-col bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl overflow-hidden ${isFullscreen ? "fixed inset-4 z-50 shadow-2xl" : "h-[600px] w-full"}`}>
