@@ -1,9 +1,8 @@
 import { Shield, AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 import {
-  applyRiskResolutionActions,
-  generateRiskResolutionProposal,
   getProjectRisk,
+  remediateProjectRisk,
 } from "../api";
 import type { PlanRisk, RiskAction } from "../types";
 import { useToast } from "@/components/ui/Toast";
@@ -39,15 +38,10 @@ export function RiskCard({ teamId, projectId, refreshKey, onResolved }: RiskCard
   const handleResolveRisk = async () => {
     setResolving(true);
     try {
-      const proposalResponse = await generateRiskResolutionProposal(teamId, projectId);
-      setProposal(proposalResponse.actions);
-      if (proposalResponse.actions.length === 0) {
-        toastSuccess("No actionable risk fixes were proposed.");
-        return;
-      }
-      const result = await applyRiskResolutionActions(teamId, projectId, proposalResponse.actions);
+      const result = await remediateProjectRisk(teamId, projectId);
+      setProposal(result.proposed_actions);
       toastSuccess(
-        `Applied ${result.applied_count} risk fixes (${result.skipped_count} skipped). Remaining risk score: ${result.remaining_risk_score}.`,
+        `Resolved ${result.conflict_resolved_count} conflicts and applied ${result.applied_actions.length} fixes (${result.skipped_count} skipped). Remaining risk score: ${result.remaining_risk_score}.`,
       );
       onResolved?.();
       loadRisk();

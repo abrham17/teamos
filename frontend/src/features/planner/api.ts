@@ -13,6 +13,7 @@ import type {
   RiskAction,
   RiskResolutionProposal,
   RiskResolutionApplyResult,
+  ProjectRemediationResult,
   OverdueTask,
   MissedMilestone,
 } from "./types";
@@ -287,6 +288,13 @@ export async function applyRiskResolutionActions(teamId: string, projectId: stri
   return api.post<RiskResolutionApplyResult>(
     `/planning/${teamId}/projects/${projectId}/risk/resolve/apply/`,
     { actions },
+  );
+}
+
+export async function remediateProjectRisk(teamId: string, projectId: string) {
+  return api.post<ProjectRemediationResult>(
+    `/planning/${teamId}/projects/${projectId}/remediate/`,
+    { apply_conflicts: true, apply_risk: true },
   );
 }
 

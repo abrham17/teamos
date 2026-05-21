@@ -119,10 +119,135 @@ function riskColor(score: number): string {
   return "text-[var(--danger)]";
 }
 
-function riskBg(score: number): string {
-  if (score <= 30) return "bg-[var(--success-bg)]";
-  if (score <= 60) return "bg-[var(--warning)]/10";
-  return "bg-[var(--danger-bg)]";
+function PlanningInlineState({
+  state,
+  loading,
+  onOpenProject,
+}: {
+  state: NonNullable<ChatMessage["planningState"]>;
+  loading: boolean;
+  onOpenProject: () => void;
+}) {
+  return (
+    <div className="mt-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-950)]/70 p-3 shadow-none">
+      <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] pb-2">
+        <div className={`h-1.5 w-1.5 rounded-full ${loading ? "animate-pulse bg-[var(--accent)]" : state.planResult ? "bg-[var(--success)]" : "bg-[var(--border-strong)]"}`} />
+        <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+          {loading ? "Executing" : state.planResult ? "Completed" : "Architect workflow"}
+        </span>
+      </div>
+
+      {state.statusText && (
+        <p className="mt-2 text-[11px] font-medium leading-snug text-[var(--accent)]">{state.statusText}</p>
+      )}
+
+      {state.agentSteps.length > 0 && (
+        <div className="mt-3 grid gap-1.5">
+          {state.agentSteps.slice(-8).map((step, idx) => {
+            const isDone = step.status === "done";
+            const isErr = step.status === "error";
+            const isRunning = step.status === "running";
+            return (
+              <div key={`${step.name}-${idx}`} className="flex items-center gap-2 text-[11px]">
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                  isDone ? "border-[var(--success)] text-[var(--success)]" :
+                  isErr ? "border-[var(--danger)] text-[var(--danger)]" :
+                  isRunning ? "border-[var(--accent)] text-[var(--accent)]" :
+                  "border-[var(--border-strong)] text-[var(--text-dim)]"
+                }`}>
+                  {isDone && <Check className="h-3 w-3" />}
+                  {isErr && <AlertCircle className="h-3 w-3" />}
+                  {isRunning && <Loader2 className="h-3 w-3 animate-spin" />}
+                </span>
+                <span className={isRunning ? "font-semibold text-[var(--text-primary)]" : "text-[var(--text-muted)]"}>
+                  {step.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {state.planResult && (
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--success)]" />
+            <span className="text-[13px] font-bold text-[var(--text-primary)]">
+              {state.planResult.projectName || "Plan Updated"}
+            </span>
+            {state.planResult.wikiPageUrl && (
+              <a href={state.planResult.wikiPageUrl} target="_blank" rel="noopener noreferrer" className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-[var(--accent)] hover:underline">
+                <FileText className="h-3 w-3" /> Wiki
+              </a>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[
+              { label: "Tasks", value: state.planResult.taskCount ?? 0, color: "" },
+              { label: "Milestones", value: state.planResult.milestoneCount ?? 0, color: "" },
+              { label: "Conflicts", value: state.planResult.conflictCount ?? 0, color: (state.planResult.conflictCount ?? 0) > 0 ? "text-[var(--warning)]" : "" },
+              { label: "Critique", value: state.planResult.critiqueScore != null ? `${state.planResult.critiqueScore}/10` : "-", color: "" },
+            ].map((item) => (
+              <div key={item.label} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-2 text-center">
+                <div className={`text-base font-black text-[var(--text-primary)] ${item.color}`}>{item.value}</div>
+                <div className="mt-0.5 text-[9px] uppercase tracking-widest text-[var(--text-muted)]">{item.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {state.planResult.risk && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                <span>Risk Score</span>
+                <span className={riskColor(state.planResult.risk.score)}>{state.planResult.risk.score}/100</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-[var(--border-subtle)]">
+                <div
+                  className={`h-full rounded-full ${
+                    state.planResult.risk.score <= 30 ? "bg-[var(--success)]" :
+                    state.planResult.risk.score <= 60 ? "bg-[var(--warning)]" : "bg-[var(--danger)]"
+                  }`}
+                  style={{ width: `${state.planResult.risk.score}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {state.planResult.risk?.suggestions?.length ? (
+            <div className="space-y-1.5">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Mitigations</p>
+              {state.planResult.risk.suggestions.slice(0, 3).map((suggestion, idx) => (
+                <div key={idx} className="flex items-start gap-1.5 text-[11px] text-[var(--text-secondary)]">
+                  <Shield className="mt-0.5 h-3 w-3 shrink-0 text-[var(--accent)]" />
+                  {suggestion}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {state.planResult.knowledgeGaps?.length ? (
+            <div className="space-y-1.5">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Knowledge Gaps</p>
+              {state.planResult.knowledgeGaps.slice(0, 3).map((gap, idx) => (
+                <div key={idx} className="rounded-lg border border-[var(--warning)]/10 bg-[var(--warning)]/5 px-2.5 py-1.5 text-[11px] text-[var(--warning)]">
+                  {gap}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <button
+            onClick={onOpenProject}
+            className="flex h-9 w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] text-[12px] font-bold text-[var(--bg-950)] transition-opacity hover:opacity-90"
+          >
+            Open Project
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function AIPlannerOverlay({
@@ -378,9 +503,6 @@ export function AIPlannerOverlay({
     }
   };
 
-  /* Derive the latest planning state from the last architect message */
-  const latestPlanState = [...messages].reverse().find(m => m.sender === "architect" && m.planningState)?.planningState ?? null;
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -391,7 +513,7 @@ export function AIPlannerOverlay({
       <motion.div
         initial={{ scale: 0.94, opacity: 0, y: 16 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        className="w-full max-w-5xl bg-[var(--surface-1)] rounded-[28px] overflow-hidden flex flex-col h-[90vh] shadow-none border border-[var(--border-subtle)]"
+        className="w-full max-w-4xl bg-[var(--surface-1)] rounded-[28px] overflow-hidden flex flex-col h-[90vh] shadow-none border border-[var(--border-subtle)]"
       >
         {/* ── Header ── */}
         <header className="px-6 py-4 flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-900)] shrink-0">
@@ -473,7 +595,7 @@ export function AIPlannerOverlay({
                 </div>
               </motion.div>
             ) : (
-              /* Two-panel AI Chat layout */
+              /* Unified AI Chat layout */
               <motion.div
                 key="chat"
                 initial={{ opacity: 0 }}
@@ -513,6 +635,20 @@ export function AIPlannerOverlay({
                                 <p className="whitespace-pre-wrap">{msg.text}</p>
                               )}
                             </div>
+                          )}
+                          {msg.planningState && (
+                            <PlanningInlineState
+                              state={msg.planningState}
+                              loading={!!msg.isStreaming}
+                              onOpenProject={() => {
+                                onPlanGenerated({
+                                  projectName: msg.planningState?.planResult?.projectName || "AI Plan",
+                                  description: `${msg.planningState?.planResult?.taskCount ?? 0} tasks · ${msg.planningState?.planResult?.milestoneCount ?? 0} milestones`,
+                                  tasks: [],
+                                  milestones: [],
+                                });
+                              }}
+                            />
                           )}
                         </div>
                       </div>
@@ -641,186 +777,6 @@ export function AIPlannerOverlay({
                   </motion.div>
                 </div>
 
-                {/* ── Right: Live Execution Panel ── */}
-                <div className="w-72 shrink-0 border-l border-[var(--border-subtle)] flex flex-col bg-[var(--bg-950)]/60 overflow-hidden shadow-none">
-                  <div className="px-4 py-3 border-b border-[var(--border-subtle)] shrink-0">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-1.5 h-1.5 rounded-full ${loading ? "bg-[var(--accent)] animate-pulse" : latestPlanState?.planResult ? "bg-[var(--success)]" : "bg-[var(--border-strong)]"}`} />
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                        {loading ? "Executing" : latestPlanState?.planResult ? "Completed" : "Execution Panel"}
-                      </span>
-                    </div>
-                    {latestPlanState?.statusText && (
-                      <p className="text-[11px] text-[var(--accent)] mt-1 font-medium leading-snug">
-                        {latestPlanState.statusText}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto custom-scrollbar">
-                    {/* Step rail */}
-                    {latestPlanState && latestPlanState.agentSteps.length > 0 && (
-                      <div className="px-4 py-3 space-y-0">
-                        {latestPlanState.agentSteps.map((step, idx) => {
-                          const isDone = step.status === "done";
-                          const isErr = step.status === "error";
-                          const isRunning = step.status === "running";
-                          const isLast = idx === latestPlanState.agentSteps.length - 1;
-                          return (
-                            <motion.div
-                              key={`exec-step-${idx}`}
-                              initial={{ opacity: 0, x: 8 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: idx * 0.03 }}
-                              className="flex gap-3"
-                            >
-                              <div className="flex flex-col items-center">
-                                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 transition-all duration-300 ${
-                                  isDone    ? "bg-[var(--success-bg)] border-[var(--success)] text-[var(--success)]" :
-                                  isErr     ? "bg-[var(--danger-bg)] border-[var(--danger)] text-[var(--danger)]" :
-                                  isRunning ? "bg-[var(--surface-2)] border-[var(--accent)] text-[var(--accent)]" :
-                                              "bg-[var(--surface-2)] border-[var(--border-strong)] text-[var(--text-dim)]"
-                                }`}>
-                                  {isDone    && <Check className="w-2.5 h-2.5" />}
-                                  {isErr     && <AlertCircle className="w-2.5 h-2.5" />}
-                                  {isRunning && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                                </div>
-                                {!isLast && <div className="w-[2px] flex-1 min-h-[16px] bg-[var(--border-subtle)] mt-0.5" />}
-                              </div>
-                              <div className={`pb-3 pt-0.5 text-[11px] leading-tight ${
-                                isDone    ? "text-[var(--text-muted)]" :
-                                isErr     ? "text-[var(--danger)]" :
-                                isRunning ? "text-[var(--text-primary)] font-semibold" :
-                                            "text-[var(--text-dim)]"
-                              }`}>
-                                {step.label}
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Plan result card */}
-                    {latestPlanState?.planResult && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="px-4 pb-4 space-y-4"
-                      >
-                        <div className="pt-1 pb-3 border-b border-[var(--border-subtle)]">
-                          <div className="flex items-center gap-1.5">
-                            <CheckCircle2 className="w-4 h-4 text-[var(--success)] shrink-0" />
-                            <span className="text-[13px] font-bold text-[var(--text-primary)] leading-tight">
-                              {latestPlanState.planResult.projectName || "Plan Created"}
-                            </span>
-                          </div>
-                          {latestPlanState.planResult.wikiPageUrl && (
-                            <a href={latestPlanState.planResult.wikiPageUrl} target="_blank" rel="noopener noreferrer"
-                              className="flex items-center gap-1 mt-1.5 text-[9px] font-bold uppercase tracking-widest text-[var(--accent)] hover:underline">
-                              <FileText className="w-3 h-3" /> View Wiki Brief
-                            </a>
-                          )}
-                        </div>
-
-                        {/* 4-stat grid */}
-                        <div className="grid grid-cols-2 gap-2">
-                          {[
-                            { label: "Tasks",      value: latestPlanState.planResult.taskCount ?? 0,      color: "" },
-                            { label: "Milestones", value: latestPlanState.planResult.milestoneCount ?? 0, color: "" },
-                            { label: "Conflicts",  value: latestPlanState.planResult.conflictCount ?? 0,  color: (latestPlanState.planResult.conflictCount ?? 0) > 0 ? "text-[var(--warning)]" : "" },
-                            { label: "Critique",   value: latestPlanState.planResult.critiqueScore != null ? `${latestPlanState.planResult.critiqueScore}/10` : "—", color: "" },
-                          ].map(({ label, value, color }) => (
-                            <div key={label} className="bg-[var(--surface-1)] rounded-xl p-2.5 text-center border border-[var(--border-subtle)] shadow-none">
-                              <div className={`text-lg font-black text-[var(--text-primary)] ${color}`}>{value}</div>
-                              <div className="text-[9px] uppercase tracking-widest text-[var(--text-muted)] mt-0.5">{label}</div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Risk meter */}
-                        {latestPlanState.planResult.risk && (
-                          <div className="space-y-1.5">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Risk Score</span>
-                              <span className={`text-[11px] font-bold ${riskColor(latestPlanState.planResult.risk.score)}`}>
-                                {latestPlanState.planResult.risk.score}/100
-                              </span>
-                            </div>
-                            <div className="h-2 rounded-full bg-[var(--border-subtle)] overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all duration-700 ${
-                                  latestPlanState.planResult.risk.score <= 30 ? "bg-[var(--success)]" :
-                                  latestPlanState.planResult.risk.score <= 60 ? "bg-[var(--warning)]" : "bg-[var(--danger)]"
-                                }`}
-                                style={{ width: `${latestPlanState.planResult.risk.score}%` }}
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Risk mitigations */}
-                        {latestPlanState.planResult.risk?.suggestions && latestPlanState.planResult.risk.suggestions.length > 0 && (
-                          <div className="space-y-1.5">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Mitigations</p>
-                            {latestPlanState.planResult.risk.suggestions.slice(0, 3).map((s, i) => (
-                              <div key={i} className="flex items-start gap-1.5 text-[11px] text-[var(--text-secondary)]">
-                                <Shield className="w-3 h-3 shrink-0 mt-0.5 text-[var(--accent)]" />
-                                {s}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Knowledge gaps */}
-                        {latestPlanState.planResult.knowledgeGaps && latestPlanState.planResult.knowledgeGaps.length > 0 && (
-                          <div className="space-y-1.5">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Knowledge Gaps</p>
-                            {latestPlanState.planResult.knowledgeGaps.slice(0, 3).map((gap, i) => (
-                              <div key={i} className="text-[11px] text-[var(--warning)] bg-[var(--warning)]/5 rounded-lg px-2.5 py-1.5 border border-[var(--warning)]/10">
-                                {gap}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* CTA */}
-                        <button
-                          onClick={() => {
-                            onPlanGenerated({
-                              projectName: latestPlanState.planResult?.projectName || "AI Plan",
-                              description: `${latestPlanState.planResult?.taskCount ?? 0} tasks · ${latestPlanState.planResult?.milestoneCount ?? 0} milestones`,
-                              tasks: [],
-                              milestones: [],
-                            });
-                          }}
-                          className="w-full h-10 bg-[var(--accent)] text-[var(--bg-950)] text-[12px] font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-none"
-                        >
-                          Open Project
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                      </motion.div>
-                    )}
-
-                    {/* Empty state for right panel */}
-                    {!latestPlanState && !loading && (
-                      <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-4 py-8">
-                        <div className="relative">
-                          <div className="absolute inset-0 rounded-2xl bg-[var(--accent)]/10 blur-xl scale-150" />
-                          <div className="relative w-14 h-14 rounded-2xl bg-[var(--bg-800)] border border-[var(--border-subtle)] flex items-center justify-center shadow-none">
-                            <BrainCircuit className="w-7 h-7 text-[var(--text-dim)]" />
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-[12px] font-semibold text-[var(--text-secondary)]">Execution Panel</p>
-                          <p className="text-[11px] text-[var(--text-dim)] leading-relaxed">
-                            Agent steps and plan results appear here in real time.
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
               </motion.div>
             )}
           </AnimatePresence>

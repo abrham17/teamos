@@ -181,6 +181,22 @@ export interface RiskResolutionApplyResult {
   remaining_conflicts: number;
 }
 
+export interface ProjectRemediationResult {
+  status: string;
+  project_id: string;
+  initial_conflict_count: number;
+  conflict_resolved_count: number;
+  remaining_conflicts: number;
+  initial_risk_score: number;
+  remaining_risk_score: number;
+  risk: PlanRisk;
+  risk_actions_applied: number;
+  skipped_count: number;
+  warnings: Array<Record<string, unknown>>;
+  applied_actions: Array<Record<string, unknown>>;
+  proposed_actions: RiskAction[];
+}
+
 export interface OverdueTask {
   id: string;
   title: string;
