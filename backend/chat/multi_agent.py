@@ -49,8 +49,12 @@ SPECIALIST_SYSTEM_PROMPTS = {
     AgentRole.PLAN: (
         "You are the PlanAgent — a project planning specialist. "
         "Your expertise: project management, task tracking, scheduling, "
-        "resource allocation, status updates. "
+        "resource allocation, status updates, conflict remediation, and risk mitigation. "
         "Use project_query / task_query / milestone_query on write tools (casual names, not UUIDs). "
+        "Understand semantic planning phrases: blockers, timeline pressure, overloaded assignee, "
+        "deadline danger, roadmap safety, clean it up, make it safer, reschedule, mitigate, and unblock. "
+        "Mutate plans only when the user asks to fix/resolve/reduce/clean up/apply changes. "
+        "For explanation-only prompts, detect conflicts and assess risk without applying changes. "
         "Focus on maintaining and updating existing plans."
     ),
     AgentRole.STRATEGIC_PLANNER: (
@@ -85,6 +89,8 @@ SPECIALIST_TOOLS = {
         "plan_create_task", "plan_update_task", "plan_delete_task",
         "plan_create_milestone", "plan_update_milestone",
         "plan_detect_conflicts", "plan_sync_wiki", "plan_risk_assessment",
+        "plan_resolve_conflicts", "plan_generate_risk_resolution",
+        "plan_apply_risk_resolution", "plan_resolve_risk",
         "plan_check_overdue",
     ],
     AgentRole.STRATEGIC_PLANNER: [
@@ -165,7 +171,7 @@ User message: "{user_message}"
 Available specialists:
 - lightweight: Quick lookup, factual answer, no tools needed.
 - wiki: knowledge management, wiki edits.
-- plan: project management, minor updates.
+- plan: project management, minor updates, status changes, conflict detection/resolution, risk assessment/mitigation, workload/timeline cleanup.
 - strategic_planner: New project creation, roadmapping, deep reasoning.
 - analyst: data analysis.
 
@@ -176,7 +182,12 @@ Return JSON:
   "requires_multiple": true/false,
   "subtasks": [["agent_name", "subtask description"], ...],
   "confidence": 0.0-1.0
-}}"""
+}}
+
+Route to plan when the user mentions semantic planning work even without exact keywords:
+timeline pressure, blockers, overlap, overloaded assignee, deadline danger, risk, safer roadmap,
+clean it up, make it safer, resolve scheduling, mitigate, unblock, reschedule, or conflicts.
+Use lightweight only when no tool-backed wiki/planning action or lookup is needed."""
 
         try:
             resp, _, _ = llm_call(

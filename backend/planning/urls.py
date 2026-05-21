@@ -5,6 +5,7 @@ from .views import (
     PlanningMilestoneDetailView,
     PlanningMilestoneListView,
     PlanningProjectDetailView,
+    PlanningProjectRemediateView,
     PlanningProjectListView,
     PlanningTaskDetailView,
     PlanningTaskListView,
@@ -27,6 +28,7 @@ from .views import (
 urlpatterns = [
     path("<uuid:team_id>/projects/", PlanningProjectListView.as_view()),
     path("<uuid:team_id>/projects/<uuid:project_id>/", PlanningProjectDetailView.as_view()),
+    path("<uuid:team_id>/projects/<uuid:project_id>/remediate/", PlanningProjectRemediateView.as_view()),
     path("<uuid:team_id>/projects/<uuid:project_id>/tasks/", PlanningTaskListView.as_view()),
     path(
         "<uuid:team_id>/projects/<uuid:project_id>/tasks/<uuid:task_id>/",

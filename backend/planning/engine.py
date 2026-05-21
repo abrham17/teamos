@@ -414,33 +414,25 @@ class PlanningEngine:
         yield _sse("agent_status", {"status": "Detecting scheduling conflicts..."})
         conflicts = []
         try:
+            from planning.remediation import remediate_project
+
             conflicts = detect_date_conflicts(self.team_id, project_id=created_project_id)
             yield _sse("agent_step", {"name": "plan_detect_conflicts", "arguments": "{}"})
             yield _sse("agent_result", {"name": "plan_detect_conflicts", "ok": True, "result": {"conflict_count": len(conflicts), "conflicts": conflicts[:5]}})
 
-            # Auto-resolve
-            max_retries = 2
-            retries = 0
-            while conflicts and retries < max_retries:
-                yield _sse("agent_status", {"status": f"Auto-resolving {len(conflicts)} conflicts (Attempt {retries + 1})..."})
-                resolved_tasks = _auto_resolve_conflicts(self.team, created_project_id, conflicts)
-                if resolved_tasks:
-                    from planning.services import get_task_or_none
-                    for rt in resolved_tasks:
-                        try:
-                            task = get_task_or_none(self.team_id, created_project_id, rt["id"])
-                            if task:
-                                update_task(task, {
-                                    "start_date": rt.get("start_date"),
-                                    "end_date": rt.get("end_date")
-                                })
-                        except Exception as e:
-                            logger.error(f"Failed to auto-update task {rt['id']}: {e}")
-
+            if conflicts and created_project_id:
+                yield _sse("agent_status", {"status": f"Auto-resolving {len(conflicts)} conflicts..."})
+                project_for_remediation = get_project_or_none(team_id=self.team_id, project_id=created_project_id)
+                if project_for_remediation:
+                    remediation = remediate_project(
+                        team=self.team,
+                        project=project_for_remediation,
+                        apply_conflicts=True,
+                        apply_risk=False,
+                    )
                     conflicts = detect_date_conflicts(self.team_id, project_id=created_project_id)
-                    yield _sse("agent_step", {"name": "plan_auto_resolve", "arguments": json.dumps({"resolved_count": len(resolved_tasks)})})
-                    yield _sse("agent_result", {"name": "plan_auto_resolve", "ok": True, "result": {"remaining_conflicts": len(conflicts)}})
-                retries += 1
+                    yield _sse("agent_step", {"name": "plan_auto_resolve", "arguments": json.dumps({"resolved_count": remediation.get("conflict_resolved_count", 0)})})
+                    yield _sse("agent_result", {"name": "plan_auto_resolve", "ok": True, "result": remediation})
         except Exception as e:
             logger.exception("Conflict resolution failed")
 
@@ -448,7 +440,10 @@ class PlanningEngine:
         yield _sse("agent_status", {"status": "Assessing timeline risk..."})
         risk = {"score": 0, "factors": [], "suggestions": []}
         try:
-            risk = _assess_plan_risk(self.team, draft_data, conflicts)
+            from planning.remediation import assess_project_risk
+
+            project_for_risk = get_project_or_none(team_id=self.team_id, project_id=created_project_id) if created_project_id else None
+            risk = assess_project_risk(self.team, project_for_risk, conflicts) if project_for_risk else _assess_plan_risk(self.team, draft_data, conflicts)
             yield _sse("agent_step", {"name": "plan_risk_assessment", "arguments": "{}"})
             yield _sse("agent_result", {"name": "plan_risk_assessment", "ok": True, "result": risk})
         except Exception:

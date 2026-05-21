@@ -250,8 +250,31 @@ _PLAN_MILESTONE_LOCATOR = {
 }
 _PLAN_MUTATE_NOTE = (
     "Use *_query when the user speaks casually (no UUID). "
-    "Status: 'achieved'/'done' → completed for tasks; 'achieved'/'done' → reached for milestones."
+    "Status: 'achieved'/'done' → completed for tasks; 'achieved'/'done' → reached for milestones. "
+    "For vague requests, first resolve semantically with project_query/task_query/milestone_query."
 )
+
+_PLAN_RISK_ACTION_SCHEMA = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["update_task_dates", "update_task_priority", "add_dependency", "update_milestone_date"],
+            },
+            "task_id": {"type": "string"},
+            "milestone_id": {"type": "string"},
+            "depends_on_task_id": {"type": "string"},
+            "start_date": {"type": "string", "description": "YYYY-MM-DD"},
+            "end_date": {"type": "string", "description": "YYYY-MM-DD"},
+            "target_date": {"type": "string", "description": "YYYY-MM-DD"},
+            "priority": {"type": "string", "enum": ["low", "medium", "high"]},
+            "reason": {"type": "string"},
+        },
+        "required": ["action"],
+    },
+}
 
 
 def openai_plan_tool_schemas() -> list[dict[str, Any]]:
@@ -552,7 +575,11 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "plan_detect_conflicts",
-                "description": "Detect scheduling conflicts for the team or one project (id or project_query).",
+                "description": (
+                    "Detect scheduling conflicts for the team or one project (id or project_query). "
+                    "Use for semantic requests about overlaps, blockers, timeline pressure, overloaded assignees, "
+                    "deadline danger, schedule cleanup, or roadmap safety."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": dict(_PLAN_PROJECT_LOCATOR),
@@ -574,7 +601,69 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "plan_risk_assessment",
-                "description": "Assess timeline risk for a project (project_id or project_query).",
+                "description": (
+                    "Assess timeline risk for a project (project_id or project_query). "
+                    "Use for semantic requests like 'is this risky', 'make the roadmap safer', "
+                    "'deadline danger', 'timeline feels impossible', 'pressure', or 'mitigation'."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": dict(_PLAN_PROJECT_LOCATOR),
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_resolve_conflicts",
+                "description": (
+                    "Apply AI schedule fixes for project conflicts (project_id or project_query). "
+                    "Use only when the user asks to fix/resolve/clean up/reschedule/unblock timeline conflicts."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": dict(_PLAN_PROJECT_LOCATOR),
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_generate_risk_resolution",
+                "description": (
+                    "Generate concrete risk mitigation actions for a project without applying them. "
+                    "Use for explanation/proposal requests about safer roadmap, mitigation, pressure, or risk cleanup."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": dict(_PLAN_PROJECT_LOCATOR),
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_apply_risk_resolution",
+                "description": "Apply previously proposed risk mitigation actions to a project. Use only after user asks to apply/fix.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        **_PLAN_PROJECT_LOCATOR,
+                        "actions": _PLAN_RISK_ACTION_SCHEMA,
+                    },
+                    "required": ["actions"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "plan_resolve_risk",
+                "description": (
+                    "One-shot project remediation: resolve active conflicts first, then apply risk mitigations, then reassess. "
+                    "Use for action requests like 'clean it up', 'make this safer', 'reduce risk', 'remove blockers', "
+                    "'fix timeline pressure', or 'resolve deadline danger'."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": dict(_PLAN_PROJECT_LOCATOR),
@@ -853,6 +942,14 @@ def execute_plan_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, 
             return _plan_sync_wiki(ctx, args)
         if name == "plan_risk_assessment":
             return _plan_risk_assessment(ctx, args)
+        if name == "plan_resolve_conflicts":
+            return _plan_resolve_conflicts(ctx, args)
+        if name == "plan_generate_risk_resolution":
+            return _plan_generate_risk_resolution(ctx, args)
+        if name == "plan_apply_risk_resolution":
+            return _plan_apply_risk_resolution(ctx, args)
+        if name == "plan_resolve_risk":
+            return _plan_resolve_risk(ctx, args)
         if name == "plan_check_overdue":
             return _plan_check_overdue(ctx, args)
         if name == "plan_decompose_task_daily":
@@ -1665,9 +1762,8 @@ def _plan_sync_wiki(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 
 def _plan_risk_assessment(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     from chat.plan_resolve import require_project
-    from planning.agent_executor import _assess_plan_risk
-    from planning.serializers import ProjectDetailSerializer
     from accounts.models import Team
+    from planning.remediation import assess_project_risk
 
     project, err_resp = require_project(ctx, args)
     if err_resp:
@@ -1675,15 +1771,106 @@ def _plan_risk_assessment(ctx: ToolContext, args: dict[str, Any]) -> dict[str, A
     project_id = str(project.id)
     try:
         team = Team.objects.get(id=ctx.team_id)
-        draft = ProjectDetailSerializer(project).data
         conflicts = []
         try:
             from planning.agent_sync import detect_date_conflicts
             conflicts = detect_date_conflicts(ctx.team_id, project_id=project_id)
         except Exception:
             pass
-        risk = _assess_plan_risk(team, draft, conflicts)
+        risk = assess_project_risk(team, project, conflicts)
         return {"ok": True, "risk": risk}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _plan_resolve_conflicts(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from chat.plan_resolve import require_project
+    from planning.remediation import remediate_project
+
+    project, err_resp = require_project(ctx, args)
+    if err_resp:
+        return err_resp
+    try:
+        result = remediate_project(team=project.team, project=project, apply_conflicts=True, apply_risk=False)
+        return {
+            "ok": True,
+            "resolved_from_query": bool((args.get("project_query") or "").strip()),
+            **result,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _plan_generate_risk_resolution(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from chat.plan_resolve import require_project
+    from planning.agent_sync import detect_date_conflicts
+    from planning.remediation import assess_project_risk, generate_risk_actions
+
+    project, err_resp = require_project(ctx, args)
+    if err_resp:
+        return err_resp
+    try:
+        conflicts = detect_date_conflicts(ctx.team_id, project_id=str(project.id))
+        risk = assess_project_risk(project.team, project, conflicts)
+        actions = generate_risk_actions(project.team, project, conflicts, risk)
+        return {
+            "ok": True,
+            "project_id": str(project.id),
+            "risk": risk,
+            "conflict_count": len(conflicts),
+            "proposed_count": len(actions),
+            "actions": actions,
+            "resolved_from_query": bool((args.get("project_query") or "").strip()),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _plan_apply_risk_resolution(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from chat.plan_resolve import require_project
+    from planning.agent_sync import detect_date_conflicts
+    from planning.remediation import apply_risk_actions, assess_project_risk
+
+    project, err_resp = require_project(ctx, args)
+    if err_resp:
+        return err_resp
+    actions = args.get("actions")
+    if not isinstance(actions, list):
+        return {"ok": False, "error": "actions_required"}
+    try:
+        applied, skipped = apply_risk_actions(project, [a for a in actions if isinstance(a, dict)])
+        conflicts = detect_date_conflicts(ctx.team_id, project_id=str(project.id))
+        risk = assess_project_risk(project.team, project, conflicts)
+        return {
+            "ok": True,
+            "project_id": str(project.id),
+            "applied_count": len(applied),
+            "skipped_count": len(skipped),
+            "warnings": skipped[:20],
+            "applied_actions": applied,
+            "remaining_conflicts": len(conflicts),
+            "remaining_risk_score": risk.get("score", 0),
+            "risk": risk,
+            "resolved_from_query": bool((args.get("project_query") or "").strip()),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _plan_resolve_risk(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    from chat.plan_resolve import require_project
+    from planning.remediation import remediate_project
+
+    project, err_resp = require_project(ctx, args)
+    if err_resp:
+        return err_resp
+    try:
+        result = remediate_project(team=project.team, project=project, apply_conflicts=True, apply_risk=True)
+        return {
+            "ok": True,
+            "resolved_from_query": bool((args.get("project_query") or "").strip()),
+            **result,
+        }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
