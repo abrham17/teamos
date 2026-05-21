@@ -140,7 +140,7 @@ export function ChatInterface() {
         if (Array.isArray(parsed) && parsed.length > 0) {
           setSessions(parsed);
           setActiveSessionId((prev) =>
-            prev && parsed.some((s: any) => s.id === prev) ? prev : parsed[0].id
+            prev && parsed.some((s: { id: string }) => s.id === prev) ? prev : parsed[0].id
           );
           setSessionReady(true);
         }
@@ -390,8 +390,8 @@ export function ChatInterface() {
             }
           }
         }
-      } catch (e: any) {
-        if (e.name === "AbortError") {
+      } catch (e: unknown) {
+        if (e instanceof Error && e.name === "AbortError") {
           setIsStreaming(false);
           setStatus("Cancelled.");
           return;

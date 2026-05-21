@@ -211,17 +211,17 @@ export function DependencyGraph({ project, onRefresh }: DependencyGraphProps) {
           </button>
           <div className="w-px h-6 bg-[var(--border-subtle)] mx-2" />
           
-          <button onClick={() => cyRef.current?.zoom(cyRef.current.zoom() + 0.2)} className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-muted)]">
+          <button aria-label="Zoom in" onClick={() => cyRef.current?.zoom(cyRef.current.zoom() + 0.2)} className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-muted)]">
             <ZoomIn className="w-4 h-4" />
           </button>
-          <button onClick={() => cyRef.current?.zoom(cyRef.current.zoom() - 0.2)} className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-muted)]">
+          <button aria-label="Zoom out" onClick={() => cyRef.current?.zoom(cyRef.current.zoom() - 0.2)} className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-muted)]">
             <ZoomOut className="w-4 h-4" />
           </button>
           <button onClick={() => cyRef.current?.fit()} className="px-3 py-1 text-xs font-bold uppercase tracking-widest hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-muted)]">
             Fit
           </button>
           <div className="w-px h-6 bg-[var(--border-subtle)] mx-2" />
-          <button onClick={() => setIsFullscreen(!isFullscreen)} className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-muted)]">
+          <button aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"} onClick={() => setIsFullscreen(!isFullscreen)} className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-muted)]">
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
         </div>
