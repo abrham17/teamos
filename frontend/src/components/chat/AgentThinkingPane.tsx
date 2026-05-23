@@ -4,7 +4,9 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { BrainCircuit, AlertTriangle, RotateCcw, RefreshCw, ChevronDown } from "lucide-react";
 import type { AgentThinking, AgentReflection, AgentStep } from "./chatTypes";
-import { Check, Loader2 } from "lucide-react";
+import { Check } from "lucide-react";
+import { LottiePlayer } from "@/components/ui/LottiePlayer";
+import { ICONSCOUT } from "@/lib/iconscoutAssets";
 
 interface AgentThinkingPaneProps {
   thoughts: AgentThinking[];
@@ -88,7 +90,14 @@ export function AgentThinkingPane({ thoughts, reflections, steps = [], isActive 
                           }`}>
                             {isDone && <Check className="w-2.5 h-2.5" />}
                             {isErr  && <AlertTriangle className="w-2.5 h-2.5" />}
-                            {isPending && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                            {isPending && (
+                              <LottiePlayer
+                                src={ICONSCOUT.lottie.aiToolPending}
+                                width={14}
+                                height={14}
+                                aria-label="Step in progress"
+                              />
+                            )}
                           </div>
                           {!isLast && <div className="w-[2px] flex-1 min-h-[14px] bg-[var(--border-subtle)] mt-0.5" />}
                         </div>

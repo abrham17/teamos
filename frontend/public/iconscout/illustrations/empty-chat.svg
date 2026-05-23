@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" fill="none" role="img" aria-label="AI chat assistant">
+  <rect x="40" y="48" width="200" height="140" rx="20" fill="#1a1a24" stroke="#8b7ff4" stroke-opacity="0.35" stroke-width="2"/>
+  <circle cx="88" cy="108" r="28" fill="#8b7ff4" fill-opacity="0.2"/>
+  <path d="M76 108h24M88 96v24" stroke="#8b7ff4" stroke-width="3" stroke-linecap="round"/>
+  <rect x="128" y="92" width="96" height="10" rx="5" fill="#8b7ff4" fill-opacity="0.5"/>
+  <rect x="128" y="112" width="72" height="8" rx="4" fill="#64748b" fill-opacity="0.5"/>
+  <rect x="128" y="132" width="84" height="8" rx="4" fill="#64748b" fill-opacity="0.35"/>
+  <path d="M88 188l-16 24h32l-16-24z" fill="#1a1a24" stroke="#8b7ff4" stroke-opacity="0.35" stroke-width="2"/>
+  <circle cx="248" cy="72" r="36" fill="#8b7ff4" fill-opacity="0.12"/>
+  <path d="M232 72h32M248 56v32" stroke="#8b7ff4" stroke-opacity="0.4" stroke-width="2" stroke-linecap="round"/>
+</svg>

@@ -13,6 +13,8 @@ import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentThinking, AgentReflection, AgentStep, AgentStrategy } from "@/components/chat/chatTypes";
 import { AgentThinkingPane } from "@/components/chat/AgentThinkingPane";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ICONSCOUT } from "@/lib/iconscoutAssets";
 
 type SessionDetailResponse = { messages?: ChatMessage[] };
 
@@ -690,19 +692,18 @@ export function ChatInterface() {
             >
               {/* Centered Landing elements (Only visible when empty) */}
               {!hasMessages && sessionReady && (
-                <motion.div 
+                <motion.div
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="w-full flex flex-col items-center text-center space-y-6 mb-8"
+                  className="w-full mb-8 pointer-events-auto"
                 >
-                  {/* Hero */}
-                  <div className="space-y-2 pointer-events-auto">
-                    <h2 className="text-3xl font-bold tracking-tight text-[var(--text-primary)] flex items-center justify-center gap-2.5">
-                      <Bot className="h-8 w-8 text-[var(--accent)]" />
-                      Architect Intelligence
-                    </h2>
-                    <p className="text-[14px] leading-relaxed text-[var(--text-muted)] max-w-md mx-auto">Design roads, balance assignee logs, search project constraints, and query wiki documents.</p>
-                  </div>
+                  <EmptyState
+                    illustrationSrc={ICONSCOUT.illustrations.emptyChat}
+                    illustrationAlt="AI assistant ready to help"
+                    title="Architect Intelligence"
+                    description="Design roads, balance assignee logs, search project constraints, and query wiki documents."
+                    className="py-4"
+                  />
                 </motion.div>
               )}
 

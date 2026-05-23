@@ -85,6 +85,7 @@ const STEP_LABELS: Record<string, string> = {
   plan_auto_resolve: "Auto-resolving conflicts",
   plan_risk_assessment: "Assessing timeline risk",
   plan_sync_wiki: "Syncing project to wiki",
+  plan_reindex: "Updating search index",
   plan_check_overdue: "Checking for overdue items",
   wiki_search_pages: "Searching wiki",
   wiki_create_page: "Creating wiki page",
@@ -111,6 +112,138 @@ function getStepLabel(name: string, args?: string): string {
     } catch { /* ignore */ }
   }
   return base;
+}
+
+function clonePlanningState(
+  state: NonNullable<ChatMessage["planningState"]>
+): NonNullable<ChatMessage["planningState"]> {
+  return {
+    statusText: state.statusText,
+    agentSteps: state.agentSteps.map((step) => ({ ...step })),
+    planResult: state.planResult
+      ? {
+          ...state.planResult,
+          risk: state.planResult.risk
+            ? {
+                ...state.planResult.risk,
+                factors: [...(state.planResult.risk.factors ?? [])],
+                suggestions: [...(state.planResult.risk.suggestions ?? [])],
+              }
+            : undefined,
+          knowledgeGaps: state.planResult.knowledgeGaps
+            ? [...state.planResult.knowledgeGaps]
+            : undefined,
+        }
+      : state.planResult,
+  };
+}
+
+function buildPlanSummary(data: Record<string, unknown>): string {
+  const parts: string[] = [];
+  const description = typeof data.description === "string" ? data.description.trim() : "";
+  if (description) parts.push(description);
+  const suggestions = Array.isArray(data.critique_suggestions)
+    ? data.critique_suggestions.filter((item): item is string => typeof item === "string")
+    : [];
+  if (suggestions.length > 0) {
+    parts.push(`\n\n### Recommendations\n${suggestions.map((item) => `- ${item}`).join("\n")}`);
+  }
+  return parts.join("");
+}
+
+function applyArchitectStreamEvent(
+  msg: ChatMessage,
+  event: string,
+  data: Record<string, unknown>
+): ChatMessage {
+  if (event === "agent_chat_chunk") {
+    return {
+      ...msg,
+      text: `${msg.text ?? ""}${typeof data.text === "string" ? data.text : ""}`,
+      planningState: undefined,
+      isStreaming: true,
+    };
+  }
+  if (event === "agent_chat_done") {
+    return { ...msg, isStreaming: false, planningState: undefined };
+  }
+
+  const planState = clonePlanningState(
+    msg.planningState ?? { statusText: "", agentSteps: [], planResult: null }
+  );
+  let text = msg.text ?? "";
+
+  if (event === "agent_status") {
+    planState.statusText = typeof data.status === "string" ? data.status : "";
+  } else if (event === "agent_step") {
+    const name = typeof data.name === "string" ? data.name : "";
+    const label = getStepLabel(name, JSON.stringify(data.arguments || {}));
+    planState.agentSteps = [...planState.agentSteps, { name, label, status: "running" }];
+  } else if (event === "agent_result") {
+    const name = typeof data.name === "string" ? data.name : "";
+    planState.agentSteps = planState.agentSteps.map((step) =>
+      step.name === name && step.status === "running"
+        ? {
+            ...step,
+            status: data.ok ? "done" : "error",
+            result: (data.result as Record<string, unknown> | undefined) ?? step.result,
+          }
+        : step
+    );
+  } else if (event === "reasoning_done") {
+    planState.statusText = "Reasoning complete. Applying plan to your project...";
+    const summary = buildPlanSummary(data);
+    if (summary) text = summary;
+  } else if (event === "agent_done") {
+    const summary = buildPlanSummary(data);
+    if (summary) text = summary;
+    planState.planResult = {
+      projectId: typeof data.project_id === "string" ? data.project_id : undefined,
+      projectName: typeof data.project_name === "string" ? data.project_name : undefined,
+      taskCount: typeof data.task_count === "number" ? data.task_count : undefined,
+      milestoneCount: typeof data.milestone_count === "number" ? data.milestone_count : undefined,
+      conflictCount: typeof data.conflict_count === "number" ? data.conflict_count : undefined,
+      risk: data.risk as PlanResult["risk"],
+      wikiPageUrl: typeof data.wiki_page_url === "string" ? data.wiki_page_url : undefined,
+      knowledgeGaps: Array.isArray(data.knowledge_gaps)
+        ? data.knowledge_gaps.filter((item): item is string => typeof item === "string")
+        : undefined,
+      critiqueScore: typeof data.critique_score === "number" ? data.critique_score : undefined,
+    };
+    return { ...msg, text, isStreaming: false, planningState: planState };
+  }
+
+  return { ...msg, text, planningState: planState, isStreaming: true };
+}
+
+function processSseLines(
+  lines: string[],
+  currentEventRef: { value: string },
+  onEvent: (event: string, data: Record<string, unknown>) => void
+) {
+  for (const line of lines) {
+    if (line.startsWith("event:")) {
+      currentEventRef.value = line.slice(6).trim();
+      continue;
+    }
+    if (!line.startsWith("data:") || !currentEventRef.value) continue;
+    const dataStr = line.slice(5).trim();
+    if (!dataStr) continue;
+    try {
+      const data = JSON.parse(dataStr) as Record<string, unknown>;
+      if (currentEventRef.value === "agent_error") {
+        throw new Error(typeof data.detail === "string" ? data.detail : "Planning agent error");
+      }
+      onEvent(currentEventRef.value, data);
+    } catch (parseErr) {
+      if (parseErr instanceof SyntaxError) {
+        console.warn("Failed to parse planner SSE payload", parseErr);
+        continue;
+      }
+      throw parseErr;
+    }
+    currentEventRef.value = "";
+  }
 }
 
 function riskColor(score: number): string {
@@ -389,89 +522,48 @@ export function AIPlannerOverlay({
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      let currentEvent = "";
+      const currentEventRef = { value: "" };
+
+      const handleStreamEvent = (event: string, data: Record<string, unknown>) => {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId ? applyArchitectStreamEvent(msg, event, data) : msg
+          )
+        );
+      };
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("event:")) {
-            currentEvent = line.slice(7).trim();
-          } else if (line.startsWith("data:") && currentEvent) {
-            const dataStr = line.slice(5).trim();
-            if (!dataStr) continue;
-            try {
-              const data = JSON.parse(dataStr);
-
-              setMessages((prev) =>
-                prev.map((msg) => {
-                  if (msg.id !== assistantMsgId) return msg;
-
-                  // Handle QA Streaming Chat branch
-                  if (currentEvent === "agent_chat_chunk") {
-                    return {
-                      ...msg,
-                      text: (msg.text || "") + data.text,
-                      planningState: undefined // Clear planning state since it's normal chat
-                    };
-                  }
-                  if (currentEvent === "agent_chat_done") {
-                    return { ...msg, isStreaming: false, planningState: undefined };
-                  }
-
-                  // Handle planning agent progress branch
-                  const planState = msg.planningState || { statusText: "", agentSteps: [], planResult: null };
-
-                  if (currentEvent === "agent_status") {
-                    planState.statusText = data.status || "";
-                  } else if (currentEvent === "agent_step") {
-                    const name = data.name || "";
-                    const label = getStepLabel(name, JSON.stringify(data.arguments || {}));
-                    planState.agentSteps = [...planState.agentSteps, { name, label, status: "running" }];
-                  } else if (currentEvent === "agent_result") {
-                    const name = data.name || "";
-                    planState.agentSteps = planState.agentSteps.map((step) =>
-                      step.name === name && step.status === "running"
-                        ? { ...step, status: data.ok ? "done" : "error", result: data.result }
-                        : step
-                    );
-                  } else if (currentEvent === "reasoning_done") {
-                    planState.statusText = "Reasoning complete. Creating project entities...";
-                  } else if (currentEvent === "agent_done") {
-                    planState.planResult = {
-                      projectId: data.project_id,
-                      projectName: data.project_name,
-                      taskCount: data.task_count,
-                      milestoneCount: data.milestone_count,
-                      conflictCount: data.conflict_count,
-                      risk: data.risk,
-                      wikiPageUrl: data.wiki_page_url,
-                      knowledgeGaps: data.knowledge_gaps,
-                      critiqueScore: data.critique_score,
-                    };
-                    return { ...msg, isStreaming: false, planningState: planState };
-                  } else if (currentEvent === "agent_error") {
-                    throw new Error(data.detail || "Planning agent error");
-                  }
-
-                  return { ...msg, planningState: planState };
-                })
-              );
-            } catch (parseErr) {
-              if (parseErr instanceof Error && parseErr.message.startsWith("Planning agent error")) throw parseErr;
-            }
-            currentEvent = "";
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          processSseLines(lines, currentEventRef, handleStreamEvent);
+        }
+        if (done) {
+          if (buffer.trim()) {
+            processSseLines(buffer.split("\n"), currentEventRef, handleStreamEvent);
           }
+          break;
         }
       }
 
-      // Cleanup streaming flag if complete
+      // Cleanup streaming flag; surface partial runs that never reached agent_done
       setMessages((prev) =>
-        prev.map((msg) => (msg.id === assistantMsgId ? { ...msg, isStreaming: false } : msg))
+        prev.map((msg) => {
+          if (msg.id !== assistantMsgId) return msg;
+          if (msg.planningState?.planResult) {
+            return { ...msg, isStreaming: false };
+          }
+          if (msg.text) {
+            return { ...msg, isStreaming: false };
+          }
+          return {
+            ...msg,
+            isStreaming: false,
+            text: "The architect finished processing but did not return a final summary. Check server logs or try again.",
+          };
+        })
       );
     } catch (error) {
       const err = error as Error;

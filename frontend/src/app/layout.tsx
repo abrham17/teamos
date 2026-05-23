@@ -19,6 +19,16 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "TeamOS — Team Knowledge Wiki",
   description: "Your team's intelligence, beautifully structured and seamlessly interlinked.",
+  openGraph: {
+    title: "TeamOS — Team Knowledge Wiki",
+    description: "Your team's intelligence, beautifully structured and seamlessly interlinked.",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "TeamOS — Team Knowledge Wiki",
+    description: "Your team's intelligence, beautifully structured and seamlessly interlinked.",
+  },
 };
 
 // Inline script — runs before React hydrates to prevent theme flash

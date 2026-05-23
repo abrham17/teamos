@@ -2,6 +2,8 @@
 
 import { Search, Target, Plus } from "lucide-react";
 import type { PlanProjectListItem } from "../types";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ICONSCOUT } from "@/lib/iconscoutAssets";
 
 interface ProjectListPanelProps {
   projects: PlanProjectListItem[];
@@ -62,7 +64,23 @@ export function ProjectListPanel({
             ))}
           </div>
         ) : projects.length === 0 ? (
-          <div className="p-3 text-sm text-[var(--text-muted)]">No projects yet.</div>
+          <EmptyState
+            compact
+            illustrationSrc={ICONSCOUT.illustrations.emptyPlanner}
+            illustrationAlt="No planner projects"
+            title="No projects yet"
+            description="Create a project to plan milestones, tasks, and team workload."
+            action={
+              <button
+                type="button"
+                onClick={onNewProject}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-[var(--bg-950)] hover:opacity-90"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New project
+              </button>
+            }
+          />
         ) : (
           projects.map((project) => {
             const active = project.id === activeProjectId;

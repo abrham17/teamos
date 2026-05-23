@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
-import { User, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { Illustration } from "@/components/ui/Illustration";
+import { ICONSCOUT } from "@/lib/iconscoutAssets";
 
 interface OnboardingModalProps {
   onComplete: () => void;
@@ -46,10 +48,14 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
     <div className="fixed inset-0 z-[9999] bg-[var(--bg-950)]/80 backdrop-blur-md flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
         <div className="p-8">
-          <div className="w-16 h-16 bg-[var(--accent)]/10 rounded-2xl flex items-center justify-center mb-6 mx-auto">
-            <User className="w-8 h-8 text-[var(--accent)]" />
-          </div>
-          
+          <Illustration
+            src={ICONSCOUT.illustrations.onboardingWelcome}
+            alt="Welcome to your team"
+            width={200}
+            height={150}
+            className="mb-4 max-h-[140px]"
+          />
+
           <h2 className="text-2xl font-bold text-center text-[var(--text-primary)] mb-2">
             Welcome to TeamOS
           </h2>

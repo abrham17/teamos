@@ -14,6 +14,9 @@ import {
   ArrowRight
 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { LottiePlayer } from "@/components/ui/LottiePlayer";
+import { ICONSCOUT } from "@/lib/iconscoutAssets";
 
 interface IngestJob {
   id: string;
@@ -207,8 +210,19 @@ export default function IngestPage() {
                     className="absolute inset-0 opacity-0 cursor-pointer"
                     accept=".md,.pdf,.docx,.txt"
                   />
-                  <div className="w-16 h-16 rounded-full bg-[var(--accent-subtle)] flex items-center justify-center mb-4 group-hover:scale-105 transition-transform duration-200">
-                    <Upload className="w-8 h-8 text-[var(--accent)]" />
+                  <div className="mb-4 flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
+                    {uploading ? (
+                      <LottiePlayer
+                        src={ICONSCOUT.lottie.loadingIngest}
+                        width={64}
+                        height={64}
+                        aria-label="Uploading file"
+                      />
+                    ) : (
+                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--accent-subtle)]">
+                        <Upload className="h-8 w-8 text-[var(--accent)]" />
+                      </div>
+                    )}
                   </div>
                   <h3 className="text-lg font-semibold mb-1">
                     {uploading ? "Uploading..." : "Click or drag to upload"}
@@ -230,13 +244,27 @@ export default function IngestPage() {
                       required
                     />
                   </div>
-                  <button 
+                  <button
                     type="submit"
                     disabled={loading || !url.trim()}
                     className="flex items-center justify-center gap-2 py-3 bg-[var(--accent)] text-[var(--bg-950)] font-bold rounded-xl hover:shadow-[var(--shadow-glow)] hover:scale-[1.01] transition-all disabled:opacity-50"
                   >
-                    {loading ? "Starting Crawler..." : "Start Ingestion"}
-                    <ArrowRight className="w-4 h-4" />
+                    {loading ? (
+                      <>
+                        <LottiePlayer
+                          src={ICONSCOUT.lottie.loadingIngest}
+                          width={24}
+                          height={24}
+                          aria-label="Starting crawler"
+                        />
+                        Starting Crawler...
+                      </>
+                    ) : (
+                      <>
+                        Start Ingestion
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
                   </button>
                 </form>
               )}
@@ -273,9 +301,14 @@ export default function IngestPage() {
           </div>
           
           {jobs.length === 0 ? (
-            <div className="py-12 border border-dashed border-[var(--border-subtle)] rounded-2xl flex flex-col items-center justify-center text-[var(--text-muted)]">
-              <Clock className="w-8 h-8 mb-2 opacity-20" />
-              <p>No recent ingestion activity</p>
+            <div className="border border-dashed border-[var(--border-subtle)] rounded-2xl">
+              <EmptyState
+                compact
+                illustrationSrc={ICONSCOUT.illustrations.emptyIngest}
+                illustrationAlt="No ingestion jobs yet"
+                title="No recent ingestion activity"
+                description="Upload a file or crawl a URL to start building your team's knowledge base."
+              />
             </div>
           ) : (
             <div className="bg-white/[0.02] border border-[var(--border-subtle)] rounded-2xl overflow-hidden shadow-md backdrop-blur-md">

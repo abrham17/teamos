@@ -12,6 +12,8 @@ import UseCaseGrid from '@/components/landing/UseCaseGrid';
 import HeroMockup from '@/components/landing/HeroMockup';
 import { HomePricing } from "@/components/home/HomePricing";
 import LandingFooter from '@/components/landing/LandingFooter';
+import { Illustration } from '@/components/ui/Illustration';
+import { ICONSCOUT } from '@/lib/iconscoutAssets';
 
 export default function Home() {
   const { isSignedIn } = useUser();
@@ -117,6 +119,16 @@ export default function Home() {
               transition={{ delay: 0.3, duration: 0.7 }}
               className="lg:col-span-7 relative"
             >
+              <div className="mb-6 hidden lg:flex justify-center">
+                <Illustration
+                  src={ICONSCOUT.illustrations.heroTeamwork}
+                  alt="Team collaboration on shared knowledge"
+                  width={420}
+                  height={280}
+                  className="max-h-[200px] opacity-95"
+                  priority
+                />
+              </div>
               <HeroMockup />
               
               {/* Floating micro indicators */}

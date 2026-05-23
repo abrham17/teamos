@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useMemo, type RefObject } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useWikiStore } from "@/stores/useWikiStore";
 import { api } from "@/lib/api";
-import { ChevronLeft, FolderOpen, Book } from "lucide-react";
+import { ChevronLeft, FolderOpen } from "lucide-react";
 import { GoogleDocsEditor, type GoogleDocsEditorHandle } from "../editor/GoogleDocsEditor";
 import { OpenMarkdown } from "@/components/wiki-open/OpenMarkdown";
 import FrontmatterPanel from "@/components/wiki/FrontmatterPanel";
@@ -12,6 +12,8 @@ import { useToast } from "@/components/ui/Toast";
 import { WikiPublishReviewModal, type WikiChangeSetPayload } from "@/components/wiki-v2/WikiPublishReviewModal";
 import RawSourceViewer from "@/components/wiki/RawSourceViewer";
 import { BacklinksPanel } from "./BacklinksPanel";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ICONSCOUT } from "@/lib/iconscoutAssets";
 
 interface Citation {
   id: string;
@@ -315,32 +317,30 @@ export function MarkdownWorkspace() {
   if (!isNew && !page && !loading) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-[var(--bg-900)] text-center px-4">
-        <div className="relative mb-6">
-          <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] opacity-20 blur-xl" />
-          <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center shadow-[var(--shadow-glow)]">
-            <Book className="w-7 h-7 text-white" />
-          </div>
-        </div>
-        <h2 className="text-2xl font-semibold text-[var(--text-primary)] mb-2 tracking-tight">Team Knowledge Wiki</h2>
-        <p className="text-[var(--text-muted)] mb-8 max-w-sm text-[14px] leading-relaxed">
-          Capture documentation, meeting notes, and decisions. Use <code className="text-[var(--accent)] bg-[var(--accent-subtle)] px-1 py-0.5 rounded text-[13px]">[[links]]</code> to connect pages.
-        </p>
-        <div className="flex gap-3">
-          <button
-            onClick={() => router.push("/wiki?action=new")}
-            className="px-5 py-2.5 bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white font-semibold rounded-xl shadow-[var(--shadow-glow)] hover:shadow-[var(--shadow-lg)] hover:scale-[1.02] active:scale-98 transition-all"
-          >
-            Create New Page
-          </button>
-          <button
-            onClick={() => setWikiSidebarOpen(true)}
-            className="px-5 py-2.5 bg-[var(--bg-800)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-medium rounded-xl hover:bg-[var(--bg-700)] hover:border-[var(--border-strong)] transition-colors shadow-[var(--shadow-sm)]"
-          >
-            Browse Pages
-          </button>
-        </div>
+        <EmptyState
+          illustrationSrc={ICONSCOUT.illustrations.emptyWiki}
+          illustrationAlt="Team knowledge wiki"
+          title="Team Knowledge Wiki"
+          description="Capture documentation, meeting notes, and decisions. Use [[links]] to connect pages and grow your knowledge graph."
+          action={
+            <div className="flex flex-wrap justify-center gap-3">
+              <button
+                onClick={() => router.push("/wiki?action=new")}
+                className="px-5 py-2.5 bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white font-semibold rounded-xl shadow-[var(--shadow-glow)] hover:shadow-[var(--shadow-lg)] hover:scale-[1.02] active:scale-98 transition-all"
+              >
+                Create New Page
+              </button>
+              <button
+                onClick={() => setWikiSidebarOpen(true)}
+                className="px-5 py-2.5 bg-[var(--bg-800)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-medium rounded-xl hover:bg-[var(--bg-700)] hover:border-[var(--border-strong)] transition-colors shadow-[var(--shadow-sm)]"
+              >
+                Browse Pages
+              </button>
+            </div>
+          }
+        />
         {wikiSidebarOpen && (
-          <OpenMarkdown 
+          <OpenMarkdown
             teamId={currentTeamId}
             onOpen={(s) => { setWikiSidebarOpen(false); router.push(`/wiki?page=${s}`); }}
             onClose={() => setWikiSidebarOpen(false)}

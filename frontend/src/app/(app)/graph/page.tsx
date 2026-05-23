@@ -25,6 +25,8 @@ import {
   runGraphChromeEnter,
   runGraphOverlayEnter,
 } from "@/lib/graphChromeMotion";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ICONSCOUT } from "@/lib/iconscoutAssets";
 
 interface GraphData {
   nodes: GraphNode[];
@@ -362,17 +364,14 @@ export default function GraphPage() {
 
         {/* Empty state */}
         {!loading && data && data.nodes.length === 0 && (
-          <div
-            ref={emptyWrapRef}
-            className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-20"
-          >
-            <div className="w-16 h-16 rounded-2xl bg-[var(--surface-1)] border border-[var(--border-subtle)] flex items-center justify-center">
-              <Share2 className="w-8 h-8 text-[var(--text-dim)]" />
-            </div>
-            <h3 className="text-base font-semibold text-[var(--text-primary)]">No knowledge graph yet</h3>
-            <p className="text-sm text-[var(--text-muted)] text-center max-w-xs">
-              Create wiki pages with <code className="text-[var(--accent)]">[[wikilinks]]</code> to build your graph.
-            </p>
+          <div ref={emptyWrapRef} className="absolute inset-0 z-20 flex items-center justify-center">
+            <EmptyState
+              compact
+              illustrationSrc={ICONSCOUT.illustrations.emptyGraph}
+              illustrationAlt="Empty knowledge graph"
+              title="No knowledge graph yet"
+              description="Create wiki pages with [[wikilinks]] to connect ideas and populate your graph."
+            />
           </div>
         )}
 

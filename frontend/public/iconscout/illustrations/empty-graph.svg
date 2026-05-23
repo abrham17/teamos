@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" fill="none" role="img" aria-label="Knowledge graph network">
+  <circle cx="160" cy="120" r="28" fill="#8b7ff4" fill-opacity="0.25" stroke="#8b7ff4" stroke-width="2"/>
+  <circle cx="80" cy="80" r="18" fill="#1a1a24" stroke="#22d3ee" stroke-opacity="0.6" stroke-width="2"/>
+  <circle cx="240" cy="72" r="18" fill="#1a1a24" stroke="#a78bfa" stroke-opacity="0.6" stroke-width="2"/>
+  <circle cx="72" cy="168" r="16" fill="#1a1a24" stroke="#8b7ff4" stroke-opacity="0.5" stroke-width="2"/>
+  <circle cx="248" cy="176" r="16" fill="#1a1a24" stroke="#8b7ff4" stroke-opacity="0.5" stroke-width="2"/>
+  <path d="M98 88l50 24M222 84l-34 28M88 158l58-26M230 164l-58-32" stroke="#8b7ff4" stroke-opacity="0.35" stroke-width="2"/>
+  <path d="M160 92v-20M160 148v20M132 120h-28M188 120h28" stroke="#8b7ff4" stroke-opacity="0.2" stroke-width="1.5" stroke-dasharray="4 4"/>
+</svg>

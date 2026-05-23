@@ -15,11 +15,12 @@ import {
   Layers,
   ListOrdered,
   MessageSquare,
-  Network,
   Sparkles,
 } from "lucide-react";
 
 import { graphChromePrefersReducedMotion } from "@/lib/graphChromeMotion";
+import { Illustration } from "@/components/ui/Illustration";
+import { ICONSCOUT } from "@/lib/iconscoutAssets";
 
 const STEP_MS = 980;
 const HOLD_MS = 2800;
@@ -418,7 +419,17 @@ function illustrationFor(id: string, sceneIndex: number): ReactNode {
     case "scattered":
       return <SlideScatteredVisual />;
     case "wiki_memory":
-      return <SlideWikiGraphVisual uid={sceneIndex} />;
+      return (
+        <div className="flex flex-1 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)]/35 p-4">
+          <Illustration
+            src={ICONSCOUT.illustrations.emptyWiki}
+            alt="Shared wiki and knowledge graph"
+            width={260}
+            height={195}
+            className="max-h-[180px]"
+          />
+        </div>
+      );
     case "wiki_llm":
       return <SlideWikiFirstLLMVisual />;
     case "ingest":
@@ -430,7 +441,17 @@ function illustrationFor(id: string, sceneIndex: number): ReactNode {
     case "queue":
       return <SlideQueueVisual />;
     case "chat":
-      return <SlideChatVisual />;
+      return (
+        <div className="flex flex-1 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)]/35 p-4">
+          <Illustration
+            src={ICONSCOUT.illustrations.emptyChat}
+            alt="AI chat grounded in team knowledge"
+            width={260}
+            height={195}
+            className="max-h-[180px]"
+          />
+        </div>
+      );
     case "citations":
       return <SlideCitationsVisual />;
     default:
@@ -471,44 +492,6 @@ function ToolChip({ icon, label }: { icon: ReactNode; label: string }) {
     <div className="flex items-center gap-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-900)] px-2 py-1.5 text-[10px] text-[var(--text-secondary)]">
       {icon}
       {label}
-    </div>
-  );
-}
-
-function SlideWikiGraphVisual({ uid }: { uid: number }) {
-  const gid = `wg-${uid}`;
-  return (
-    <div className="flex flex-1 flex-col rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)]/35 p-4">
-      <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-stretch">
-        <div className="flex flex-1 flex-col rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-900)] p-3">
-          <div className="flex items-center gap-2 text-[10px] font-semibold text-[var(--accent)]">
-            <BookOpen className="h-3.5 w-3.5" /> Team wiki
-          </div>
-          <div className="mt-2 space-y-1.5">
-            <div className="h-2 w-full rounded bg-[var(--surface-2)]" />
-            <div className="h-2 rounded bg-[var(--surface-2)]" style={{ width: "80%" }} />
-            <div className="h-2 rounded bg-[var(--surface-2)]" style={{ width: "55%" }} />
-          </div>
-        </div>
-        <div className="flex flex-1 items-center justify-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-900)] p-2">
-          <svg viewBox="0 0 200 120" className="h-full w-full max-h-28" aria-hidden>
-            <defs>
-              <linearGradient id={`${gid}-e`} x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.45" />
-                <stop offset="100%" stopColor="#a78bfa" stopOpacity="0.35" />
-              </linearGradient>
-            </defs>
-            <path d="M40 75 C70 45, 100 40, 130 55" stroke={`url(#${gid}-e)`} strokeWidth="2" fill="none" />
-            <path d="M130 55 C150 65, 165 85, 172 100" stroke={`url(#${gid}-e)`} strokeWidth="2" fill="none" />
-            <circle cx="40" cy="75" r="10" fill="#1d4ed8" />
-            <circle cx="130" cy="55" r="12" fill="#06b6d4" />
-            <circle cx="172" cy="100" r="9" fill="#8b5cf6" />
-          </svg>
-        </div>
-      </div>
-      <div className="mt-2 flex items-center justify-center gap-1 text-[10px] text-[var(--text-muted)]">
-        <Network className="h-3 w-3" /> Pages stay linked—context outlives any single chat
-      </div>
     </div>
   );
 }
@@ -629,22 +612,6 @@ function SlideQueueVisual() {
           )}
         </div>
       ))}
-    </div>
-  );
-}
-
-function SlideChatVisual() {
-  return (
-    <div className="flex flex-1 flex-col justify-end gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)]/35 p-4">
-      <div className="flex justify-end">
-        <div className="max-w-[90%] rounded-2xl rounded-br-md bg-[var(--accent)]/25 px-3 py-2 text-left text-[11px] text-[var(--text-primary)]">
-          <MessageSquare className="mb-1 inline h-3 w-3 opacity-70" /> What did we decide about billing rollout?
-        </div>
-      </div>
-      <div className="flex items-center gap-2 text-[10px] text-[var(--text-dim)]">
-        <Bot className="h-3.5 w-3.5" />
-        Grounded on wiki + ingest—not generic web fluff
-      </div>
     </div>
   );
 }

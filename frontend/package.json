@@ -13,6 +13,7 @@
   "dependencies": {
     "@aarkue/tiptap-math-extension": "^1.4.0",
     "@clerk/nextjs": "^6.22.0",
+    "@lottiefiles/dotlottie-react": "^0.19.4",
     "@tanstack/react-query": "^5.100.6",
     "@tiptap/extension-blockquote": "^3.22.5",
     "@tiptap/extension-bold": "^3.22.5",

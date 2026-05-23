@@ -1,5 +1,7 @@
-import { CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { CheckCircle2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LottiePlayer } from "@/components/ui/LottiePlayer";
+import { ICONSCOUT } from "@/lib/iconscoutAssets";
 export type { AgentToolStep } from "@/components/chat/chatTypes";
 import type { AgentToolStep } from "@/components/chat/chatTypes";
 
@@ -30,8 +32,13 @@ export function ChatAgentToolTimeline({ steps }: { steps: AgentToolStep[] }) {
       {/* One-line summary */}
       <div className="flex items-center gap-1.5 flex-wrap">
         {isRunning && (
-          <span className="text-[10px] font-bold text-[var(--accent)] animate-pulse uppercase tracking-wider mr-1">
-            <Loader2 className="w-3 h-3 inline mr-1" />
+          <span className="text-[10px] font-bold text-[var(--accent)] uppercase tracking-wider mr-1 inline-flex items-center gap-1">
+            <LottiePlayer
+              src={ICONSCOUT.lottie.aiToolPending}
+              width={16}
+              height={16}
+              aria-label="Agent tools running"
+            />
             {completed}/{steps.length}
           </span>
         )}
@@ -52,7 +59,14 @@ export function ChatAgentToolTimeline({ steps }: { steps: AgentToolStep[] }) {
             >
               {isDone && <CheckCircle2 className="w-2.5 h-2.5" />}
               {isError && <AlertCircle className="w-2.5 h-2.5" />}
-              {isPending && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+              {isPending && (
+                <LottiePlayer
+                  src={ICONSCOUT.lottie.aiToolPending}
+                  width={14}
+                  height={14}
+                  aria-label={`Running ${s.name}`}
+                />
+              )}
               {s.name}
             </span>
           );
