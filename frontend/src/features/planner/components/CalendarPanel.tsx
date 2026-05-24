@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { motion } from "motion/react";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Loader2, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Loader2, Plus, X, Clock, Flag, Tag } from "lucide-react";
 import type { PlanCalendarEvent } from "../types";
 
 interface CalendarPanelProps {
@@ -13,6 +13,7 @@ interface CalendarPanelProps {
 
 export function CalendarPanel({ events, loading, onAddEvent }: CalendarPanelProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedEvent, setSelectedEvent] = useState<PlanCalendarEvent | null>(null);
 
   const daysInMonth = useMemo(() => {
     const year = currentDate.getFullYear();
@@ -159,6 +160,10 @@ export function CalendarPanel({ events, loading, onAddEvent }: CalendarPanelProp
                   {dayEvents.map((e, idx) => (
                     <div
                       key={idx}
+                      onClick={(clickEvent) => {
+                        clickEvent.stopPropagation();
+                        setSelectedEvent(e);
+                      }}
                       title={`${e.project_name}: ${e.title}`}
                       className={`px-2 py-1.5 rounded-lg text-[9px] font-bold truncate border shadow-sm transition-transform hover:scale-[1.02] active:scale-95 cursor-pointer ${
                         e.status === "completed" || e.status === "reached"
@@ -177,6 +182,134 @@ export function CalendarPanel({ events, loading, onAddEvent }: CalendarPanelProp
           })}
         </div>
       </div>
+
+      {/* EVENT DETAIL DIALOG */}
+      {selectedEvent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-[var(--bg-900)] border border-[var(--border-subtle)] rounded-2xl p-6 shadow-2xl relative overflow-hidden"
+          >
+            {/* Header */}
+            <div className="flex justify-between items-start mb-4">
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-muted)] bg-[var(--bg-950)] px-2.5 py-1 rounded-md border border-[var(--border-subtle)]">
+                  {selectedEvent.project_name}
+                </span>
+                <h3 className="text-base font-bold text-[var(--text-primary)] pt-1">
+                  {selectedEvent.title}
+                </h3>
+              </div>
+              <button
+                onClick={() => setSelectedEvent(null)}
+                className="p-1.5 hover:bg-[var(--bg-700)] rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Details Grid */}
+            <div className="space-y-4 pt-2">
+              {/* Description */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">Description</span>
+                <p className="text-xs text-[var(--text-secondary)] leading-relaxed bg-[var(--bg-950)]/40 border border-[var(--border-subtle)] p-3 rounded-xl min-h-[60px] whitespace-pre-wrap">
+                  {selectedEvent.description || "No description provided for this roadmap item."}
+                </p>
+              </div>
+
+              {/* Status & Priority / Kind */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">Status</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${
+                      selectedEvent.status === "completed" || selectedEvent.status === "reached"
+                        ? "bg-emerald-500 shadow-[0_0_6px_#10b981]"
+                        : selectedEvent.status === "in-progress"
+                          ? "bg-[var(--accent)] shadow-[0_0_6px_var(--accent)]"
+                          : selectedEvent.status === "blocked"
+                            ? "bg-rose-500 shadow-[0_0_6px_#f43f5e]"
+                            : "bg-amber-500 shadow-[0_0_6px_#f59e0b]"
+                    }`} />
+                    <span className="text-xs font-bold capitalize text-[var(--text-secondary)]">
+                      {selectedEvent.status.replace("-", " ")}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)] font-black">Priority</span>
+                  <div className="flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                    <span className="text-xs font-bold capitalize text-[var(--text-secondary)]">
+                      {selectedEvent.priority || "Medium"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dates */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">Start Date</span>
+                  <div className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] font-bold">
+                    <Clock className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                    <span>{selectedEvent.start_date ? new Date(selectedEvent.start_date).toLocaleDateString() : "Not set"}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">End Date</span>
+                  <div className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] font-bold">
+                    <Clock className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                    <span>{selectedEvent.end_date ? new Date(selectedEvent.end_date).toLocaleDateString() : "Not set"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Assignee / Kind */}
+              <div className="grid grid-cols-2 gap-4 pt-1 border-t border-[var(--border-subtle)]/50">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">Type</span>
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--text-secondary)]">
+                    {selectedEvent.kind === "milestone" ? (
+                      <>
+                        <Flag className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Milestone</span>
+                      </>
+                    ) : (
+                      <>
+                        <CalendarIcon className="w-3.5 h-3.5 text-[var(--accent)]" />
+                        <span>Task</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {selectedEvent.assignee_email && (
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">Assignee</span>
+                    <span className="text-xs font-bold text-[var(--text-secondary)] truncate block" title={selectedEvent.assignee_email}>
+                      {selectedEvent.assignee_email}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer Close */}
+            <div className="mt-6 flex justify-end border-t border-[var(--border-subtle)] pt-4 shrink-0">
+              <button
+                onClick={() => setSelectedEvent(null)}
+                className="px-4 py-2 bg-[var(--surface-2)] hover:bg-[var(--surface-3)] text-xs font-bold uppercase tracking-widest text-[var(--text-secondary)] rounded-xl border border-[var(--border-subtle)] transition-all"
+              >
+                Close details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

@@ -74,6 +74,9 @@ export interface PlanCalendarEvent {
   status: string;
   start_date: string | null;
   end_date: string | null;
+  description?: string;
+  priority?: string;
+  assignee_email?: string | null;
 }
 
 export interface ProjectMember {

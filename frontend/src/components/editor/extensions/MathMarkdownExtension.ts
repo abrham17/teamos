@@ -4,7 +4,7 @@ import { InlineMathNode } from "@aarkue/tiptap-math-extension";
 
 // Regexes for dollar and bracket delimiters
 const inlineDollarRegex = /^\$(?![$\s,.])((?:[^$\\]|\\\$|\\)+?)\$/;
-const blockDollarRegex = /^\$\$(?!\s)([\s\S]*?)\$\$/;
+const blockDollarRegex = /^\$\$\s*([\s\S]*?)\s*\$\$/;
 
 const blockBracketRegexes = [
   /^\\\\+\[([\s\S]*?)\\\\+\]/, // Double/multi-escaped

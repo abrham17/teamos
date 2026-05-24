@@ -30,35 +30,42 @@ export function TimelinePanel({ tasks, milestones, onAddTask, onAddMilestone }: 
   const { start, end } = useMemo(() => {
     if (tasks.length === 0 && milestones.length === 0) {
       const now = new Date();
-      return { start: now, end: new Date(now.getTime() + 86400000 * 30) };
+      return { start: now, end: new Date(now.getTime() + 86400000 * 60) }; // 60 days
     }
     const dates = [
       ...tasks.map((t) => new Date(t.start_date || Date.now()).getTime()),
       ...tasks.map((t) => new Date(t.end_date || Date.now()).getTime()),
       ...milestones.map((m) => new Date(m.target_date || Date.now()).getTime()),
     ];
+    // Align start to the beginning of the week (Sunday)
+    const minDate = new Date(Math.min(...dates) - 86400000 * 7);
+    minDate.setDate(minDate.getDate() - minDate.getDay());
+    
+    const maxDate = new Date(Math.max(...dates) + 86400000 * 21);
     return {
-      start: new Date(Math.min(...dates) - 86400000 * 7),
-      end: new Date(Math.max(...dates) + 86400000 * 14),
+      start: minDate,
+      end: maxDate,
     };
   }, [tasks, milestones]);
 
   const daysCount = Math.ceil((end.getTime() - start.getTime()) / 86400000);
-  const dayWidth = 44;
+  const weeksCount = Math.ceil(daysCount / 7);
+  const weekWidth = 120;
+  const pxPerDay = weekWidth / 7;
 
   const getX = (dateStr: string | null) => {
     if (!dateStr) return 0;
     const date = new Date(dateStr);
     const diff = date.getTime() - start.getTime();
-    return (diff / 86400000) * dayWidth;
+    return (diff / 86400000) * pxPerDay;
   };
 
   const getWidth = (startStr: string | null, endStr: string | null) => {
-    if (!startStr || !endStr) return dayWidth;
+    if (!startStr || !endStr) return weekWidth;
     const s = new Date(startStr);
     const e = new Date(endStr);
     const diff = e.getTime() - s.getTime();
-    return Math.max(dayWidth, (diff / 86400000) * dayWidth);
+    return Math.max(pxPerDay, (diff / 86400000) * pxPerDay);
   };
 
   const months = useMemo(() => {
@@ -70,11 +77,23 @@ export function TimelinePanel({ tasks, milestones, onAddTask, onAddMilestone }: 
       const daysInMonth = Math.ceil(
         (Math.min(nextMonth.getTime(), end.getTime()) - current.getTime()) / 86400000
       );
-      items.push({ name: month, width: daysInMonth * dayWidth });
+      items.push({ name: month, width: daysInMonth * pxPerDay });
       current = nextMonth;
     }
     return items;
   }, [start, end]);
+
+  const weeks = useMemo(() => {
+    const items = [];
+    for (let i = 0; i < weeksCount; i++) {
+      const date = new Date(start.getTime() + i * 7 * 86400000);
+      items.push({
+        label: `W${i + 1}`,
+        dateStr: date.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      });
+    }
+    return items;
+  }, [start, weeksCount]);
 
   const TimelineContent = ({ isFull = false }) => (
     <div className={`flex flex-col h-full bg-[var(--bg-950)]/30 ${isFull ? "p-8" : "p-6"}`}>
@@ -142,23 +161,16 @@ export function TimelinePanel({ tasks, milestones, onAddTask, onAddMilestone }: 
               ))}
             </div>
             <div className="flex h-8">
-              {Array.from({ length: daysCount }).map((_, i) => {
-                const date = new Date(start.getTime() + i * 86400000);
-                const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-                return (
-                  <div
-                    key={i}
-                    style={{ width: dayWidth }}
-                    className={`border-r border-[var(--border-subtle)] flex items-center justify-center text-[10px] font-bold ${
-                      isWeekend
-                        ? "bg-black/10 text-[var(--text-dim)]"
-                        : "text-[var(--text-muted)]"
-                    }`}
-                  >
-                    {date.getDate()}
-                  </div>
-                );
-              })}
+              {weeks.map((w, i) => (
+                <div
+                  key={i}
+                  style={{ width: weekWidth }}
+                  className="border-r border-[var(--border-subtle)] flex flex-col items-center justify-center text-[9px] font-bold text-[var(--text-muted)] bg-[var(--surface-1)]/35 leading-tight"
+                >
+                  <span>{w.label}</span>
+                  <span className="text-[8px] font-semibold text-[var(--text-dim)]">{w.dateStr}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
