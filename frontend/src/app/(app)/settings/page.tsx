@@ -12,7 +12,7 @@ import {
   normalizeEmail,
   type PendingAction,
 } from "@/lib/settingsConfirm";
-import { Download, Users, Plus, Shield, Settings2, AlertTriangle, Trash2 } from "lucide-react";
+import { Download, Users, Plus, Shield, Settings2, AlertTriangle, Trash2, Clock } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { BillingSettings } from "@/components/settings/BillingSettings";
 import { AVATAR_OPTIONS } from "@/lib/avatars";
@@ -31,6 +31,7 @@ interface TeamUser {
   first_name?: string;
   last_name?: string;
   display_name?: string;
+  avatar_url?: string;
 }
 
 interface TeamMemberRow {
@@ -392,405 +393,474 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto w-full p-8 flex flex-col gap-12">
-        {activeTab === "billing" && <BillingSettings />}
+      <div className="w-full max-w-7xl mx-auto p-4 md:p-8 flex flex-col gap-8 flex-1">
+        {activeTab === "billing" && (
+          <div className="w-full">
+            <BillingSettings />
+          </div>
+        )}
 
         {activeTab === "members" && (
-          <section>
-            <div className="flex items-center justify-between mb-4">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            
+            {/* Left Column: Active Team Members List */}
+            <div className="lg:col-span-7 space-y-6">
               <div>
-                <h3 className="text-lg font-medium text-[var(--text-primary)] flex items-center gap-2">
-                  <Users className="w-5 h-5" /> Members
+                <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2 tracking-tight">
+                  <Users className="w-5 h-5 text-[var(--accent)]" /> Active Team Members
                 </h3>
-                <p className="text-sm text-[var(--text-muted)] mt-1">Add or remove team members and manage their roles.</p>
+                <p className="text-xs text-[var(--text-muted)] mt-1">Manage role allocations and user access controls.</p>
               </div>
-              <div className="flex items-center gap-2">
-                <input
-                  ref={inviteEmailRef}
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="name@company.com"
-                  className="px-3 py-2 rounded-xl bg-white/[0.02] border border-white/[0.06] text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/50 focus:ring-4 focus:ring-[var(--accent)]/5 transition-all"
-                />
-                <select
-                  value={inviteRole}
-                  onChange={(e) => setInviteRole(e.target.value)}
-                  className="px-3 py-2 rounded-xl bg-white/[0.02] border border-white/[0.06] text-[13px] text-[var(--text-primary)] capitalize outline-none"
-                  style={{ colorScheme: "dark" }}
-                >
-                  <option value="viewer">viewer</option>
-                  <option value="editor">editor</option>
-                  <option value="owner">owner</option>
-                </select>
-                <button
-                  onClick={handleInviteMember}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--bg-950)] text-[13px] font-bold hover:shadow-[var(--shadow-glow)] transition-all active:scale-95"
-                >
-                  <Plus className="w-4 h-4" /> Invite
-                </button>
-              </div>
-            </div>
-            <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] overflow-hidden shadow-md backdrop-blur-md">
-              {members.map(m => (
-                <div key={m.id} className="flex items-center justify-between p-4 border-b border-white/[0.04] last:border-0 hover:bg-white/[0.01] transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center font-semibold text-[13px] text-[var(--bg-950)]">
-                      {(m.user?.display_name?.[0] || m.user?.email?.[0] || '?').toUpperCase()}
-                    </div>
-                    <div>
-                      <div className="font-medium text-[var(--text-primary)]">{m.user?.display_name || "Anonymous User"}</div>
-                      <div className="text-sm text-[var(--text-muted)]">{m.user?.email}</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.03] text-[11px] font-medium text-[var(--text-secondary)] border border-white/[0.05] capitalize">
-                      {m.role === 'owner' && <Shield className="w-3 h-3 text-amber-400" />}
-                      {m.role}
-                    </span>
-                    {team?.my_role === "owner" && m.role !== "owner" && m.user?.id !== myUserId && (
-                      <>
-                        {m.role === "viewer" ? (
-                          <button
-                            onClick={() => handleChangeMemberRole(m.user.id, "editor")}
-                            className="px-2.5 py-1 rounded-lg border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] text-[11px] transition-all"
-                          >
-                            Make editor
-                          </button>
+
+              <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] overflow-hidden shadow-md backdrop-blur-md">
+                {members.map(m => (
+                  <div key={m.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4 border-b border-white/[0.04] last:border-0 hover:bg-white/[0.01] transition-colors">
+                    <div className="flex items-center gap-4">
+                      {/* Real Avatar with initials fallback */}
+                      <div className="w-10 h-10 rounded-full overflow-hidden border border-white/[0.08] bg-[var(--bg-800)] flex items-center justify-center shrink-0">
+                        {m.user?.avatar_url ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={m.user.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
                         ) : (
-                          <button
-                            onClick={() => handleChangeMemberRole(m.user.id, "viewer")}
-                            className="px-2.5 py-1 rounded-lg border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] text-[11px] transition-all"
-                          >
-                            Make viewer
-                          </button>
+                          <div className="w-full h-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center font-bold text-[13px] text-[var(--bg-950)] uppercase">
+                            {(m.user?.display_name?.[0] || m.user?.email?.[0] || '?').toUpperCase()}
+                          </div>
                         )}
-                        <button
-                          onClick={() => handleTransferOwnership(m.user.id)}
-                          className="px-2.5 py-1 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-400 hover:bg-amber-400/10 text-[11px] transition-all"
-                        >
-                          Make owner
-                        </button>
-                        <button
-                          onClick={() => handleRemoveMember(m.user.id)}
-                          className="px-2.5 py-1 rounded-lg border border-[var(--danger)]/30 text-[var(--danger)] hover:border-[var(--danger)] hover:bg-[var(--danger-bg)] text-[11px] transition-all"
-                        >
-                          Remove
-                        </button>
-                      </>
-                    )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold text-[var(--text-primary)] text-sm truncate">{m.user?.display_name || "Anonymous User"}</div>
+                        <div className="text-xs text-[var(--text-muted)] truncate">{m.user?.email}</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.03] text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)] border border-white/[0.05] capitalize">
+                        {m.role === 'owner' && <Shield className="w-3 h-3 text-amber-400" />}
+                        {m.role}
+                      </span>
+                      {team?.my_role === "owner" && m.role !== "owner" && m.user?.id !== myUserId && (
+                        <div className="flex items-center gap-1.5">
+                          {m.role === "viewer" ? (
+                            <button
+                              onClick={() => handleChangeMemberRole(m.user.id, "editor")}
+                              className="px-2.5 py-1.5 rounded-lg border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] text-[11px] font-bold transition-all"
+                            >
+                              Make editor
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleChangeMemberRole(m.user.id, "viewer")}
+                              className="px-2.5 py-1.5 rounded-lg border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] text-[11px] font-bold transition-all"
+                            >
+                              Make viewer
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleTransferOwnership(m.user.id)}
+                            className="px-2.5 py-1.5 rounded-lg border border-amber-500/30 text-amber-400 hover:border-amber-400 hover:bg-amber-400/10 text-[11px] font-bold transition-all"
+                          >
+                            Make owner
+                          </button>
+                          <button
+                            onClick={() => handleRemoveMember(m.user.id)}
+                            className="px-2.5 py-1.5 rounded-lg border border-[var(--danger)]/30 text-[var(--danger)] hover:border-[var(--danger)] hover:bg-[var(--danger-bg)] text-[11px] font-bold transition-all"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 rounded-2xl border border-white/[0.05] bg-white/[0.02] overflow-hidden shadow-md backdrop-blur-md">
-              <div className="px-4 py-3 border-b border-white/[0.04] bg-white/[0.01] text-[11px] font-semibold uppercase tracking-widest text-[var(--text-dim)]">
-                Pending invites
+                ))}
               </div>
-              {invites.length === 0 ? (
-                <div className="px-4 py-4 text-sm text-[var(--text-muted)] flex items-center justify-between gap-3">
-                  <span>No invites yet.</span>
+            </div>
+
+            {/* Right Column: Invite Form & Pending Invites */}
+            <div className="lg:col-span-5 space-y-6">
+              {/* Invite Teammate Card */}
+              <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-5 space-y-4 shadow-md backdrop-blur-md">
+                <div>
+                  <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2 tracking-tight">
+                    <Plus className="w-4 h-4 text-[var(--accent)]" /> Invite Teammate
+                  </h3>
+                  <p className="text-[11px] text-[var(--text-muted)]">Send an invite link to coordinate planning.</p>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] uppercase tracking-widest font-black text-[var(--text-dim)] px-1">Email Address</label>
+                    <input
+                      ref={inviteEmailRef}
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder="name@company.com"
+                      className="px-3 py-2 rounded-xl bg-white/[0.02] border border-white/[0.06] text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/50 focus:ring-4 focus:ring-[var(--accent)]/5 transition-all w-full"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] uppercase tracking-widest font-black text-[var(--text-dim)] px-1">Role Type</label>
+                    <select
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value)}
+                      className="px-3 py-2 rounded-xl bg-[var(--bg-900)] border border-white/[0.06] text-[13px] text-[var(--text-primary)] capitalize outline-none w-full"
+                      style={{ colorScheme: "dark" }}
+                    >
+                      <option value="viewer">viewer</option>
+                      <option value="editor">editor</option>
+                      <option value="owner">owner</option>
+                    </select>
+                  </div>
+
                   <button
-                    onClick={openInviteComposer}
-                    className="px-3.5 py-1.5 rounded-xl border border-white/[0.08] hover:border-[var(--accent)]/50 text-xs transition-all"
+                    onClick={handleInviteMember}
+                    className="flex items-center justify-center gap-2 px-4 py-2 w-full rounded-xl bg-[var(--accent)] text-[var(--bg-950)] text-[13px] font-extrabold hover:shadow-[var(--shadow-glow)] transition-all active:scale-95 pt-2.5 pb-2.5"
                   >
-                    Invite first teammate
+                    <Plus className="w-4 h-4" /> Send Invitation
                   </button>
                 </div>
-              ) : (
-                invites.map((invite) => (
-                  <div key={invite.id} className="px-4 py-3 border-b border-white/[0.04] last:border-0 text-sm">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <div className="font-medium">{invite.invitee_email}</div>
-                        <div className="text-[var(--text-muted)]">
-                          Role: <span className="capitalize">{invite.role}</span> · Delivery: {invite.send_status} · Invite:{" "}
-                          <span className="capitalize">{formatInviteStatus(invite)}</span>
+              </div>
+
+              {/* Pending Invites Card */}
+              <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] overflow-hidden shadow-md backdrop-blur-md">
+                <div className="px-4 py-3.5 border-b border-white/[0.04] bg-white/[0.01] text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-[var(--accent)]" /> Pending invites
+                </div>
+                {invites.length === 0 ? (
+                  <div className="p-5 text-center text-xs text-[var(--text-muted)] flex flex-col items-center gap-2">
+                    <span>No pending invitations.</span>
+                    <button
+                      onClick={openInviteComposer}
+                      className="px-3.5 py-1.5 rounded-xl border border-white/[0.08] hover:border-[var(--accent)]/50 text-xs font-bold transition-all mt-1"
+                    >
+                      Invite first teammate
+                    </button>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-white/[0.04]">
+                    {invites.map((invite) => (
+                      <div key={invite.id} className="p-4 text-xs space-y-2">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <div className="font-bold text-[var(--text-primary)] truncate">{invite.invitee_email}</div>
+                            <div className="text-[10px] font-semibold text-[var(--text-muted)] mt-1 space-y-0.5">
+                              <div>Role: <span className="capitalize text-[var(--text-secondary)]">{invite.role}</span></div>
+                              <div>Delivery: <span className="capitalize text-[var(--text-secondary)]">{invite.send_status}</span></div>
+                              <div>Status: <span className="capitalize text-[var(--text-secondary)]">{formatInviteStatus(invite)}</span></div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {!invite.used_at && !invite.revoked_at && (
+                              <>
+                                <button
+                                  onClick={() => handleResendInvite(invite.id)}
+                                  className="px-2.5 py-1 rounded-lg border border-[var(--border-subtle)] hover:border-[var(--accent)] hover:text-[var(--accent)] text-[10px] font-bold transition-all"
+                                >
+                                  Resend
+                                </button>
+                                <button
+                                  onClick={() => handleRevokeInvite(invite.id)}
+                                  className="px-2.5 py-1 rounded-lg border border-[var(--danger)]/20 text-[var(--danger)] hover:border-[var(--danger)] hover:bg-[var(--danger-bg)] text-[10px] font-bold transition-all"
+                                >
+                                  Revoke
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {!invite.used_at && !invite.revoked_at && (
-                          <>
-                            <button
-                              onClick={() => handleResendInvite(invite.id)}
-                              className="px-3 py-1.5 rounded-lg border border-[var(--border-subtle)] hover:border-[var(--accent)] hover:text-[var(--accent)] text-[12px] transition-all"
-                            >
-                              Resend
-                            </button>
-                            <button
-                              onClick={() => handleRevokeInvite(invite.id)}
-                              className="px-3 py-1.5 rounded-lg border border-[var(--danger)]/20 text-[var(--danger)] hover:border-[var(--danger)] hover:bg-[var(--danger-bg)] text-[12px] transition-all"
-                            >
-                              Revoke
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                ))
-              )}
+                )}
+              </div>
             </div>
-          </section>
+          </div>
         )}
 
         {activeTab === "profile" && (
-          <>
-            {/* Personal Profile Section */}
-            <section>
-              <div className="mb-4">
-                <h3 className="text-lg font-medium text-[var(--text-primary)]">Personal Profile</h3>
-                <p className="text-sm text-[var(--text-muted)] mt-1">Manage your identity across TeamOS.</p>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            
+            {/* Left Column: Personal Profile & Shortcuts */}
+            <div className="lg:col-span-7 space-y-8">
+              
+              {/* Personal Profile Section */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-bold text-[var(--text-primary)] tracking-tight">Personal Profile</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">Manage your unique digital identity across TeamOS.</p>
+                </div>
+
+                <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-6 space-y-6 shadow-md backdrop-blur-md">
+                  {/* Avatar Section */}
+                  <div className="space-y-3">
+                    <label className="text-[10px] uppercase tracking-widest font-black text-[var(--text-dim)] px-1">Avatar Selection</label>
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className="w-14 h-14 rounded-full overflow-hidden border border-white/[0.08] bg-[var(--bg-800)] flex items-center justify-center shrink-0">
+                        {profileAvatarUrl ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={profileAvatarUrl} alt="Avatar" className="w-full h-full object-cover animate-in fade-in duration-300" />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center text-white font-bold text-xl uppercase">
+                            {profileFirstName?.[0]?.toUpperCase() || "U"}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-[var(--text-primary)]">
+                          {profileFirstName || ""} {profileLastName || ""}
+                        </p>
+                        <p className="text-[11px] text-[var(--text-muted)]">Select from the DiceBear generator looks below.</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 p-3 bg-white/[0.01] rounded-xl border border-white/[0.04]">
+                      {avatarOptions.map(avatar => (
+                        <button
+                          key={avatar.id}
+                          type="button"
+                          onClick={() => setProfileAvatarUrl(avatar.svg)}
+                          title={avatar.label}
+                          className={`relative w-full aspect-square overflow-hidden rounded-lg border-2 transition-all hover:scale-105 active:scale-95 ${
+                            profileAvatarUrl === avatar.svg
+                              ? "border-[var(--accent)] shadow-[var(--shadow-glow)]"
+                              : "border-transparent bg-white/[0.02] hover:border-white/[0.15]"
+                          }`}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={avatar.svg} alt={avatar.label} className="w-full h-full" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Name Fields */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase tracking-widest font-black text-[var(--text-dim)] px-1">
+                        First Name <span className="text-[var(--accent)]">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={profileFirstName}
+                        onChange={(e) => setProfileFirstName(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] focus:border-[var(--accent)]/50 focus:ring-4 focus:ring-[var(--accent)]/5 outline-none text-[13px] text-[var(--text-primary)] transition-all"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase tracking-widest font-black text-[var(--text-dim)] px-1">
+                        Last Name <span className="text-[var(--accent)]">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={profileLastName}
+                        onChange={(e) => setProfileLastName(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] focus:border-[var(--accent)]/50 focus:ring-4 focus:ring-[var(--accent)]/5 outline-none text-[13px] text-[var(--text-primary)] transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Save Button */}
+                  <div className="flex justify-end pt-2">
+                    <button
+                      onClick={handleSaveProfile}
+                      disabled={profileSaving}
+                      className="px-6 py-2.5 rounded-xl bg-[var(--accent)] text-[var(--bg-950)] font-extrabold text-[13px] hover:shadow-[var(--shadow-glow)] active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {profileSaving ? "Saving..." : "Save Changes"}
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-6 space-y-6 shadow-md backdrop-blur-md">
-                {/* Avatar Section */}
-                <div className="space-y-3">
-                  <label className="text-[11px] uppercase tracking-widest font-semibold text-[var(--text-dim)] px-1">Avatar</label>
-                  <div className="flex items-center gap-4 mb-2">
-                    <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-[var(--border-strong)] bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center text-white font-bold text-xl shrink-0">
-                      {profileAvatarUrl
-                        ? /* eslint-disable-next-line @next/next/no-img-element */
-                          <img src={profileAvatarUrl} alt="Avatar" className="w-full h-full" />
-                        : (profileFirstName?.[0]?.toUpperCase() || "U")
-                      }
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-[var(--text-primary)]">
-                        {profileFirstName || ""} {profileLastName || ""}
-                      </p>
-                      <p className="text-xs text-[var(--text-muted)]">Choose an avatar below</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
-                    {avatarOptions.map(avatar => (
-                      <button
-                        key={avatar.id}
-                        type="button"
-                        onClick={() => setProfileAvatarUrl(avatar.svg)}
-                        title={avatar.label}
-                        className={`relative w-full aspect-square overflow-hidden rounded-lg border-2 transition-all ${
-                          profileAvatarUrl === avatar.svg
-                            ? "border-[var(--accent)] shadow-[var(--shadow-glow)]"
-                            : "border-transparent hover:border-white/[0.2]"
-                        }`}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={avatar.svg} alt={avatar.label} className="w-full h-full" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
 
-                {/* Name Fields */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] uppercase tracking-widest font-semibold text-[var(--text-dim)] px-1">
-                      First Name <span className="text-[var(--accent)]">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={profileFirstName}
-                      onChange={(e) => setProfileFirstName(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] focus:border-[var(--accent)]/50 focus:ring-4 focus:ring-[var(--accent)]/5 outline-none text-[13px] text-[var(--text-primary)] transition-all"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] uppercase tracking-widest font-semibold text-[var(--text-dim)] px-1">
-                      Last Name <span className="text-[var(--accent)]">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={profileLastName}
-                      onChange={(e) => setProfileLastName(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] focus:border-[var(--accent)]/50 focus:ring-4 focus:ring-[var(--accent)]/5 outline-none text-[13px] text-[var(--text-primary)] transition-all"
-                    />
-                  </div>
+              {/* Workflow Shortcuts Section */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-bold text-[var(--text-primary)] tracking-tight">Workflow Shortcuts</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">Quickly access primary workspaces and coordinate actions.</p>
                 </div>
-
-                {/* Save Button */}
-                <div className="flex justify-end pt-2">
+                <div className="border border-white/[0.05] rounded-2xl overflow-hidden grid grid-cols-2 md:grid-cols-4 bg-white/[0.02] shadow-md">
                   <button
-                    onClick={handleSaveProfile}
-                    disabled={profileSaving}
-                    className="px-6 py-2.5 rounded-xl bg-[var(--accent)] text-[var(--bg-950)] font-bold text-[13px] hover:shadow-[var(--shadow-glow)] active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2"
+                    onClick={openInviteComposer}
+                    className="px-3 py-4 border-r border-b md:border-b-0 border-white/[0.05] hover:bg-white/[0.02] text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors font-bold uppercase tracking-wider"
                   >
-                    {profileSaving ? "Saving..." : "Save Changes"}
+                    Invite teammate
+                  </button>
+                  <button
+                    onClick={() => (window.location.href = "/wiki")}
+                    className="px-3 py-4 border-r border-b md:border-b-0 border-white/[0.05] hover:bg-white/[0.02] text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors font-bold uppercase tracking-wider"
+                  >
+                    Open wiki
+                  </button>
+                  <button
+                    onClick={() => (window.location.href = "/chat")}
+                    className="px-3 py-4 border-r border-white/[0.05] hover:bg-white/[0.02] text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors font-bold uppercase tracking-wider"
+                  >
+                    Open chat
+                  </button>
+                  <button
+                    onClick={handleExportWiki}
+                    className="px-3 py-4 hover:bg-white/[0.02] text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors font-bold uppercase tracking-wider"
+                  >
+                    Export wiki
                   </button>
                 </div>
               </div>
-            </section>
 
-            {/* Team Profile Section */}
-            <section>
-              <div className="mb-4">
-                <h3 className="text-lg font-medium text-[var(--text-primary)]">Team Profile</h3>
-                <p className="text-sm text-[var(--text-muted)] mt-1">Manage your team&apos;s identity and subscription plan.</p>
-              </div>
-              <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-6 shadow-md backdrop-blur-md">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-[12px] text-[var(--text-muted)] mb-1 uppercase tracking-wider">Team Name</div>
-                    <div className="text-xl font-semibold">{team?.name || 'Loading...'}</div>
+            </div>
+
+            {/* Right Column: Team Profile, Data & Danger Zone */}
+            <div className="lg:col-span-5 space-y-8">
+              
+              {/* Team Profile Section */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-bold text-[var(--text-primary)] tracking-tight">Team Settings</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">Manage corporate identity, seats, and upgrades.</p>
+                </div>
+
+                <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-6 shadow-md backdrop-blur-md space-y-5">
+                  <div className="flex flex-col gap-1">
+                    <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-widest font-black">Team Name</div>
+                    <div className="text-lg font-bold text-[var(--text-primary)]">{team?.name || 'Loading...'}</div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    {team?.my_role === "owner" && team?.plan !== "enterprise" && (
-                      <div className="flex flex-wrap items-end gap-2">
-                        <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-[var(--text-dim)]">
-                          Plan
-                          <select
-                            value={billingCheckoutPrefs.plan_key}
-                            onChange={(e) =>
-                              setBillingCheckoutPrefs((p) => ({
-                                ...p,
-                                plan_key: e.target.value as "team" | "pro" | "enterprise",
-                              }))
-                            }
-                            className="border border-white/[0.06] bg-white/[0.02] rounded-lg px-2.5 py-1.5 text-[11px] text-[var(--text-primary)] capitalize outline-none"
-                            style={{ colorScheme: "dark" }}
-                          >
-                            <option value="team">Team</option>
-                            <option value="pro">Pro</option>
-                            <option value="enterprise">Enterprise</option>
-                          </select>
-                        </label>
-                        <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-[var(--text-dim)]">
-                          Seats
-                          <input
-                            type="number"
-                            min={1}
-                            max={250}
-                            value={billingCheckoutPrefs.seat_count}
-                            onChange={(e) =>
-                              setBillingCheckoutPrefs((p) => ({
-                                ...p,
-                                seat_count: Math.max(1, Math.min(250, Number(e.target.value) || 1)),
-                              }))
-                            }
-                            className="w-16 border border-white/[0.06] bg-white/[0.02] rounded-lg px-2.5 py-1.5 text-[11px] text-[var(--text-primary)] outline-none"
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wide text-[var(--text-dim)]">
-                          Usage
-                          <select
-                            value={billingCheckoutPrefs.usage_tier}
-                            onChange={(e) =>
-                              setBillingCheckoutPrefs((p) => ({
-                                ...p,
-                                usage_tier: e.target.value as "low" | "standard" | "high",
-                              }))
-                            }
-                            className="border border-white/[0.06] bg-white/[0.02] rounded-lg px-2.5 py-1.5 text-[11px] text-[var(--text-primary)] outline-none"
-                            style={{ colorScheme: "dark" }}
-                          >
-                            <option value="low">Light</option>
-                            <option value="standard">Standard</option>
-                            <option value="high">Heavy</option>
-                          </select>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={handleUpgradePlan}
-                          className="px-3 py-2 rounded-xl border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent-subtle)] text-[12px] transition-colors"
-                        >
-                          Upgrade plan
-                        </button>
+
+                  <div className="pt-2 border-t border-white/[0.04] space-y-4">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-widest font-black">Current Plan</div>
+                        <div className="text-xs font-bold text-[var(--text-secondary)] mt-0.5 uppercase tracking-wider">
+                          {team?.plan || 'FREE'}
+                        </div>
                       </div>
-                    )}
-                    <div>
-                      <div className="text-[var(--text-muted)] text-sm mb-1">Current Plan</div>
-                      <div className="px-3 py-1.5 bg-[var(--accent)] text-[var(--bg-950)] text-[11px] font-bold uppercase tracking-wide rounded-lg">
+                      <div className="px-3 py-1 bg-[var(--accent)] text-[var(--bg-950)] text-[10px] font-black uppercase tracking-widest rounded-md shadow-[var(--shadow-glow)]">
                         {team?.plan || 'FREE'}
                       </div>
                     </div>
+
+                    {team?.my_role === "owner" && team?.plan !== "enterprise" && (
+                      <div className="space-y-3 pt-3 bg-white/[0.01] p-4 rounded-xl border border-white/[0.04]">
+                        <p className="text-[10px] uppercase font-black tracking-widest text-[var(--text-dim)]">Customize upgrade quote</p>
+                        
+                        <div className="grid grid-cols-1 gap-3">
+                          <label className="flex items-center justify-between text-[11px] font-bold text-[var(--text-secondary)]">
+                            <span>Plan Variant</span>
+                            <select
+                              value={billingCheckoutPrefs.plan_key}
+                              onChange={(e) =>
+                                setBillingCheckoutPrefs((p) => ({
+                                  ...p,
+                                  plan_key: e.target.value as "team" | "pro" | "enterprise",
+                                }))
+                              }
+                              className="border border-white/[0.06] bg-[var(--bg-900)] rounded-lg px-2.5 py-1.5 text-[11px] text-[var(--text-primary)] capitalize outline-none"
+                              style={{ colorScheme: "dark" }}
+                            >
+                              <option value="team">Team</option>
+                              <option value="pro">Pro</option>
+                              <option value="enterprise">Enterprise</option>
+                            </select>
+                          </label>
+
+                          <label className="flex items-center justify-between text-[11px] font-bold text-[var(--text-secondary)]">
+                            <span>Teammate Seats</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={250}
+                              value={billingCheckoutPrefs.seat_count}
+                              onChange={(e) =>
+                                setBillingCheckoutPrefs((p) => ({
+                                  ...p,
+                                  seat_count: Math.max(1, Math.min(250, Number(e.target.value) || 1)),
+                                }))
+                              }
+                              className="w-16 border border-white/[0.06] bg-[var(--bg-900)] rounded-lg px-2.5 py-1.5 text-[11px] text-[var(--text-primary)] outline-none text-right"
+                            />
+                          </label>
+
+                          <label className="flex items-center justify-between text-[11px] font-bold text-[var(--text-secondary)]">
+                            <span>Usage Tier</span>
+                            <select
+                              value={billingCheckoutPrefs.usage_tier}
+                              onChange={(e) =>
+                                setBillingCheckoutPrefs((p) => ({
+                                  ...p,
+                                  usage_tier: e.target.value as "low" | "standard" | "high",
+                                }))
+                              }
+                              className="border border-white/[0.06] bg-[var(--bg-900)] rounded-lg px-2.5 py-1.5 text-[11px] text-[var(--text-primary)] outline-none"
+                              style={{ colorScheme: "dark" }}
+                            >
+                              <option value="low">Light</option>
+                              <option value="standard">Standard</option>
+                              <option value="high">Heavy</option>
+                            </select>
+                          </label>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleUpgradePlan}
+                          className="w-full mt-3 px-4 py-2.5 rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-[var(--bg-950)] text-xs font-black uppercase tracking-wider hover:shadow-lg transition-all"
+                        >
+                          Checkout / Upgrade
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
-            </section>
 
-            {/* Workflow Shortcuts */}
-            <section>
-              <div className="mb-4">
-                <h3 className="text-lg font-medium text-[var(--text-primary)]">Workflow Shortcuts</h3>
-                <p className="text-sm text-[var(--text-muted)] mt-1">Quickly continue common team workflows.</p>
-              </div>
-              <div className="border border-white/[0.05] rounded-2xl overflow-hidden grid grid-cols-1 md:grid-cols-4 bg-white/[0.02]">
-                <button
-                  onClick={openInviteComposer}
-                  className="px-3 py-3.5 border-r border-white/[0.05] hover:bg-white/[0.02] text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors font-medium"
-                >
-                  Invite teammate
-                </button>
-                <button
-                  onClick={() => (window.location.href = "/wiki")}
-                  className="px-3 py-3.5 border-r border-white/[0.05] hover:bg-white/[0.02] text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors font-medium"
-                >
-                  Open wiki
-                </button>
-                <button
-                  onClick={() => (window.location.href = "/chat")}
-                  className="px-3 py-3.5 border-r border-white/[0.05] hover:bg-white/[0.02] text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors font-medium"
-                >
-                  Open chat
-                </button>
-                <button
-                  onClick={handleExportWiki}
-                  className="px-3 py-3.5 hover:bg-white/[0.02] text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors font-medium"
-                >
-                  Export wiki
-                </button>
-              </div>
-            </section>
-
-            {/* Data & Export Section */}
-            <section>
-              <div className="mb-4">
-                <h3 className="text-lg font-medium text-[var(--text-primary)]">Data Management</h3>
-                <p className="text-sm text-[var(--text-muted)] mt-1">Export your data for portability or backup.</p>
-              </div>
-              <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-6 shadow-md backdrop-blur-md">
-                <div className="flex items-center justify-between">
+              {/* Data & Export Section */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-bold text-[var(--text-primary)] tracking-tight">Data Portability</h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">Manage team-wide backups and assets.</p>
+                </div>
+                <div className="rounded-2xl border border-white/[0.05] bg-white/[0.02] p-5 shadow-md backdrop-blur-md space-y-4">
                   <div>
-                    <h4 className="font-medium text-[13px] text-[var(--text-primary)]">Export Full Wiki</h4>
-                    <p className="text-[12px] text-[var(--text-muted)] mt-1.5 max-w-md leading-relaxed">
-                      Download a ZIP of all wiki pages as Markdown, including the semantic graph mapping.
+                    <h4 className="font-bold text-[13px] text-[var(--text-primary)] flex items-center gap-1.5">
+                      <Download className="w-4 h-4 text-[var(--accent)]" /> Export Wiki Repository
+                    </h4>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-1 leading-relaxed">
+                      Download a complete ZIP package containing all wiki docs formatted as Markdown, including graph matrices.
                     </p>
                   </div>
                   <button 
                     onClick={handleExportWiki}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-[var(--accent)] text-[var(--bg-950)] font-bold text-[13px] rounded-xl hover:shadow-[var(--shadow-glow)] transition-all"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white/[0.03] border border-white/[0.08] hover:border-[var(--accent)]/50 hover:text-[var(--accent)] text-xs font-extrabold uppercase tracking-wider rounded-xl transition-all"
                   >
-                    <Download className="w-4 h-4" /> Download ZIP
+                    <Download className="w-3.5 h-3.5" /> Download Markdown ZIP
                   </button>
                 </div>
               </div>
-            </section>
 
-            {/* Danger Zone */}
-            <section className="mb-12">
-              <div className="mb-4">
-                <h3 className="text-lg font-medium text-rose-500 flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5" /> Danger Zone
-                </h3>
-                <p className="text-sm text-[var(--text-muted)] mt-1">Irreversible actions that affect your entire team.</p>
-              </div>
-              <div className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.02] p-6 shadow-md backdrop-blur-md">
-                <div className="flex items-center justify-between">
+              {/* Danger Zone Section */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-bold text-rose-500 flex items-center gap-2 tracking-tight">
+                    <AlertTriangle className="w-5 h-5" /> Danger Zone
+                  </h3>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">Irreversible administrative actions affecting everything.</p>
+                </div>
+                <div className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.02] p-5 shadow-md backdrop-blur-md space-y-4">
                   <div>
-                    <h4 className="font-medium text-[13px] text-rose-400">Delete this team</h4>
-                    <p className="text-[12px] text-[var(--text-muted)] mt-1.5 max-w-md leading-relaxed">
-                      All data will be permanently removed. This cannot be undone.
+                    <h4 className="font-bold text-[13px] text-rose-400">Destroy this team</h4>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-1 leading-relaxed">
+                      Delete all planning details, documents, and historical team chats forever. This cannot be undone.
                     </p>
                   </div>
                   <button 
                     onClick={handleDeleteTeam}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-rose-500/30 text-rose-400 font-medium text-[13px] hover:bg-rose-500 hover:text-[var(--bg-950)] hover:font-bold transition-all"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-rose-500/30 text-rose-400 font-extrabold text-[11px] uppercase tracking-wider hover:bg-rose-500 hover:text-[var(--bg-950)] transition-all"
                   >
-                    <Trash2 className="w-4 h-4" /> Delete Team
+                    <Trash2 className="w-3.5 h-3.5" /> Permanently Delete Team
                   </button>
                 </div>
               </div>
-            </section>
-          </>
+
+            </div>
+          </div>
         )}
       </div>
 

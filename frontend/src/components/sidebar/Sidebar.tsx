@@ -23,7 +23,6 @@ import {
   Check,
   Sun,
   Moon,
-  Command,
 } from "lucide-react";
 
 interface Team {
@@ -64,6 +63,17 @@ export function Sidebar() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [collapsed, setCollapsed] = useState(false);
   const [teamDropOpen, setTeamDropOpen] = useState(false);
+  const [isOpenMobile, setIsOpenMobile] = useState(false);
+
+  useEffect(() => {
+    const handleToggle = () => setIsOpenMobile(v => !v);
+    window.addEventListener("toggle-sidebar", handleToggle);
+    return () => window.removeEventListener("toggle-sidebar", handleToggle);
+  }, []);
+
+  useEffect(() => {
+    setIsOpenMobile(false);
+  }, [pathname]);
   const [teamLoadError, setTeamLoadError] = useState<string | null>(null);
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
@@ -209,10 +219,22 @@ export function Sidebar() {
   };
 
   return (
-    <div
-      style={{ width: collapsed ? "64px" : "240px" }}
-      className="bg-gradient-to-b from-[var(--bg-900)] to-[var(--bg-950)] border-r border-[var(--border-subtle)] flex flex-col h-full shrink-0 transition-[width] duration-300 ease-in-out overflow-hidden"
-    >
+    <>
+      {/* Backdrop on mobile screens */}
+      {isOpenMobile && (
+        <div
+          onClick={() => setIsOpenMobile(false)}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
+        />
+      )}
+
+      <div
+        style={{ width: collapsed ? "64px" : "240px" }}
+        className={`bg-gradient-to-b from-[var(--bg-900)] to-[var(--bg-950)] border-r border-[var(--border-subtle)] flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out overflow-hidden
+          fixed md:static top-0 bottom-0 left-0 z-45 md:z-auto
+          ${isOpenMobile ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+        `}
+      >
       {/* ── Logo + Collapse toggle ── */}
       <div
         className={`flex items-center h-[52px] border-b border-[var(--border-subtle)] shrink-0 ${collapsed ? "justify-center px-2" : "px-4 justify-between"
@@ -503,5 +525,6 @@ export function Sidebar() {
         </div>
       </div>
     </div>
+    </>
   );
 }

@@ -1,4 +1,5 @@
 import { Sidebar } from "@/components/sidebar/Sidebar";
+import { MobileHeader } from "@/components/sidebar/MobileHeader";
 import { CommandPalette } from "@/components/command/CommandPalette";
 import { ProvisionUser } from "@/components/auth/ProvisionUser";
 import { auth } from "@clerk/nextjs/server";
@@ -15,6 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <ProvisionUser />
       <Sidebar />
       <main className="flex-1 flex flex-col min-w-0 min-h-0 bg-[var(--bg-900)]">
+        <MobileHeader />
         {children}
       </main>
       <CommandPalette />

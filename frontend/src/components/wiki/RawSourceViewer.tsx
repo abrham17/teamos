@@ -16,7 +16,7 @@ import {
   X,
   ZoomIn,
   ZoomOut,
-  Info,
+  ChevronLeft,
 } from "lucide-react";
 import { api } from "@/lib/api";
 
