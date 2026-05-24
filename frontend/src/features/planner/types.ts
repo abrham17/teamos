@@ -217,3 +217,24 @@ export interface MissedMilestone {
   target_date: string;
   days_overdue: number;
 }
+
+export interface PlanVersion {
+  id: string;
+  source: string;
+  parent_version_id: string | null;
+  prompt_hash: string;
+  created_at: string;
+  created_by: string | null;
+}
+
+export interface PlanChangeSet {
+  id: string;
+  status: string;
+  impact_summary: Record<string, unknown>;
+  pending_mutations: Array<Record<string, unknown>>;
+  auto_applied: Array<Record<string, unknown>>;
+  remediation_preview?: Record<string, unknown>;
+  created_at: string;
+  base_version_id: string;
+  mutations?: Array<Record<string, unknown>>;
+}

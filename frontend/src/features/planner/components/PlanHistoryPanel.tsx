@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { History, Loader2, RotateCcw, Save } from "lucide-react";
-import { listPlanSnapshots, restorePlanSnapshot, createPlanSnapshot } from "../api";
-import { PlanSnapshot } from "../types";
+import { listPlanSnapshots, listPlanVersions, restorePlanSnapshot, createPlanSnapshot } from "../api";
+import { PlanSnapshot, PlanVersion } from "../types";
+import { PlanReviewPanel } from "./PlanReviewPanel";
 
 interface PlanHistoryPanelProps {
   teamId: string;
@@ -11,13 +12,17 @@ interface PlanHistoryPanelProps {
 
 export function PlanHistoryPanel({ teamId, projectId, onRestore }: PlanHistoryPanelProps) {
   const [snapshots, setSnapshots] = useState<PlanSnapshot[]>([]);
+  const [versions, setVersions] = useState<PlanVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState<string | null>(null);
 
   const fetchSnapshots = useCallback(() => {
     setLoading(true);
-    listPlanSnapshots(teamId, projectId)
-      .then(setSnapshots)
+    Promise.all([listPlanSnapshots(teamId, projectId), listPlanVersions(teamId, projectId)])
+      .then(([snaps, vers]) => {
+        setSnapshots(snaps);
+        setVersions(vers);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [teamId, projectId]);
@@ -55,6 +60,8 @@ export function PlanHistoryPanel({ teamId, projectId, onRestore }: PlanHistoryPa
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar bg-[var(--bg-950)]/50 p-8">
       <div className="max-w-4xl mx-auto space-y-8">
+        <PlanReviewPanel teamId={teamId} projectId={projectId} onResolved={onRestore} />
+
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <h2 className="text-2xl font-black text-[var(--text-primary)] flex items-center gap-2">
@@ -90,6 +97,21 @@ export function PlanHistoryPanel({ teamId, projectId, onRestore }: PlanHistoryPa
           </div>
         ) : (
           <div className="space-y-4">
+            {versions.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-black uppercase tracking-widest text-[var(--text-dim)]">
+                  Plan versions
+                </p>
+                {versions.slice(0, 5).map((v) => (
+                  <div
+                    key={v.id}
+                    className="text-xs text-[var(--text-muted)] px-3 py-2 rounded-lg bg-[var(--surface-1)] border border-[var(--border-subtle)]"
+                  >
+                    {v.source} — {new Date(v.created_at).toLocaleString()}
+                  </div>
+                ))}
+              </div>
+            )}
             {snapshots.map((s) => (
               <div key={s.id} className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl p-6 flex items-center justify-between group hover:border-[var(--accent-subtle)] transition-all">
                 <div className="space-y-2">

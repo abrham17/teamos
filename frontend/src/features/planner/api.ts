@@ -316,3 +316,34 @@ export async function createPlanSnapshot(teamId: string, projectId: string, type
 export async function restorePlanSnapshot(teamId: string, projectId: string, snapshotId: string) {
   return api.post(`/planning/${teamId}/projects/${projectId}/snapshots/${snapshotId}/restore/`, {});
 }
+
+export async function listPlanVersions(teamId: string, projectId: string) {
+  return api.get<import("./types").PlanVersion[]>(`/planning/${teamId}/projects/${projectId}/versions/`);
+}
+
+export async function listPendingChangeSets(teamId: string, projectId: string) {
+  return api.get<import("./types").PlanChangeSet[]>(
+    `/planning/${teamId}/projects/${projectId}/changesets/?status=pending`,
+  );
+}
+
+export async function getChangeSet(teamId: string, projectId: string, changesetId: string) {
+  return api.get<import("./types").PlanChangeSet>(
+    `/planning/${teamId}/projects/${projectId}/changesets/${changesetId}/`,
+  );
+}
+
+export async function approveChangeSet(
+  teamId: string,
+  projectId: string,
+  changesetId: string,
+  applyRemediation = false,
+) {
+  return api.post(`/planning/${teamId}/projects/${projectId}/changesets/${changesetId}/approve/`, {
+    apply_remediation: applyRemediation,
+  });
+}
+
+export async function rejectChangeSet(teamId: string, projectId: string, changesetId: string) {
+  return api.post(`/planning/${teamId}/projects/${projectId}/changesets/${changesetId}/reject/`, {});
+}
