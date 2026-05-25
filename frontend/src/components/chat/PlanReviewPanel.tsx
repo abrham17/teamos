@@ -177,7 +177,7 @@ export function PlanReviewPanel({
                     mutations.map((mut, idx) => {
                       const mutId = String(idx);
                       const isRejected = rejectedMutations.has(mutId);
-                      const title = mut.title || mut.fields?.title || mut.fields?.name || `Mutation #${idx + 1}`;
+                      const title = String(mut.title || mut.fields?.title || mut.fields?.name || `Mutation #${idx + 1}`);
                       
                       return (
                         <div
