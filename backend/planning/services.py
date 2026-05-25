@@ -6,7 +6,10 @@ from django.db.models import Count, Q, QuerySet
 
 from accounts.models import User, Team
 
-from .models import Milestone, Project, Task, ProjectMember, PlanChunk
+from django.utils import timezone
+
+from .models import Milestone, PlanChangeSet, PlanEvent, Project, Task, ProjectMember, PlanChunk
+from .semantic_utils import compute_semantic_key, entity_text_for_embedding
 from wiki.models import WikiPage
 from wiki.views import unique_slug
 from wiki.services.reindex import reindex_wiki_page
@@ -17,17 +20,22 @@ from channels.layers import get_channel_layer
 logger = logging.getLogger(__name__)
 
 def broadcast_project_update(project: Project, action: str):
-    channel_layer = get_channel_layer()
-    async_to_sync(channel_layer.group_send)(
-        f"planner_{project.team_id}_{project.id}",
-        {
-            "type": "planner_message",
-            "message": {
-                "type": "state_change",
-                "action": action
-            }
-        }
-    )
+    try:
+        channel_layer = get_channel_layer()
+        if channel_layer is None:
+            return
+        async_to_sync(channel_layer.group_send)(
+            f"planner_{project.team_id}_{project.id}",
+            {
+                "type": "planner_message",
+                "message": {
+                    "type": "state_change",
+                    "action": action,
+                },
+            },
+        )
+    except Exception:
+        logger.debug("Planner broadcast skipped (channels unavailable)", exc_info=True)
 
 
 def list_projects(team_id: str, query: str = "") -> QuerySet[Project]:
@@ -127,17 +135,143 @@ def get_task_or_none(team_id: str, project_id: str, task_id: str) -> Task | None
         return None
 
 
+def record_plan_event(
+    *,
+    project: Project,
+    entity_type: str,
+    entity_id,
+    event_type: str,
+    payload: dict,
+    changeset: PlanChangeSet | None = None,
+    actor: User | None = None,
+) -> PlanEvent:
+    return PlanEvent.objects.create(
+        project=project,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        event_type=event_type,
+        payload=payload,
+        changeset=changeset,
+        actor=actor,
+    )
+
+
+def lock_fields_on_human_edit(entity: Task | Milestone, field_names: list[str]) -> None:
+    locks = dict(entity.human_locked_fields or {})
+    now = timezone.now().isoformat()
+    for name in field_names:
+        locks[name] = now
+    entity.human_locked_fields = locks
+    entity.save(update_fields=["human_locked_fields", "updated_at"])
+
+
+def get_plan_mutation_context(project: Project) -> dict:
+    """Structured project context for manage-mode delta planning."""
+    tasks = []
+    for t in project.tasks.prefetch_related("dependencies").order_by("order_index", "created_at"):
+        tasks.append(
+            {
+                "id": str(t.id),
+                "semantic_key": t.semantic_key,
+                "title": t.title,
+                "description": t.description,
+                "status": t.status,
+                "priority": t.priority,
+                "start_date": t.start_date.isoformat() if t.start_date else None,
+                "end_date": t.end_date.isoformat() if t.end_date else None,
+                "parent_task_id": str(t.parent_task_id) if t.parent_task_id else None,
+                "assignee_id": str(t.assignee_id) if t.assignee_id else None,
+                "dependency_ids": [str(d.id) for d in t.dependencies.all()],
+                "human_locked_fields": list((t.human_locked_fields or {}).keys()),
+                "order_index": t.order_index,
+            }
+        )
+    milestones = [
+        {
+            "id": str(m.id),
+            "semantic_key": m.semantic_key,
+            "title": m.title,
+            "description": m.description,
+            "target_date": m.target_date.isoformat() if m.target_date else None,
+            "status": m.status,
+            "human_locked_fields": list((m.human_locked_fields or {}).keys()),
+            "order_index": m.order_index,
+        }
+        for m in project.milestones.order_by("order_index", "target_date", "created_at")
+    ]
+    capability_index = {t["id"]: t["title"][:80] for t in tasks}
+    return {
+        "id": str(project.id),
+        "name": project.name,
+        "description": project.description,
+        "status": project.status,
+        "tasks": tasks,
+        "milestones": milestones,
+        "capability_index": capability_index,
+        "task_count": len(tasks),
+        "milestone_count": len(milestones),
+    }
+
+
 def create_task(*, project: Project, user: User, payload: dict) -> Task:
-    deps = payload.pop("dependency_ids", [])
+    deps = payload.pop("dependency_ids", None) or payload.pop("depends_on", None)
+    if not payload.get("semantic_key"):
+        payload["semantic_key"] = compute_semantic_key(title=payload.get("title", "Untitled Task"))
     task = Task.objects.create(project=project, created_by=user, **payload)
     if deps:
         task.dependencies.set(deps)
+    _maybe_set_task_embedding(task)
     broadcast_project_update(project, "task_created")
     return task
 
 
+def _maybe_set_task_embedding(task: Task) -> None:
+    text = entity_text_for_embedding(task.title, task.description)
+    if not text:
+        return
+    try:
+        from ingest.vectors import vector_store
+
+        emb = vector_store._get_embedding(text)
+        if emb:
+            task.title_embedding = emb
+            task.save(update_fields=["title_embedding"])
+    except Exception:
+        logger.exception("Failed to set task embedding for %s", task.id)
+
+
+def patch_task(
+    task: Task,
+    fields: dict,
+    *,
+    actor: User | None = None,
+    respect_locks: bool = True,
+    source: str = "agent",
+) -> Task:
+    """Update only provided fields; respect human locks when requested."""
+    payload = dict(fields)
+    payload.pop("dependency_ids", None)
+    locks = task.human_locked_fields or {}
+    if respect_locks:
+        payload = {k: v for k, v in payload.items() if k not in locks}
+    if not payload:
+        return task
+    deps = fields.get("dependency_ids")
+    for field, value in payload.items():
+        setattr(task, field, value)
+    task.save(update_fields=[*payload.keys(), "updated_at"])
+    if deps is not None:
+        task.dependencies.set(deps)
+    broadcast_project_update(task.project, "task_updated")
+    return task
+
+
 def update_task(task: Task, payload: dict) -> Task:
+    """Full update used by human REST API — locks touched operational fields."""
     deps = payload.pop("dependency_ids", None)
+    human_fields = [k for k in ("status", "priority", "assignee_id", "start_date", "end_date") if k in payload]
+    if human_fields:
+        lock_fields_on_human_edit(task, human_fields)
     for field, value in payload.items():
         setattr(task, field, value)
     task.save(update_fields=[*payload.keys(), "updated_at"])
@@ -167,10 +301,34 @@ def get_milestone_or_none(team_id: str, project_id: str, milestone_id: str) -> M
 
 
 def create_milestone(*, project: Project, user: User, payload: dict) -> Milestone:
+    if not payload.get("semantic_key"):
+        payload["semantic_key"] = compute_semantic_key(title=payload.get("title", "Untitled"))
     return Milestone.objects.create(project=project, created_by=user, **payload)
 
 
+def patch_milestone(
+    milestone: Milestone,
+    fields: dict,
+    *,
+    actor: User | None = None,
+    respect_locks: bool = True,
+) -> Milestone:
+    payload = dict(fields)
+    locks = milestone.human_locked_fields or {}
+    if respect_locks:
+        payload = {k: v for k, v in payload.items() if k not in locks}
+    if not payload:
+        return milestone
+    for field, value in payload.items():
+        setattr(milestone, field, value)
+    milestone.save(update_fields=[*payload.keys(), "updated_at"])
+    return milestone
+
+
 def update_milestone(milestone: Milestone, payload: dict) -> Milestone:
+    human_fields = [k for k in ("status", "target_date", "title") if k in payload]
+    if human_fields:
+        lock_fields_on_human_edit(milestone, human_fields)
     for field, value in payload.items():
         setattr(milestone, field, value)
     milestone.save(update_fields=[*payload.keys(), "updated_at"])
@@ -207,7 +365,7 @@ def calendar_feed(team_id: str, *, from_date: str | None = None, to_date: str | 
         milestone_qs = milestone_qs.filter(target_date__lte=to_date)
 
     events: list[dict] = []
-    for task in task_qs.select_related("project").order_by("start_date", "end_date", "created_at"):
+    for task in task_qs.select_related("project", "assignee").order_by("start_date", "end_date", "created_at"):
         if not task.start_date and not task.end_date:
             continue
         events.append(
@@ -220,6 +378,9 @@ def calendar_feed(team_id: str, *, from_date: str | None = None, to_date: str | 
                 "status": task.status,
                 "start_date": task.start_date.isoformat() if task.start_date else None,
                 "end_date": task.end_date.isoformat() if task.end_date else None,
+                "description": task.description,
+                "priority": task.priority,
+                "assignee_email": task.assignee.email if task.assignee else None,
             }
         )
 
@@ -236,6 +397,9 @@ def calendar_feed(team_id: str, *, from_date: str | None = None, to_date: str | 
                 "status": milestone.status,
                 "start_date": milestone.target_date.isoformat(),
                 "end_date": milestone.target_date.isoformat(),
+                "description": milestone.description,
+                "priority": "high",
+                "assignee_email": None,
             }
         )
 

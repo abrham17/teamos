@@ -35,7 +35,11 @@ class ToolContext:
     session_id: str | None = None
 
 
-def openai_tool_schemas(whitelist: list[str] | None = None) -> list[dict[str, Any]]:
+def openai_tool_schemas(
+    whitelist: list[str] | None = None,
+    *,
+    team_id: str | None = None,
+) -> list[dict[str, Any]]:
     """
     OpenAI-compatible `tools` list for chat.completions.
     If whitelist is provided, only tools in the whitelist are returned.
@@ -168,6 +172,21 @@ def openai_tool_schemas(whitelist: list[str] | None = None) -> list[dict[str, An
         {
             "type": "function",
             "function": {
+                "name": "wiki_delete_page",
+                "description": "Mark a wiki page as deleted (soft delete) by slug or page_id.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "slug": {"type": "string"},
+                        "page_id": {"type": "string"},
+                    },
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "graph_add_edge",
                 "description": "Add a directed edge between two wiki pages (same team).",
                 "parameters": {
@@ -221,9 +240,24 @@ def openai_tool_schemas(whitelist: list[str] | None = None) -> list[dict[str, An
         },
     ] + openai_plan_tool_schemas() + openai_agent_tool_schemas()
 
+    # Phase 2: Dynamically load and merge MCP tools if team_id is provided
+    mcp_tools = []
+    if team_id:
+        try:
+            from chat.mcp_client import get_mcp_client
+            mcp_client = get_mcp_client(team_id)
+            mcp_tools = mcp_client.get_openai_schemas()
+            all_tools.extend(mcp_tools)
+        except Exception:
+            logger.exception("Failed to fetch MCP tool schemas for team %s", team_id)
+
     if whitelist is not None:
         whitelist_set = set(whitelist)
-        return [t for t in all_tools if t["function"]["name"] in whitelist_set]
+        # Keep whitelisted static tools + all MCP tools
+        return [
+            t for t in all_tools 
+            if t["function"]["name"] in whitelist_set or t["function"]["name"].startswith("mcp_")
+        ]
     return all_tools
 
 
@@ -856,108 +890,105 @@ def _parse_args(arguments: str) -> dict[str, Any]:
         raise ValueError(f"invalid_tool_arguments: {e}") from e
 
 
+# ── Tool Registry (Phase 4.1: O(1) lookup replaces if/elif chain) ────
+_TOOL_REGISTRY: dict[str, Any] = {}
+
+
+def _register_tools():
+    """Populate the tool registry on first use."""
+    global _TOOL_REGISTRY
+    if _TOOL_REGISTRY:
+        return
+
+    _TOOL_REGISTRY.update({
+        # Wiki tools
+        "wiki_list_pages": _wiki_list_pages,
+        "wiki_team_overview": _wiki_team_overview,
+        "wiki_search_pages": _wiki_search_pages,
+        "wiki_create_page": _wiki_create_page,
+        "wiki_update_page": _wiki_update_page,
+        "wiki_delete_page": _wiki_delete_page,
+        "wiki_read_full_page": _wiki_read_full_page,
+        # Graph tools
+        "graph_add_edge": _graph_add_edge,
+        "graph_remove_edge": _graph_remove_edge,
+        "graph_add_typed_relation": _graph_add_typed_relation,
+        "graph_traverse_neighbors": _graph_traverse_neighbors,
+        "graph_find_contradictions": _graph_find_contradictions,
+        "graph_explain_connection": _graph_explain_connection,
+        "knowledge_gap_analysis": _knowledge_gap_analysis,
+        # Calendar tools
+        "calendar_detect_conflicts": _calendar_detect_conflicts,
+        "calendar_check_overdue": _calendar_check_overdue,
+        # Agent memory tools
+        "agent_memory_read": _agent_memory_read,
+        "agent_memory_write": _agent_memory_write,
+        "agent_memory_delete": _agent_memory_delete,
+        # Ingest tools
+        "ingest_markdown": _ingest_markdown,
+        # Planning tools
+        "plan_generate_draft": _plan_generate_draft,
+        "plan_list_projects": _plan_list_projects,
+        "plan_search": _plan_search,
+        "plan_read_entity": _plan_read_entity,
+        "plan_create_project": _plan_create_project,
+        "plan_update_project": _plan_update_project,
+        "plan_create_task": _plan_create_task,
+        "plan_update_task": _plan_update_task,
+        "plan_create_milestone": _plan_create_milestone,
+        "plan_update_milestone": _plan_update_milestone,
+        "plan_delete_task": _plan_delete_task,
+        "plan_delete_project": _plan_delete_project,
+        "plan_detect_conflicts": _plan_detect_conflicts,
+        "plan_sync_wiki": _plan_sync_wiki,
+        "plan_risk_assessment": _plan_risk_assessment,
+        "plan_resolve_conflicts": _plan_resolve_conflicts,
+        "plan_generate_risk_resolution": _plan_generate_risk_resolution,
+        "plan_apply_risk_resolution": _plan_apply_risk_resolution,
+        "plan_resolve_risk": _plan_resolve_risk,
+        "plan_check_overdue": _plan_check_overdue,
+        "plan_decompose_task_daily": _plan_decompose_task_daily,
+    })
+
+
 def execute_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, Any]:
     """
     Run a single tool. Returns a JSON-serializable dict for the model (and tracing):
     {"ok": bool, "error"?: str, ...payload }
+
+    Uses O(1) registry lookup instead of if/elif chain (Phase 4.1).
+    Routes mcp_* prefixed tools to external MCP servers (Phase 2).
     """
+    # Phase 2: Route MCP tool calls to external servers
+    if name.startswith("mcp_"):
+        try:
+            from chat.mcp_client import get_mcp_client
+            mcp_client = get_mcp_client(ctx.team_id)
+            args = _parse_args(arguments)
+            result = mcp_client.route_tool_call(name, args)
+            if result is not None:
+                return result
+        except Exception as e:
+            logger.exception("MCP tool routing failed for %s", name)
+            return {"ok": False, "error": f"MCP routing error: {e}", "tool": name}
+
+    # Phase 4.1: Registry-based dispatch
+    _register_tools()
+    handler = _TOOL_REGISTRY.get(name)
+    if handler is None:
+        return {"ok": False, "error": f"unknown_tool:{name}"}
+
     args = _parse_args(arguments)
     try:
-        if name == "wiki_list_pages":
-            return _wiki_list_pages(ctx, args)
-        if name == "wiki_team_overview":
-            return _wiki_team_overview(ctx, args)
-        if name == "wiki_search_pages":
-            return _wiki_search_pages(ctx, args)
-        if name == "wiki_create_page":
-            return _wiki_create_page(ctx, args)
-        if name == "wiki_update_page":
-            return _wiki_update_page(ctx, args)
-        if name == "wiki_read_full_page":
-            return _wiki_read_full_page(ctx, args)
-        if name == "graph_add_edge":
-            return _graph_add_edge(ctx, args)
-        if name == "graph_remove_edge":
-            return _graph_remove_edge(ctx, args)
-        if name == "graph_add_typed_relation":
-            return _graph_add_typed_relation(ctx, args)
-        if name == "graph_traverse_neighbors":
-            return _graph_traverse_neighbors(ctx, args)
-        if name == "graph_find_contradictions":
-            return _graph_find_contradictions(ctx, args)
-        if name == "graph_explain_connection":
-            return _graph_explain_connection(ctx, args)
-        if name == "knowledge_gap_analysis":
-            return _knowledge_gap_analysis(ctx, args)
-        if name == "calendar_detect_conflicts":
-            return _calendar_detect_conflicts(ctx, args)
-        if name == "calendar_check_overdue":
-            return _calendar_check_overdue(ctx, args)
-        if name == "agent_memory_read":
-            return _agent_memory_read(ctx, args)
-        if name == "agent_memory_write":
-            return _agent_memory_write(ctx, args)
-        if name == "agent_memory_delete":
-            return _agent_memory_delete(ctx, args)
-        if name == "ingest_markdown":
-            return _ingest_markdown(ctx, args)
-        if name == "plan_generate_draft":
-            return _plan_generate_draft(ctx, args)
-        if name.startswith("plan_"):
-            return execute_plan_tool(name, arguments, ctx)
-        return {"ok": False, "error": f"unknown_tool:{name}"}
+        return handler(ctx, args)
     except Exception as e:
         logger.exception("Tool %s failed", name)
         return {"ok": False, "error": str(e), "tool": name}
 
 
 def execute_plan_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, Any]:
-    args = _parse_args(arguments)
-    try:
-        if name == "plan_list_projects":
-            return _plan_list_projects(ctx, args)
-        if name == "plan_search":
-            return _plan_search(ctx, args)
-        if name == "plan_read_entity":
-            return _plan_read_entity(ctx, args)
-        if name == "plan_create_project":
-            return _plan_create_project(ctx, args)
-        if name == "plan_update_project":
-            return _plan_update_project(ctx, args)
-        if name == "plan_create_task":
-            return _plan_create_task(ctx, args)
-        if name == "plan_update_task":
-            return _plan_update_task(ctx, args)
-        if name == "plan_create_milestone":
-            return _plan_create_milestone(ctx, args)
-        if name == "plan_update_milestone":
-            return _plan_update_milestone(ctx, args)
-        if name == "plan_delete_task":
-            return _plan_delete_task(ctx, args)
-        if name == "plan_delete_project":
-            return _plan_delete_project(ctx, args)
-        if name == "plan_detect_conflicts":
-            return _plan_detect_conflicts(ctx, args)
-        if name == "plan_sync_wiki":
-            return _plan_sync_wiki(ctx, args)
-        if name == "plan_risk_assessment":
-            return _plan_risk_assessment(ctx, args)
-        if name == "plan_resolve_conflicts":
-            return _plan_resolve_conflicts(ctx, args)
-        if name == "plan_generate_risk_resolution":
-            return _plan_generate_risk_resolution(ctx, args)
-        if name == "plan_apply_risk_resolution":
-            return _plan_apply_risk_resolution(ctx, args)
-        if name == "plan_resolve_risk":
-            return _plan_resolve_risk(ctx, args)
-        if name == "plan_check_overdue":
-            return _plan_check_overdue(ctx, args)
-        if name == "plan_decompose_task_daily":
-            return _plan_decompose_task_daily(ctx, args)
-        return {"ok": False, "error": f"unknown_tool:{name}"}
-    except Exception as e:
-        logger.exception("Plan tool %s failed", name)
-        return {"ok": False, "error": str(e), "tool": name}
+    """Legacy plan tool dispatcher — now delegates to the unified registry."""
+    return execute_tool(name, arguments, ctx)
 
 
 def _wiki_list_pages(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -1164,6 +1195,25 @@ def _wiki_update_page(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     if resolve_candidates:
         result["resolved_from_query"] = True
     return result
+
+
+def _wiki_delete_page(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Mark a wiki page as deleted (soft delete)."""
+    slug = (args.get("slug") or "").strip()
+    page_id = (args.get("page_id") or "").strip()
+    try:
+        if page_id:
+            page = WikiPage.objects.get(id=page_id, team_id=ctx.team_id, is_deleted=False)
+        elif slug:
+            page = WikiPage.objects.get(team_id=ctx.team_id, slug=slug, is_deleted=False)
+        else:
+            return {"ok": False, "error": "slug_or_page_id_required"}
+
+        page.is_deleted = True
+        page.save()
+        return {"ok": True, "page_id": str(page.id), "slug": page.slug, "title": page.title}
+    except WikiPage.DoesNotExist:
+        return {"ok": False, "error": "wiki_page_not_found"}
 
 
 ALLOWED_EDGE_TYPES = frozenset(
@@ -1667,7 +1717,7 @@ def _plan_generate_draft(ctx: ToolContext, args: dict) -> dict:
     """
     from chat.plan_resolve import require_project
     from planning.engine import PlanningEngine
-    from planning.serializers import ProjectDetailSerializer
+    from planning.services import get_plan_mutation_context
     from accounts.models import Team
     import json as _json
 
@@ -1684,8 +1734,9 @@ def _plan_generate_draft(ctx: ToolContext, args: dict) -> dict:
         project, err_resp = require_project(ctx, args)
         if err_resp:
             return err_resp
-        project_context = ProjectDetailSerializer(project).data
+        project_context = get_plan_mutation_context(project)
         project_id = str(project.id)
+        mode = "manage"
 
     try:
         team = Team.objects.get(id=ctx.team_id)
@@ -1712,11 +1763,17 @@ def _plan_generate_draft(ctx: ToolContext, args: dict) -> dict:
             "task_count": final_result.get("task_count", 0),
             "milestone_count": final_result.get("milestone_count", 0),
             "conflict_count": final_result.get("conflict_count", 0),
+            "changeset_id": final_result.get("changeset_id"),
+            "changeset_status": final_result.get("changeset_status"),
+            "pending_mutation_count": final_result.get("pending_mutation_count", 0),
             "domain": final_result.get("domain", "general"),
             "sub_domain": final_result.get("sub_domain", "software"),
             "critique_score": final_result.get("critique_score", 0),
             "wiki_page_url": final_result.get("wiki_page_url"),
-            "message": f"Successfully created/updated project '{final_result.get('project_name')}' with {final_result.get('task_count')} tasks and {final_result.get('milestone_count')} milestones.",
+            "message": (
+                f"Plan update for '{final_result.get('project_name')}' — "
+                f"changeset {final_result.get('changeset_status', 'applied')}."
+            ),
         }
     except Exception as e:
         logger.exception("plan_generate_draft tool failed")
@@ -2076,3 +2133,51 @@ def _agent_memory_delete(ctx: ToolContext, args: dict[str, Any]) -> dict[str, An
 
     deleted = delete_memory(ctx.team_id, key)
     return {"ok": True, "key": key, "deleted": deleted}
+
+
+def select_relevant_tools(query: str, tools: list[dict[str, Any]], max_tools: int = 15) -> list[dict[str, Any]]:
+    """Score and select the most relevant tools for the user query (Phase 4.2).
+
+    Uses fast keyword matching against tool name, description, and arguments
+    to score relevance. Always keeps basic/essential tools.
+    """
+    if not tools or len(tools) <= max_tools:
+        return tools
+
+    query_words = set(query.lower().split())
+    scored_tools = []
+
+    # Essential tools that should always be present if available
+    essential_names = {
+        "wiki_search_pages", "plan_search", "agent_memory_read", "agent_memory_write"
+    }
+
+    for tool in tools:
+        fn = tool.get("function", {})
+        name = fn.get("name", "").lower()
+        desc = fn.get("description", "").lower()
+
+        # Base score
+        score = 0
+        if fn.get("name") in essential_names:
+            score += 100  # Ensure essential tools stay
+
+        # Matching score
+        for word in query_words:
+            if word in name:
+                score += 15
+            if word in desc:
+                score += 5
+
+        # Check property names
+        props = fn.get("parameters", {}).get("properties", {})
+        for prop_name in props:
+            if prop_name.lower() in query_words:
+                score += 3
+
+        scored_tools.append((score, tool))
+
+    # Sort descending by score
+    scored_tools.sort(key=lambda x: x[0], reverse=True)
+    return [t for _, t in scored_tools[:max_tools]]
+

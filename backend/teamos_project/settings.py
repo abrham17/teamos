@@ -227,4 +227,6 @@ CHANNEL_LAYERS = {
     }
 }
 
+X_FRAME_OPTIONS = 'ALLOWALL'
+
 

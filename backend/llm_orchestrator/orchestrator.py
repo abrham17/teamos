@@ -16,6 +16,49 @@ from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
+# ── Singleton LLM client pool (avoids re-instantiation per call) ─────
+_openai_client: OpenAI | None = None
+_openrouter_client: OpenAI | None = None
+_clients_initialized = False
+
+
+def _is_valid_key(k):
+    return k and k.strip() and k.lower() != "not_set"
+
+
+def _get_llm_client() -> OpenAI:
+    """Return a cached LLM client (created once, reused forever)."""
+    global _openai_client, _openrouter_client, _clients_initialized
+
+    if not _clients_initialized:
+        openai_key = getattr(settings, "OPENAI_API_KEY", "")
+        openrouter_key = getattr(settings, "OPENROUTER_API_KEY", "")
+
+        if _is_valid_key(openrouter_key):
+            _openrouter_client = OpenAI(
+                api_key=openrouter_key,
+                base_url=getattr(settings, "OPENROUTER_API_BASE",
+                                 "https://openrouter.ai/api/v1"),
+                default_headers={
+                    "HTTP-Referer": "https://team-os.tech",
+                    "X-Title": "TeamOS",
+                },
+            )
+        if _is_valid_key(openai_key):
+            _openai_client = OpenAI(api_key=openai_key)
+
+        _clients_initialized = True
+
+    backend = getattr(settings, "LLM_BACKEND", "openai").lower()
+    if (backend == "openrouter" or _openai_client is None) and _openrouter_client:
+        return _openrouter_client
+    if _openai_client:
+        return _openai_client
+    raise ValueError(
+        "No valid LLM client available. Set OPENAI_API_KEY or OPENROUTER_API_KEY."
+    )
+
+
 def llm_call(
     team,
     operation: str,
@@ -46,32 +89,8 @@ def llm_call(
     # 3. Execution
     start_time = time.time()
     
-    # Selection of client
-    client = None
-    openai_key = getattr(settings, "OPENAI_API_KEY", "")
-    openrouter_key = getattr(settings, "OPENROUTER_API_KEY", "")
-    backend = getattr(settings, "LLM_BACKEND", "openai").lower()
-
-    # Treat "Not_set" or empty as invalid
-    def is_valid(k):
-        return k and k.strip() and k.lower() != "not_set"
-
-    # Priority 1: OpenRouter
-    if (backend == "openrouter" or not is_valid(openai_key)) and is_valid(openrouter_key):
-        client = OpenAI(
-            api_key=openrouter_key,
-            base_url=getattr(settings, "OPENROUTER_API_BASE", "https://openrouter.ai/api/v1"),
-            default_headers={
-                "HTTP-Referer": "https://team-os.tech",
-                "X-Title": "TeamOS",
-            }
-        )
-    # Priority 2: Direct OpenAI
-    elif is_valid(openai_key):
-        client = OpenAI(api_key=openai_key)
-    
-    if not client:
-        raise ValueError("No valid LLM client available. Please set OPENAI_API_KEY or OPENROUTER_API_KEY.")
+    # Use singleton client pool
+    client = _get_llm_client()
 
     try:
         # Handle JSON mode if requested and supported

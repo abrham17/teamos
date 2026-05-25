@@ -98,4 +98,10 @@ def decompose_task_daily(team_id: str, project_id: str, task_id: str, user) -> l
             )
             created_subtasks.append(subtask)
 
+    from .services import broadcast_project_update
+    try:
+        broadcast_project_update(main_task.project, "task_created")
+    except Exception:
+        logger.exception("Failed to broadcast project update for daily decomposition")
+
     return created_subtasks

@@ -87,6 +87,13 @@ class Task(models.Model):
     )
     dependencies = models.ManyToManyField("self", symmetrical=False, blank=True, related_name="dependents")
     order_index = models.PositiveIntegerField(default=0)
+    semantic_key = models.CharField(max_length=64, blank=True, db_index=True)
+    title_embedding = VectorField(dimensions=1536, null=True, blank=True)
+    human_locked_fields = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Map of field name -> ISO timestamp when a human locked the field from AI overwrites.",
+    )
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_plan_tasks"
     )
@@ -95,6 +102,13 @@ class Task(models.Model):
 
     class Meta:
         ordering = ["order_index", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "semantic_key"],
+                condition=~models.Q(semantic_key=""),
+                name="unique_task_semantic_key_per_project",
+            ),
+        ]
 
     def __str__(self):
         return self.title
@@ -114,6 +128,8 @@ class Milestone(models.Model):
     target_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     order_index = models.PositiveIntegerField(default=0)
+    semantic_key = models.CharField(max_length=64, blank=True, db_index=True)
+    human_locked_fields = models.JSONField(default=dict, blank=True)
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_milestones"
     )
@@ -122,9 +138,122 @@ class Milestone(models.Model):
 
     class Meta:
         ordering = ["order_index", "target_date", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "semantic_key"],
+                condition=~models.Q(semantic_key=""),
+                name="unique_milestone_semantic_key_per_project",
+            ),
+        ]
 
     def __str__(self):
         return self.title
+
+
+class PlanVersion(models.Model):
+    SOURCE_CHOICES = [
+        ("manual", "Manual"),
+        ("agent_proposal", "Agent Proposal"),
+        ("agent_applied", "Agent Applied"),
+        ("auto", "Auto"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="plan_versions")
+    parent_version = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="child_versions"
+    )
+    snapshot_data = models.JSONField(help_text="ProjectDetailSerializer-shaped JSON")
+    source = models.CharField(max_length=32, choices=SOURCE_CHOICES, default="auto")
+    prompt_hash = models.CharField(max_length=64, blank=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_plan_versions"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"PlanVersion {self.id} for {self.project.name}"
+
+
+class PlanChangeSet(models.Model):
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+        ("partially_applied", "Partially Applied"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="plan_changesets")
+    base_version = models.ForeignKey(
+        PlanVersion, on_delete=models.CASCADE, related_name="changesets_as_base"
+    )
+    proposed_version = models.ForeignKey(
+        PlanVersion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="changesets_as_proposal",
+    )
+    status = models.CharField(max_length=24, choices=STATUS_CHOICES, default="pending")
+    mutations = models.JSONField(default=list)
+    impact_summary = models.JSONField(default=dict)
+    auto_applied = models.JSONField(default=list)
+    pending_mutations = models.JSONField(default=list)
+    remediation_preview = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_plan_changesets"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"PlanChangeSet {self.status} for {self.project.name}"
+
+
+class PlanEvent(models.Model):
+    ENTITY_TYPES = [
+        ("task", "Task"),
+        ("milestone", "Milestone"),
+        ("project", "Project"),
+        ("dependency", "Dependency"),
+    ]
+    EVENT_TYPES = [
+        ("task_created", "Task Created"),
+        ("task_updated", "Task Updated"),
+        ("task_deleted", "Task Deleted"),
+        ("milestone_created", "Milestone Created"),
+        ("milestone_updated", "Milestone Updated"),
+        ("milestone_deleted", "Milestone Deleted"),
+        ("project_updated", "Project Updated"),
+        ("dependency_changed", "Dependency Changed"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="plan_events")
+    entity_type = models.CharField(max_length=20, choices=ENTITY_TYPES)
+    entity_id = models.UUIDField(null=True, blank=True)
+    event_type = models.CharField(max_length=32, choices=EVENT_TYPES)
+    payload = models.JSONField(default=dict)
+    changeset = models.ForeignKey(
+        PlanChangeSet, on_delete=models.SET_NULL, null=True, blank=True, related_name="events"
+    )
+    actor = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="plan_events"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.event_type} on {self.entity_type}"
 
 
 class PlanChunk(models.Model):

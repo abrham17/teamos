@@ -592,7 +592,7 @@ export function AIPlannerOverlay({
           setReviewMutations([]);
           setIsReviewOpen(true);
         } else if (event === "plan_mutation_pending") {
-          const mut = data.mutation as any;
+          const mut = data.mutation as ReviewMutation;
           if (mut) {
             setReviewMutations((prev) => [...prev, mut]);
           }

@@ -382,16 +382,32 @@ class PlanningAssistView(APIView):
             return fail("Project is required for update mode.", status_code=400, code="project_required")
 
         project_context = None
+        project = None
         if project_id:
             project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
             if project:
-                from .serializers import ProjectDetailSerializer
-                project_context = ProjectDetailSerializer(project).data
+                from .services import get_plan_mutation_context
+
+                project_context = get_plan_mutation_context(project)
             elif mode == "manage":
                 return fail("Project not found.", status_code=404, code="project_not_found")
 
         try:
-            draft = generate_plan_draft(team_id, prompt, mode=mode, project_context=project_context)
+            if mode == "manage" and project:
+                from accounts.models import Team
+                from planning.manage_update_pipeline import ManageUpdatePipeline
+
+                team = Team.objects.get(id=team_id)
+                pipeline = ManageUpdatePipeline(team=team, user=request.user)
+                result = None
+                for event in pipeline.run(prompt, project_context=project_context):
+                    if "reasoning_done" in event:
+                        import json as _json
+
+                        result = _json.loads(event.split("data: ", 1)[1].strip())
+                draft = result or {"mutations": []}
+            else:
+                draft = generate_plan_draft(team_id, prompt, mode=mode, project_context=project_context)
             return ok(draft)
         except Exception as e:
             logger.exception("Plan assist failed")
@@ -598,6 +614,9 @@ class PlanningAssistStreamView(APIView):
                 "wiki planning, team allocation, and risk management.\n\n"
                 "Your objective is to answer questions thoroughly using the provided database and wiki context.\n"
                 "Format your response with premium, clean Markdown (headings, bold text, lists). Be professional, concise, and helpful.\n"
+                "Before generating or proposing any updates, proactively ask the user 1 or 2 extremely friendly, engaging questions "
+                "about (1) daily tasks inclusion, (2) milestone checkpoints, (3) priority settings, or (4) other project related details "
+                "or wiki knowledge gaps. Keep it highly interactive and conversational.\n\n"
                 "If asked about project relationships, task status, team workloads, or specific calendar events, use the context below "
                 "to answer accurately. Keep schedule dates and project constraints in mind.\n\n"
                 f"=== CONTEXT ===\n"
@@ -942,6 +961,186 @@ class PlanningSnapshotRestoreView(APIView):
 
         reindex_project_async.delay(str(project.id))
         return ok({"restored": True})
+
+
+class PlanningVersionListView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def get(self, request, team_id, project_id):
+        from .models import PlanVersion
+
+        versions = PlanVersion.objects.filter(
+            project_id=project_id, project__team_id=team_id
+        ).order_by("-created_at")[:50]
+        data = [
+            {
+                "id": str(v.id),
+                "source": v.source,
+                "parent_version_id": str(v.parent_version_id) if v.parent_version_id else None,
+                "prompt_hash": v.prompt_hash,
+                "created_at": v.created_at.isoformat(),
+                "created_by": v.created_by.email if v.created_by else None,
+            }
+            for v in versions
+        ]
+        return ok(data)
+
+
+class PlanningVersionRestoreView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def post(self, request, team_id, project_id, version_id):
+        from .models import PlanVersion
+        from .version_services import create_plan_version
+
+        project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
+        if not project:
+            return fail("Project not found", status_code=404)
+        try:
+            version = PlanVersion.objects.get(id=version_id, project=project)
+        except PlanVersion.DoesNotExist:
+            return fail("Version not found", status_code=404)
+
+        create_plan_version(project, user=request.user, source="manual", parent_version=version)
+        data = version.snapshot_data
+        update_project(project, {
+            "name": data.get("name", project.name),
+            "description": data.get("description", project.description),
+            "status": data.get("status", project.status),
+        })
+        project.tasks.all().delete()
+        project.milestones.all().delete()
+        for t_data in data.get("tasks", []):
+            create_task(
+                project=project,
+                user=request.user,
+                payload={
+                    "title": t_data.get("title", "Untitled Task"),
+                    "description": t_data.get("description", ""),
+                    "status": t_data.get("status", "todo"),
+                    "priority": t_data.get("priority", "medium"),
+                    "semantic_key": t_data.get("semantic_key", ""),
+                    "start_date": t_data.get("start_date"),
+                    "end_date": t_data.get("end_date"),
+                    "order_index": t_data.get("order_index", 0),
+                },
+            )
+        for m_data in data.get("milestones", []):
+            create_milestone(
+                project=project,
+                user=request.user,
+                payload={
+                    "title": m_data.get("title", "Untitled Milestone"),
+                    "description": m_data.get("description", ""),
+                    "status": m_data.get("status", "pending"),
+                    "semantic_key": m_data.get("semantic_key", ""),
+                    "target_date": m_data.get("target_date"),
+                    "order_index": m_data.get("order_index", 0),
+                },
+            )
+        from .tasks import reindex_project_async
+
+        reindex_project_async.delay(str(project.id))
+        return ok({"restored": True, "version_id": str(version_id)})
+
+
+class PlanningChangeSetListView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def get(self, request, team_id, project_id):
+        from .models import PlanChangeSet
+
+        status_filter = request.query_params.get("status", "pending")
+        qs = PlanChangeSet.objects.filter(project_id=project_id, project__team_id=team_id)
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        data = [
+            {
+                "id": str(cs.id),
+                "status": cs.status,
+                "impact_summary": cs.impact_summary,
+                "pending_mutations": cs.pending_mutations,
+                "auto_applied": cs.auto_applied,
+                "remediation_preview": cs.remediation_preview,
+                "created_at": cs.created_at.isoformat(),
+                "base_version_id": str(cs.base_version_id),
+            }
+            for cs in qs.order_by("-created_at")[:20]
+        ]
+        return ok(data)
+
+
+class PlanningChangeSetDetailView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def get(self, request, team_id, project_id, changeset_id):
+        from .models import PlanChangeSet
+
+        try:
+            cs = PlanChangeSet.objects.get(
+                id=changeset_id, project_id=project_id, project__team_id=team_id
+            )
+        except PlanChangeSet.DoesNotExist:
+            return fail("ChangeSet not found", status_code=404)
+        return ok({
+            "id": str(cs.id),
+            "status": cs.status,
+            "mutations": cs.mutations,
+            "pending_mutations": cs.pending_mutations,
+            "auto_applied": cs.auto_applied,
+            "impact_summary": cs.impact_summary,
+            "remediation_preview": cs.remediation_preview,
+        })
+
+
+class PlanningChangeSetApproveView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def post(self, request, team_id, project_id, changeset_id):
+        from .models import PlanChangeSet
+        from .version_services import approve_changeset
+        from .tasks import reindex_project_async
+
+        try:
+            cs = PlanChangeSet.objects.get(
+                id=changeset_id, project_id=project_id, project__team_id=team_id
+            )
+        except PlanChangeSet.DoesNotExist:
+            return fail("ChangeSet not found", status_code=404)
+        try:
+            apply_remediation = request.data.get("apply_remediation", False)
+            cs = approve_changeset(cs, user=request.user)
+            if apply_remediation:
+                from .remediation import remediate_project
+
+                remediate_project(team=cs.project.team, project=cs.project, apply_conflicts=True, apply_risk=False)
+            reindex_project_async.delay(str(project_id))
+            return ok({"approved": True, "changeset_id": str(cs.id)})
+        except ValueError as e:
+            return fail(str(e), status_code=400)
+        except Exception as e:
+            logger.exception("Approve changeset failed")
+            return fail(str(e), status_code=500)
+
+
+class PlanningChangeSetRejectView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def post(self, request, team_id, project_id, changeset_id):
+        from .models import PlanChangeSet
+        from .version_services import reject_changeset
+
+        try:
+            cs = PlanChangeSet.objects.get(
+                id=changeset_id, project_id=project_id, project__team_id=team_id
+            )
+        except PlanChangeSet.DoesNotExist:
+            return fail("ChangeSet not found", status_code=404)
+        try:
+            reject_changeset(cs)
+            return ok({"rejected": True, "changeset_id": str(cs.id)})
+        except ValueError as e:
+            return fail(str(e), status_code=400)
 
 
 class NotificationListView(APIView):

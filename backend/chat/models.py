@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from pgvector.django import VectorField
 from accounts.models import Team, User
 
 
@@ -75,6 +76,7 @@ class AgentEpisode(models.Model):
     tags = models.JSONField(default=list, blank=True, help_text="Semantic tags for retrieval")
     success = models.BooleanField(default=True)
     duration_ms = models.PositiveIntegerField(default=0, help_text="Total execution time")
+    embedding = VectorField(dimensions=1536, null=True, blank=True, help_text="Pre-computed embedding for semantic recall")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -120,4 +122,29 @@ class AgentMemory(models.Model):
 
     def __str__(self):
         return f"AgentMemory({self.team.name}: {self.key})"
+
+
+class MCPServerRegistration(models.Model):
+    """
+    Registration of an external MCP (Model Context Protocol) tool server.
+    Each team can register multiple MCP servers (GitHub, Slack, Jira, etc.)
+    whose tools become available to the agent during chat.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="mcp_servers")
+    name = models.CharField(max_length=100, help_text="Short identifier e.g. 'github', 'slack'")
+    url = models.URLField(help_text="MCP server endpoint URL")
+    auth_token = models.TextField(blank=True, default="", help_text="Bearer token for server auth")
+    capabilities = models.JSONField(default=list, blank=True, help_text="List of capability strings")
+    enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("team", "name")
+        ordering = ["name"]
+
+    def __str__(self):
+        status = "✓" if self.enabled else "✗"
+        return f"MCP[{status}] {self.name} ({self.team.name})"
 

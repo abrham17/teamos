@@ -109,8 +109,8 @@ If none, return []."""
             user=page.created_by,
             temperature=0.3,
         )
-    except Exception:
-        logger.exception("wiki_plan_linker LLM call failed for page %s", page.title)
+    except Exception as exc:
+        logger.warning("wiki_plan_linker skipped for page %s: %s", page.title, exc)
         return
 
     try:

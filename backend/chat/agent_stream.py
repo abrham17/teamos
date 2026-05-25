@@ -117,7 +117,7 @@ def iter_agent_sse_events(
         ctx=ctx,
         state=state,
         system_prefix=AGENT_SYSTEM_PREFIX,
-        tools=openai_tool_schemas(),
+        tools=openai_tool_schemas(team_id=str(session.team_id)),
         execute=execute_tool,
     )
 
@@ -266,7 +266,7 @@ def iter_agent_core_events(
     from chat.agent_core import AgentConfig, AgentCore
 
     # Attempt multi-agent classification to restrict tools to relevant specialist
-    all_tools = openai_tool_schemas()
+    all_tools = openai_tool_schemas(team_id=str(session.team_id))
     selected_tools = all_tools  # default: all tools
     try:
         orchestrator = get_orchestrator(str(session.team_id), str(session.created_by_id))

@@ -55,31 +55,31 @@ def reindex_wiki_page(
     if queue_graph:
         from ingest.tasks import wire_page_graph
 
-        try:
-            wire_page_graph.delay(str(page.id), trace_id=trace_id)
-        except Exception:
-            logger.exception(
-                "Failed to queue wire_page_graph after reindex",
-                extra={"page_id": str(page.id), "team_id": str(page.team_id)},
-            )
+        def _queue_or_skip(label: str, fn, *args) -> None:
+            try:
+                fn(*args)
+            except Exception as exc:
+                logger.debug(
+                    "Skipped queue %s (broker unavailable): %s",
+                    label,
+                    exc,
+                    extra={"page_id": str(page.id), "team_id": str(page.team_id)},
+                )
 
-        # Queue agent reaction: auto-discover relations, inject wikilinks
+        _queue_or_skip(
+            "wire_page_graph",
+            lambda: wire_page_graph.delay(str(page.id), trace_id=trace_id),
+        )
+
         from ingest.tasks import agent_react_to_page_change, agent_sync_wiki_to_plans
 
-        try:
-            agent_react_to_page_change.delay(str(page.id), "update", trace_id=trace_id)
-        except Exception:
-            logger.exception(
-                "Failed to queue agent_react_to_page_change",
-                extra={"page_id": str(page.id)},
-            )
-
-        try:
-            agent_sync_wiki_to_plans.delay(str(page.id), trace_id=trace_id)
-        except Exception:
-            logger.exception(
-                "Failed to queue agent_sync_wiki_to_plans",
-                extra={"page_id": str(page.id)},
-            )
+        _queue_or_skip(
+            "agent_react_to_page_change",
+            lambda: agent_react_to_page_change.delay(str(page.id), "update", trace_id=trace_id),
+        )
+        _queue_or_skip(
+            "agent_sync_wiki_to_plans",
+            lambda: agent_sync_wiki_to_plans.delay(str(page.id), trace_id=trace_id),
+        )
 
     return chunk_count

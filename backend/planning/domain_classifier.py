@@ -52,7 +52,36 @@ def synthesize_domain(
     - What dependency ordering patterns apply
 
     No hardcoded domain list. The LLM derives everything from the wiki context.
+    
+    Caches the results to avoid duplicate domain synthesis LLM calls (Phase 5.2).
     """
+    import hashlib
+    from django.core.cache import cache
+
+    # Build cache key based on team, prompt, and wiki context
+    hasher = hashlib.sha256()
+    hasher.update(prompt.encode("utf-8"))
+    hasher.update((wiki_context or "").encode("utf-8"))
+    cache_key = f"domain_synth:{team.id}:{hasher.hexdigest()}"
+
+    cached = cache.get(cache_key)
+    if cached:
+        logger.info("Found cached domain synthesis for team %s", team.id)
+        # Reconstruct parsed patterns from list of lists
+        parsed_patterns = []
+        for p in cached.get("dependency_patterns", []):
+            if len(p) == 2:
+                parsed_patterns.append((p[0], p[1]))
+        return DomainContext(
+            domain=cached["domain"],
+            sub_domain=cached["sub_domain"],
+            expert_persona=cached["expert_persona"],
+            task_vocabulary=cached.get("task_vocabulary", []),
+            domain_constraints=cached.get("domain_constraints", []),
+            seed_tasks=cached.get("seed_tasks", []),
+            dependency_patterns=parsed_patterns,
+        )
+
     from llm_orchestrator.orchestrator import llm_json_call
 
     has_wiki = bool((wiki_context or "").strip())
@@ -132,6 +161,18 @@ def synthesize_domain(
     sub_domain = (result.get("sub_domain") or "software").strip().lower().replace(" ", "_")
 
     logger.info("Domain synthesized from wiki+prompt: %s/%s", domain, sub_domain)
+
+    # Cache result for 24 hours
+    cache_data = {
+        "domain": domain,
+        "sub_domain": sub_domain,
+        "expert_persona": result.get("expert_persona", ""),
+        "task_vocabulary": result.get("task_vocabulary", []),
+        "domain_constraints": result.get("domain_constraints", []),
+        "seed_tasks": result.get("seed_tasks", []),
+        "dependency_patterns": [[downstream, upstream] for downstream, upstream in parsed_patterns],
+    }
+    cache.set(cache_key, cache_data, timeout=86400)
 
     return DomainContext(
         domain=domain,

@@ -35,6 +35,10 @@ class Team(models.Model):
     name = models.CharField(max_length=120)
     slug = models.SlugField(unique=True, max_length=120)
     plan = models.CharField(max_length=20, choices=PLAN_CHOICES, default="free")
+    plan_auto_apply_safe = models.BooleanField(
+        default=True,
+        help_text="When true, AI manage-mode updates auto-apply safe fields (e.g. descriptions).",
+    )
     is_deleted = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
     purge_after = models.DateTimeField(null=True, blank=True)

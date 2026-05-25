@@ -65,3 +65,101 @@ def prune_expired_agent_memories(self):
     except Exception as exc:
         logger.exception("prune_expired_agent_memories failed")
         raise self.retry(exc=exc, countdown=60)
+
+
+@shared_task(name="chat.tasks.prune_old_episodes", bind=True, max_retries=1)
+def prune_old_episodes(self):
+    """
+    Auto-prune successful agent episodes older than 60 days.
+    Keep failed episodes longer for analysis.
+    """
+    try:
+        from chat.models import AgentEpisode
+        
+        cutoff = timezone.now() - timedelta(days=60)
+        deleted, _ = AgentEpisode.objects.filter(
+            created_at__lt=cutoff,
+            success=True
+        ).delete()
+        
+        if deleted > 0:
+            logger.info("Pruned %d old AgentEpisode records.", deleted)
+        return {"deleted": deleted}
+    except Exception as exc:
+        logger.exception("prune_old_episodes failed")
+        raise self.retry(exc=exc, countdown=60)
+
+
+@shared_task(name="chat.tasks.retrospective_learning_loop", bind=True, max_retries=2)
+def retrospective_learning_loop(self, episode_id: str):
+    """
+    Episode Retrospective Critique:
+    Analyzes failed or complex agent tool calls/outcomes, extracts actionable
+    operational lessons, updates behavioral guidelines, and writes them back.
+    """
+    try:
+        import json
+        from chat.models import AgentEpisode
+        from llm_orchestrator.orchestrator import llm_json_call
+        from django.core.cache import cache
+
+        episode = AgentEpisode.objects.get(id=episode_id)
+        
+        actions_str = json.dumps(episode.actions)
+        had_tool_failure = "ok\": false" in actions_str.lower() or "error" in actions_str.lower()
+        
+        if episode.success and not had_tool_failure:
+            episode.learnings = f"Successfully addressed: '{episode.trigger[:100]}'."
+            episode.save()
+            return {"status": "skipped_no_errors"}
+
+        # Perform retrospective critique via LLM
+        system = (
+            "You are the senior TeamOS Site Reliability & Performance Auditor.\n"
+            "Analyze this historical agent episode, locate where tools erred, what constraints were missed, and compile an engineering post-mortem.\n\n"
+            f"User Trigger: {episode.trigger}\n"
+            f"Actions Executed: {actions_str}\n"
+            f"Outcome Reported: {json.dumps(episode.outcome)}\n\n"
+            "Return JSON:\n"
+            "  root_cause: string (why did the tool or loop fail?)\n"
+            "  guideline_update: string (one generic, actionable rule to avoid this in the future, e.g. 'When running doc searches, verify the API key is present before listing files')\n"
+            "  severity: string\n"
+        )
+
+        result = llm_json_call(
+            team=episode.team,
+            operation="retrospective_critique",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": "Analyze the execution trace and provide dynamic instruction corrections."},
+            ],
+            default_on_error={
+                "root_cause": "Unknown execution error",
+                "guideline_update": "Verify arguments before executing tool.",
+                "severity": "medium",
+            },
+        )
+
+        root_cause = result.get("root_cause", "")
+        guideline = result.get("guideline_update", "")
+
+        learnings_text = f"Root Cause: {root_cause}\nRecommended Correction: {guideline}"
+        episode.learnings = learnings_text
+        episode.save()
+
+        # Update the team's global dynamic behavioral directives cache
+        team_key = f"behavior_directives:{str(episode.team.id)}"
+        directives = cache.get(team_key, [])
+        if len(directives) >= 20:
+            directives.pop(0)  # LRU size limit
+        directives.append(guideline)
+        cache.set(team_key, directives, timeout=86400 * 7)  # Store for 7 days
+
+        logger.info("Successfully updated retrospective learnings for episode %s.", episode_id)
+        return {"status": "success", "guideline": guideline}
+
+    except Exception as exc:
+        logger.exception("retrospective_learning_loop failed")
+        raise self.retry(exc=exc, countdown=30)
+
+

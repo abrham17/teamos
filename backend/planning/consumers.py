@@ -48,6 +48,20 @@ class PlannerConsumer(AsyncWebsocketConsumer):
                     }
                 }
             )
+        elif event_type == 'node_move':
+            # Broadcast collaborative node positioning
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'planner_message',
+                    'message': {
+                        'type': 'node_move',
+                        'userId': data.get('userId'),
+                        'nodeId': data.get('nodeId'),
+                        'position': data.get('position')
+                    }
+                }
+            )
 
     # Receive message from room group
     async def planner_message(self, event):

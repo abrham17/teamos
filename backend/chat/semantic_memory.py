@@ -1,58 +1,80 @@
-"""Semantic memory recall using vector similarity search."""
+"""Semantic memory recall using vector similarity search.
+
+Performance-optimized: uses pre-computed embeddings stored on AgentEpisode
+and pgvector CosineDistance for O(1)-embedding-call recall instead of
+the previous N+1 approach (which made 50+ embedding API calls per query).
+"""
 
 import logging
-from llm_orchestrator.orchestrator import llm_call
+from typing import Any
+
+from django.db import connection
+
 from chat.models import AgentEpisode, AgentMemory
+from ingest.vectors import vector_store
 
 logger = logging.getLogger(__name__)
 
 
-def _embed(text: str) -> list[float]:
-    """Generate embedding vector for a text string."""
-    resp, _, _ = llm_call(
-        operation="embedding",
-        messages=[{"role": "user", "content": text}],
-        embedding=True,
-    )
-    if resp and hasattr(resp, "data") and resp.data:
-        return resp.data[0].embedding
-    return []
+# ── Embedding helper ──────────────────────────────────────────────────
 
+def _embed_text(text: str) -> list[float] | None:
+    """Generate an embedding vector via the shared VectorStore client.
+
+    Uses the same embedding path as wiki/plan chunks — no separate
+    llm_call overhead, shared retry logic, deterministic fallback.
+    """
+    try:
+        return vector_store._get_embedding(text)
+    except Exception:
+        logger.exception("Embedding generation failed")
+        return None
+
+
+def compute_episode_embedding(episode: AgentEpisode) -> None:
+    """Compute and persist the embedding for an episode (called once on creation).
+
+    This is the key optimisation: we embed once at write-time, not N times
+    at read-time.
+    """
+    text = f"Trigger: {episode.trigger}\nLearnings: {episode.learnings or 'None'}"
+    emb = _embed_text(text)
+    if emb:
+        AgentEpisode.objects.filter(id=episode.id).update(embedding=emb)
+
+
+# ── Episode recall (was 51 API calls, now 1 + 1 DB query) ────────────
 
 def recall_similar_episodes(team_id: str, query: str, top_k: int = 5) -> list[dict]:
-    """Recall past episodes semantically similar to the current query."""
-    episodes = AgentEpisode.objects.filter(team_id=team_id).order_by("-created_at")[:50]
+    """Recall past episodes semantically similar to the current query.
 
-    if not episodes:
-        return []
-
-    # Build a search corpus from episode triggers and learnings
-    corpus = []
-    for ep in episodes:
-        text = f"Trigger: {ep.trigger}\nLearnings: {ep.learnings or 'None'}"
-        corpus.append({"id": str(ep.id), "text": text, "episode": ep})
-
-    query_embedding = _embed(query)
-    if not query_embedding:
+    Uses pgvector CosineDistance when available (Postgres), falls back to
+    keyword matching otherwise (SQLite/dev).
+    """
+    if connection.vendor != "postgresql":
+        episodes = AgentEpisode.objects.filter(team_id=team_id).order_by("-created_at")[:50]
         return _fallback_keyword_recall(episodes, query, top_k)
 
-    # Score each episode by cosine similarity
-    import math
+    # Single embedding call for the query
+    query_embedding = _embed_text(query)
+    if not query_embedding:
+        episodes = AgentEpisode.objects.filter(team_id=team_id).order_by("-created_at")[:50]
+        return _fallback_keyword_recall(episodes, query, top_k)
 
-    def cosine_sim(a: list[float], b: list[float]) -> float:
-        dot = sum(x * y for x, y in zip(a, b))
-        norm_a = math.sqrt(sum(x * x for x in a))
-        norm_b = math.sqrt(sum(x * x for x in b))
-        return dot / (norm_a * norm_b) if norm_a and norm_b else 0.0
+    # pgvector: one fast indexed query instead of 50 API calls
+    from pgvector.django import CosineDistance
 
-    scored = []
-    for item in corpus:
-        emb = _embed(item["text"])
-        if emb:
-            sim = cosine_sim(query_embedding, emb)
-            scored.append((sim, item["episode"]))
+    results = (
+        AgentEpisode.objects.filter(team_id=team_id, embedding__isnull=False)
+        .annotate(distance=CosineDistance("embedding", query_embedding))
+        .filter(distance__lt=0.55)
+        .order_by("distance")[:top_k]
+    )
 
-    scored.sort(key=lambda x: x[0], reverse=True)
+    if not results:
+        # Fall back to keyword if no embedded episodes exist yet
+        episodes = AgentEpisode.objects.filter(team_id=team_id).order_by("-created_at")[:50]
+        return _fallback_keyword_recall(episodes, query, top_k)
 
     return [
         {
@@ -60,9 +82,9 @@ def recall_similar_episodes(team_id: str, query: str, top_k: int = 5) -> list[di
             "trigger": ep.trigger,
             "learnings": ep.learnings,
             "success": ep.success,
-            "similarity": round(sim, 3),
+            "similarity": round(1.0 - float(ep.distance), 3),
         }
-        for sim, ep in scored[:top_k]
+        for ep in results
     ]
 
 

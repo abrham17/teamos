@@ -80,6 +80,7 @@ class AgentCore:
         session: ChatSession,
         ctx: ToolContext,
         config: AgentConfig,
+        preloaded_rag: list | None = None,
     ):
         self.session = session
         self.ctx = ctx
@@ -88,6 +89,7 @@ class AgentCore:
         self.reflector = AgentReflector(self.team) if config.enable_reflection else None
         self.context_builder = ContextBuilder(str(session.team_id))
         self.working_memory = WorkingMemory(str(session.id))
+        self.preloaded_rag = preloaded_rag  # P1.3: avoid redundant RAG search
 
     def run(self, context_str: str, state: dict[str, Any]) -> Iterator[str]:
         """
@@ -154,41 +156,54 @@ class AgentCore:
 
             round_results: list[dict[str, Any]] = []
 
+            # Emit tool_call events for all tools upfront
+            tool_calls_to_run = []
             for tc in msg.tool_calls:
                 if tools_executed >= self.config.max_tools:
                     yield _sse("error", {"detail": "Tool budget exceeded."})
                     return
-
                 tools_executed += 1
                 name = tc.function.name
                 arguments = tc.function.arguments or "{}"
-
                 yield _sse("tool_call", {"name": name, "arguments": arguments})
+                tool_calls_to_run.append((tc, name, arguments))
 
-                # Execute with timeout
-                result = self._execute_tool(name, arguments)
+            # Phase 3.1: Execute tools in parallel when multiple are requested
+            if len(tool_calls_to_run) > 1:
+                results_map: dict[str, dict[str, Any]] = {}
+                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+                    future_to_tc = {
+                        pool.submit(self._execute_tool, name, arguments): (tc, name, arguments)
+                        for tc, name, arguments in tool_calls_to_run
+                    }
+                    for future in concurrent.futures.as_completed(future_to_tc, timeout=TOOL_TIMEOUT_SECONDS + 5):
+                        tc, name, arguments = future_to_tc[future]
+                        try:
+                            results_map[tc.id] = future.result()
+                        except Exception as e:
+                            results_map[tc.id] = {"ok": False, "error": str(e)}
 
-                # Truncate result for LLM context and trace protection
-                truncated_result = self._truncate_tool_result(result)
-
-                entry = {"name": name, "arguments": arguments, "result": truncated_result}
-                tool_trace.append(entry)
-                round_results.append(entry)
-
-                yield _sse("tool_result", {
-                    "name": name,
-                    "ok": result.get("ok"),
-                    "result": truncated_result,
-                })
-
-                # Track in working memory scratchpad
-                self.working_memory.track_tool_call(name, {}, bool(result.get("ok")))
-
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": json.dumps(truncated_result),
-                })
+                # Emit results in original order
+                for tc, name, arguments in tool_calls_to_run:
+                    result = results_map.get(tc.id, {"ok": False, "error": "execution_failed"})
+                    truncated_result = self._truncate_tool_result(result)
+                    entry = {"name": name, "arguments": arguments, "result": truncated_result}
+                    tool_trace.append(entry)
+                    round_results.append(entry)
+                    yield _sse("tool_result", {"name": name, "ok": result.get("ok"), "result": truncated_result})
+                    self.working_memory.track_tool_call(name, {}, bool(result.get("ok")))
+                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(truncated_result)})
+            else:
+                # Single tool — execute directly (no pool overhead)
+                for tc, name, arguments in tool_calls_to_run:
+                    result = self._execute_tool(name, arguments)
+                    truncated_result = self._truncate_tool_result(result)
+                    entry = {"name": name, "arguments": arguments, "result": truncated_result}
+                    tool_trace.append(entry)
+                    round_results.append(entry)
+                    yield _sse("tool_result", {"name": name, "ok": result.get("ok"), "result": truncated_result})
+                    self.working_memory.track_tool_call(name, {}, bool(result.get("ok")))
+                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(truncated_result)})
 
             # ── Reflection on this round ──────────────────────────
             if self.reflector and self.config.enable_reflection:
@@ -232,10 +247,11 @@ class AgentCore:
         """Build the initial message list with system prompt + history using ContextBuilder."""
         # Use ContextBuilder for dynamic context allocation
         built_context = self.context_builder.build(
-            query=context_str[:500],  # Use the RAG query as hint
+            query=context_str[:500],
             session=self.session,
             include_graph=True,
             history_limit=12,
+            preloaded_rag=self.preloaded_rag,  # P1.3: reuse RAG from universal_stream
         )
 
         system = self.config.system_prefix
@@ -344,9 +360,10 @@ class AgentCore:
             # If we already have content from the first LLM call, use it directly
             if initial_content.strip():
                 final_text = initial_content
-                # Stream it character by character for consistency
-                for char in final_text:
-                    yield _sse("chunk", {"token": char})
+                # P3.2: Stream in word-sized chunks instead of char-by-char
+                CHUNK_SIZE = 40
+                for i in range(0, len(final_text), CHUNK_SIZE):
+                    yield _sse("chunk", {"token": final_text[i:i + CHUNK_SIZE]})
             else:
                 # Otherwise, make a new streaming call
                 stream_resp, stream_model_used, _ = llm_call(
@@ -388,7 +405,8 @@ class AgentCore:
         """Store this interaction as an episodic memory for future recall."""
         try:
             from chat.models import AgentEpisode
-            AgentEpisode.objects.create(
+            from chat.semantic_memory import compute_episode_embedding
+            episode = AgentEpisode.objects.create(
                 team=self.team,
                 trigger=user_message[:500],
                 actions=tool_trace[:20],
@@ -399,6 +417,16 @@ class AgentCore:
                 },
                 learnings=final_text[:500],
             )
+            # P1.1: Pre-compute embedding at creation time
+            compute_episode_embedding(episode)
+            
+            # P3: Trigger Episodic Retrospective Learning Loop task (2027 standard)
+            try:
+                from chat.tasks import retrospective_learning_loop
+                retrospective_learning_loop.delay(str(episode.id))
+            except Exception:
+                logger.warning("Failed to queue retrospective learning loop")
+
             # Clear the session scratchpad — next session starts fresh
             self.working_memory.clear()
         except Exception:

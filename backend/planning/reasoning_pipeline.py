@@ -146,58 +146,68 @@ class PlanningReasoningPipeline:
             },
         })
 
-        # ── Stage 3: Decompose ────────────────────────────────────
-        yield _sse("agent_status", {"status": f"Decomposing mission ({self.domain_ctx.sub_domain})..."})
-        yield _sse("agent_step", {"name": "reasoning_decompose", "arguments": json.dumps({"prompt": prompt[:80]})})
+        # ── Stage 3 & 4: Combined Decompose & Draft (Phase 5.1 & Speculative Strategy branching) ───
+        yield _sse("agent_status", {"status": f"Speculatively decomposing and drafting alternative plans ({self.domain_ctx.sub_domain})..."})
+        yield _sse("agent_step", {"name": "reasoning_decompose", "arguments": json.dumps({"strategies": ["fast_track", "risk_mitigated"]})})
 
-        decomposition = self._decompose(prompt, mode, project_context, research)
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            future_fast = executor.submit(self._decompose_and_draft, prompt, mode, project_context, research, "fast_track")
+            future_risk = executor.submit(self._decompose_and_draft, prompt, mode, project_context, research, "risk_mitigated")
+            
+            try:
+                fast_decomp, fast_draft = future_fast.result()
+            except Exception as e:
+                logger.exception("Fast-track strategy generation failed")
+                # Fallback: run balanced sequentially
+                fast_decomp, fast_draft = self._decompose_and_draft(prompt, mode, project_context, research, "balanced")
+                
+            try:
+                risk_decomp, risk_draft = future_risk.result()
+            except Exception as e:
+                logger.exception("Risk-mitigated strategy generation failed")
+                # Fallback to copy fast
+                risk_decomp, risk_draft = fast_decomp, fast_draft
 
         yield _sse("agent_result", {
             "name": "reasoning_decompose",
             "ok": True,
             "result": {
-                "goal_count": len(decomposition.goals),
-                "goals": [g.title for g in decomposition.goals],
-                "constraints": decomposition.constraints[:3],
+                "fast_track_goals": len(fast_decomp.goals),
+                "risk_mitigated_goals": len(risk_decomp.goals),
+                "constraints_analyzed": len(fast_decomp.constraints) + len(risk_decomp.constraints),
             },
         })
 
-        # ── Stage 4: Draft ────────────────────────────────────────
-        yield _sse("agent_status", {"status": "Drafting domain-specific plan..."})
         yield _sse("agent_step", {"name": "reasoning_draft", "arguments": json.dumps({"mode": mode})})
-
-        draft = self._draft(prompt, decomposition, research, mode, project_context)
-
         yield _sse("agent_result", {
             "name": "reasoning_draft",
             "ok": True,
             "result": {
-                "task_count": len(draft.tasks),
-                "milestone_count": len(draft.milestones),
-                "project_name": draft.project_name,
+                "candidates_generated": 2,
+                "fast_track_tasks": len(fast_draft.tasks),
+                "risk_mitigated_tasks": len(risk_draft.tasks),
             },
         })
 
-        # ── Stage 5: Critique ─────────────────────────────────────
-        yield _sse("agent_status", {"status": "Self-critiquing plan for domain coverage..."})
-        yield _sse("agent_step", {"name": "reasoning_critique", "arguments": json.dumps({"task_count": len(draft.tasks)})})
+        # ── Stage 5: Critique & Path Evaluation Selection ──────────
+        yield _sse("agent_status", {"status": "Evaluating alternative paths and self-critiquing..."})
+        yield _sse("agent_step", {"name": "reasoning_critique", "arguments": json.dumps({"candidates": ["fast_track", "risk_mitigated"]})})
 
-        critique = self._critique(draft, decomposition)
+        strategy_choice, draft, decomposition, critique = self._evaluate_and_select(
+            fast_decomp, fast_draft, risk_decomp, risk_draft
+        )
 
         yield _sse("agent_result", {
             "name": "reasoning_critique",
             "ok": True,
             "result": {
+                "selected_strategy": strategy_choice,
                 "score": critique.score,
                 "issues_found": len(critique.issues),
                 "suggestions": critique.suggestions[:3],
             },
         })
-
-        if critique.revised_tasks:
-            draft.tasks = critique.revised_tasks
-        if critique.revised_milestones:
-            draft.milestones = critique.revised_milestones
 
         # ── Stage 6: Finalize ─────────────────────────────────────
         yield _sse("agent_status", {"status": "Inferring dependencies and scheduling..."})
@@ -349,6 +359,154 @@ class PlanningReasoningPipeline:
             expertise_map=expertise_map,
         )
 
+    def _decompose_and_draft(
+        self,
+        prompt: str,
+        mode: str,
+        project_context: dict | None,
+        research: ResearchResult,
+        strategy: str = "balanced",
+    ) -> tuple[DecompositionResult, PlanDraft]:
+        """Combine decomposition and drafting stages into a single call (Phase 5.1). Supports strategy branching."""
+        ctx = self.domain_ctx
+
+        seed_block = ""
+        if research.wiki_is_sparse and ctx and ctx.seed_tasks:
+            seeds = ctx.seed_tasks[:8]
+            seed_block = (
+                "\n\nThe wiki has limited content for this project. "
+                "Use your synthesized domain expertise. "
+                "Example tasks for this domain (adapt to the specific project):\n"
+                + "\n".join(f"- {t['title']}: {t.get('description', '')}" for t in seeds)
+                + "\nGenerate tasks at this level of specificity.\n"
+            )
+
+        expertise_lines = [
+            f"- User {uid}: expertise in {areas}"
+            for uid, areas in research.expertise_map.items()
+        ]
+        expertise_text = "\n".join(expertise_lines) or "No expertise data available."
+
+        persona_block = ""
+        if ctx and not ctx.is_general:
+            vocab = ", ".join(ctx.task_vocabulary[:8])
+            constraints = ", ".join(ctx.domain_constraints) or "None"
+            persona_block = (
+                f"{ctx.expert_persona}\n\n"
+                f"Domain: {ctx.domain} / {ctx.sub_domain}\n"
+                f"Use this domain vocabulary in task titles: {vocab}\n"
+                f"Ensure these constraints are addressed: {constraints}\n\n"
+            )
+
+        from django.utils import timezone
+        today_str = timezone.now().strftime("%A, %B %d, %Y")
+
+        strategy_block = ""
+        if strategy == "fast_track":
+            strategy_block = (
+                "\nCRITICAL STRATEGY (FAST-TRACK DELIVERY):\n"
+                "- Design the plan for maximum concurrency. Avoid unnecessary task blocking.\n"
+                "- Focus on quick delivery of core MVP deliverables. Omit elaborate testing phases.\n"
+                "- Set start/end dates that reflect an aggressive, rapid sprint lifecycle.\n\n"
+            )
+        elif strategy == "risk_mitigated":
+            strategy_block = (
+                "\nCRITICAL STRATEGY (RISK-MITIGATED ROBUSTNESS):\n"
+                "- Add mandatory code review, QA sign-off, and end-to-end testing tasks for critical deliverables.\n"
+                "- Focus heavily on stability, error logging, and post-deployment validation.\n"
+                "- Provide safe, generous schedule ranges with buffer time built-in.\n\n"
+            )
+
+        system = (
+            persona_block
+            + f"You are the TeamOS Plan Architect. Today is {today_str}.\n\n"
+            + strategy_block
+            + "First, decompose this project mission into SPECIFIC, domain-specific sub-goals.\n"
+            "Sub-goals must be technical and concrete (not generic phases).\n"
+            "Then, generate a grounded project plan details to achieve those goals.\n\n"
+            "CRITICAL RULES:\n"
+            "- Task titles MUST be domain-specific and technical.\n"
+            "- REJECTED: 'Implement features', 'Define requirements', 'Test the system'\n"
+            "- REQUIRED: 'Build KYC/AML verification pipeline', 'Implement settlement engine'\n"
+            "- Reference wiki pages with [[Page Title]] syntax in descriptions.\n"
+            "- Add a 'reasoning' field to each task explaining why it exists.\n"
+            "- Assign tasks using assignee_id from Team Expertise.\n"
+            f"- Every task needs startDate and endDate (YYYY-MM-DD) starting on or after today ({today_str}).\n"
+            "CRITICAL DATE RULE: All dates MUST use the current year. Any date before 2026-05-01 is INVALID and will be rejected. "
+            "Use ONLY dates in 2026 or later. Never generate dates in 2023, 2024, or early 2025.\n\n"
+            "Return JSON:\n"
+            "  goals: [{title, description, constraints, assumptions}]\n"
+            "  scope_summary: string\n"
+            "  projectName: string\n"
+            "  description: string (markdown)\n"
+            "  tasks: [{id, title, description, status, priority, startDate, endDate,"
+            "           assignee_id, reasoning, wikiReferences: []}]\n"
+            "  milestones: [{id, title, date, description, status}]\n"
+            "  members: [{userId, role}]\n"
+            "  reasoning_traces: [string]\n"
+            "  wiki_references: [string]\n"
+        )
+
+        user_content = (
+            f"Mission: {prompt}\n\n"
+            f"Team Wiki Knowledge:\n{research.context_text or 'No wiki content found.'}\n\n"
+            f"Team Expertise:\n{expertise_text}"
+            + seed_block
+        )
+
+        if mode == "manage" and project_context:
+            user_content += (
+                "\n\nExisting Project (update only; preserve IDs):\n"
+                + json.dumps(project_context, default=str)[:5000]
+            )
+
+        if research.knowledge_gaps:
+            user_content += f"\n\nKnowledge Gaps: {', '.join(research.knowledge_gaps)}"
+
+        result = llm_json_call(
+            team=self.team,
+            operation=f"plan_decompose_and_generate_{strategy}",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_content},
+            ],
+            default_on_error={},
+        )
+
+        if not result:
+            raise ValueError(f"Plan draft generation returned empty result for {strategy}.")
+
+        # Reconstruct DecompositionResult
+        goals = [
+            Goal(
+                title=g.get("title", "Goal"),
+                description=g.get("description", ""),
+                constraints=g.get("constraints", []),
+                assumptions=g.get("assumptions", []),
+            )
+            for g in result.get("goals", [])
+        ]
+        decomposition = DecompositionResult(
+            goals=goals or [Goal(title=prompt[:80], description=prompt)],
+            constraints=result.get("constraints", []),
+            assumptions=result.get("assumptions", []),
+            scope_summary=result.get("scope_summary", ""),
+        )
+
+        # Reconstruct PlanDraft
+        draft = PlanDraft(
+            project_name=result.get("projectName", "New Project"),
+            description=result.get("description", ""),
+            tasks=result.get("tasks", []),
+            milestones=result.get("milestones", []),
+            members=result.get("members", []),
+            reasoning_traces=result.get("reasoning_traces", []),
+            wiki_references=result.get("wiki_references", []),
+            knowledge_gaps=research.knowledge_gaps,
+        )
+
+        return decomposition, draft
+
     def _decompose(
         self,
         prompt: str,
@@ -477,7 +635,9 @@ class PlanningReasoningPipeline:
             "- Reference wiki pages with [[Page Title]] syntax in descriptions.\n"
             "- Add a 'reasoning' field to each task explaining why it exists.\n"
             "- Assign tasks using assignee_id from Team Expertise.\n"
-            f"- Every task needs startDate and endDate (YYYY-MM-DD). All schedules MUST be anchored to start on or after today ({today_str}). Do NOT use old years (like 2023 or 2024).\n\n"
+            f"- Every task needs startDate and endDate (YYYY-MM-DD). All schedules MUST be anchored to start on or after today ({today_str}).\n"
+            + "CRITICAL DATE RULE: All dates MUST use the current year. Any date before 2026-05-01 is INVALID and will be rejected. "
+            + "Use ONLY dates in 2026 or later. Never generate dates in 2023, 2024, or early 2025.\n\n"
             "Return JSON:\n"
             "  projectName: string\n"
             "  description: string (markdown)\n"
@@ -616,3 +776,82 @@ class PlanningReasoningPipeline:
             logger.exception("Adaptive scheduling failed")
 
         return draft
+
+    def _evaluate_and_select(
+        self,
+        fast_decomp: DecompositionResult,
+        fast_draft: PlanDraft,
+        risk_decomp: DecompositionResult,
+        risk_draft: PlanDraft,
+    ) -> tuple[str, PlanDraft, DecompositionResult, CritiqueResult]:
+        """
+        Evaluate alternative plan strategies (fast_track vs risk_mitigated)
+        against team expertise, scope, and project constraints.
+        Returns selected strategy name, chosen draft, chosen decomposition, and critique results.
+        """
+        ctx = self.domain_ctx
+
+        system = (
+            "You are the senior TeamOS Portfolio Director.\n"
+            "You are evaluating two distinct planning drafts generated for the same project mission.\n"
+            "Compare both candidates carefully and select the one that represents the highest execution quality, logical completeness, and realism.\n\n"
+            "Candidate A (Fast-Track Strategy):\n"
+            f"- Title: {fast_draft.project_name}\n"
+            f"- Scope summary: {fast_decomp.scope_summary}\n"
+            f"- Tasks: {json.dumps(fast_draft.tasks[:10])}\n\n"
+            "Candidate B (Risk-Mitigated Strategy):\n"
+            f"- Title: {risk_draft.project_name}\n"
+            f"- Scope summary: {risk_decomp.scope_summary}\n"
+            f"- Tasks: {json.dumps(risk_draft.tasks[:10])}\n\n"
+            "Evaluate them across these criteria:\n"
+            "1. Realism: Do timeline mappings fit the scope?\n"
+            "2. Concurrency: Are sequential blockers avoided where possible?\n"
+            "3. Integrity: Are critical engineering deliverables addressed?\n"
+            "Select the single best strategy and justify your choice.\n\n"
+            "Return JSON:\n"
+            "  selected_strategy: 'fast_track' | 'risk_mitigated'\n"
+            "  justification: string\n"
+            "  score: 0-100\n"
+            "  issues: [{type, description, severity: 'low'|'medium'|'high'}]\n"
+            "  suggestions: [string]\n"
+        )
+
+        result = llm_json_call(
+            team=self.team,
+            operation="plan_select_strategy",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": "Choose the optimal plan candidate."},
+            ],
+            default_on_error={
+                "selected_strategy": "fast_track",
+                "justification": "Fallback choice",
+                "score": 80,
+                "issues": [],
+                "suggestions": [],
+            },
+        )
+
+        choice = result.get("selected_strategy", "fast_track")
+        justification = result.get("justification", "")
+        score = result.get("score", 80)
+        issues = result.get("issues", [])
+        suggestions = result.get("suggestions", [])
+
+        # Include justification in suggestions list
+        if justification:
+            suggestions.insert(0, f"Strategy Decision ({choice}): {justification}")
+
+        critique = CritiqueResult(
+            score=score,
+            issues=issues,
+            revised_tasks=[],
+            revised_milestones=[],
+            suggestions=suggestions,
+        )
+
+        if choice == "risk_mitigated":
+            return "risk_mitigated", risk_draft, risk_decomp, critique
+        else:
+            return "fast_track", fast_draft, fast_decomp, critique
+

@@ -337,6 +337,12 @@ class ChatToolTests(APITestCase):
         self.team = Team.objects.create(name="Tool Team", slug="tool-team", created_by=self.user)
         self.member = TeamMember.objects.create(team=self.team, user=self.user, role="editor")
 
+    def test_openai_tool_schemas_accepts_team_id(self):
+        from chat.tools import openai_tool_schemas
+
+        schemas = openai_tool_schemas([], team_id=str(self.team.id))
+        self.assertIsInstance(schemas, list)
+
     def test_wiki_search_tool_returns_pages(self):
         from chat.tools import ToolContext, execute_tool
 

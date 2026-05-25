@@ -1,6 +1,9 @@
+import asyncio
 import re
 import json
 import logging
+import queue
+import threading
 from django.utils.text import slugify
 from django.db.models import Q
 from django.http import StreamingHttpResponse
@@ -601,7 +604,47 @@ class WikiAutocompleteView(APIView):
                 logger.error("Autocomplete stream failed: %s", e)
                 yield f"event: error\ndata: {json.dumps({'detail': str(e)})}\n\n"
 
-        response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+        _stream_done = object()
+        _heartbeat = object()
+
+        def _queue_get_timed(q, timeout):
+            try:
+                return q.get(timeout=timeout)
+            except queue.Empty:
+                return _heartbeat
+
+        async def async_event_stream():
+            out_q = queue.Queue()
+
+            def producer():
+                try:
+                    for line in event_stream():
+                        out_q.put(line)
+                except Exception:
+                    logger.exception("Wiki autocomplete SSE producer thread failed")
+                finally:
+                    out_q.put(_stream_done)
+
+            threading.Thread(
+                target=producer,
+                name="wiki-autocomplete-sse",
+                daemon=True,
+            ).start()
+
+            yield ": connected\n\n"
+
+            while True:
+                chunk = await asyncio.to_thread(
+                    _queue_get_timed, out_q, 18.0
+                )
+                if chunk is _stream_done:
+                    break
+                if chunk is _heartbeat:
+                    yield ": keepalive\n\n"
+                    continue
+                yield chunk
+
+        response = StreamingHttpResponse(async_event_stream(), content_type="text/event-stream")
         response["Cache-Control"] = "no-cache"
         response["X-Accel-Buffering"] = "no"
         return response

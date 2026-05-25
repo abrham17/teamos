@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, BrainCircuit, Search, BookOpen, Target, ArrowUp, Mic, MicOff, Sparkles, ChevronDown } from "lucide-react";
+import { Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, BrainCircuit, Search, BookOpen, Target, ArrowUp, Mic, MicOff } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { ChatCitationList } from "@/components/chat/ChatCitationList";
@@ -433,7 +433,7 @@ export function ChatInterface() {
                   setReviewMutations([]);
                   setIsReviewOpen(true);
                 } else if (currentEvent === "plan_mutation_pending") {
-                  const mut = data.mutation as any;
+                  const mut = data.mutation as ReviewMutation;
                   if (mut) {
                     setReviewMutations((prev) => [...prev, mut]);
                   }

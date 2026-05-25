@@ -112,8 +112,14 @@ class ContextBuilder:
         *,
         include_graph: bool = True,
         history_limit: int = 12,
+        preloaded_rag: list | None = None,
     ) -> BuiltContext:
-        """Build the full context for an agent call."""
+        """Build the full context for an agent call.
+
+        Args:
+            preloaded_rag: Optional pre-fetched RAG results to avoid redundant
+                           vector searches (e.g. already done in universal_stream).
+        """
         budget = TokenBudget(self.max_tokens)
         blocks_included = 0
         blocks_dropped = 0
@@ -124,13 +130,23 @@ class ContextBuilder:
             blocks_included += 1
 
         # ── 2. RAG: Vector search for relevant content ─────────────
-        rag_block, rag_count = self._build_rag_block(query, budget)
+        # Single search, reused for both RAG and graph expansion
+        if preloaded_rag is not None:
+            rag_results = preloaded_rag
+        else:
+            try:
+                rag_results = vector_store.search_similar_pages(self.team_id, query, limit=10)
+            except Exception:
+                logger.exception("RAG search failed in context builder")
+                rag_results = []
+
+        rag_block, rag_count = self._build_rag_block(rag_results, budget)
         blocks_included += rag_count
 
-        # ── 3. Graph: Expand from top RAG hits ─────────────────────
+        # ── 3. Graph: Expand from top RAG hits (reuse same results) ─
         graph_block = ""
         if include_graph:
-            graph_block = self._build_graph_block(query, budget)
+            graph_block = self._build_graph_block(rag_results[:3], budget)
             if graph_block:
                 blocks_included += 1
 
@@ -161,14 +177,8 @@ class ContextBuilder:
             logger.exception("Failed to load agent memory for context")
             return ""
 
-    def _build_rag_block(self, query: str, budget: TokenBudget) -> tuple[str, int]:
-        """Perform vector search and format results within budget."""
-        try:
-            results = vector_store.search_similar_pages(self.team_id, query, limit=10)
-        except Exception:
-            logger.exception("RAG search failed in context builder")
-            return "", 0
-
+    def _build_rag_block(self, results: list, budget: TokenBudget) -> tuple[str, int]:
+        """Format pre-fetched vector search results within budget."""
         if not results:
             return "No retrieval snippets were returned for this query.", 0
 
@@ -197,20 +207,22 @@ class ContextBuilder:
         allocated = budget.allocate_partial(block, self.RAG_PCT)
         return allocated, count
 
-    def _build_graph_block(self, query: str, budget: TokenBudget) -> str:
-        """Expand graph connections from top RAG results."""
+    def _build_graph_block(self, rag_results: list, budget: TokenBudget) -> str:
+        """Expand graph connections from pre-fetched top RAG results.
+
+        Accepts already-fetched results so we don't call
+        vector_store.search_similar_pages a second time.
+        """
         try:
             from graph_engine.traversal import traverse_neighbors
 
-            # Get top page IDs from RAG
-            results = vector_store.search_similar_pages(self.team_id, query, limit=3)
-            if not results:
+            if not rag_results:
                 return ""
 
             graph_parts = []
             seen_page_ids = set()
 
-            for res in results[:3]:
+            for res in rag_results[:3]:
                 pid = res.payload.get("page_id")
                 if not pid or pid in seen_page_ids:
                     continue

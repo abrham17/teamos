@@ -19,6 +19,16 @@ class FakePlannerPipeline:
         yield f"event: reasoning_done\ndata: {json.dumps(self.payload)}\n\n"
 
 
+class FakeManagePipeline:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def run(self, prompt, project_context=None):
+        import json
+
+        yield f"event: reasoning_done\ndata: {json.dumps(self.payload)}\n\n"
+
+
 class PlanningApiTests(APITestCase):
     def setUp(self):
         self.owner = User.objects.create_user(
@@ -362,12 +372,13 @@ class PlanningApiTests(APITestCase):
             ProjectMember.objects.filter(project=project, user=self.editor, role="Launch Owner").exists()
         )
 
-    @patch("planning.agent_executor.sync_project_to_wiki", return_value=None)
-    @patch("planning.agent_executor._assess_plan_risk", return_value={"score": 10, "factors": [], "suggestions": []})
-    @patch("planning.agent_executor.detect_date_conflicts", return_value=[])
     @patch("planning.reindex.reindex_project")
+    @patch("planning.remediation.assess_project_risk", return_value={"score": 10, "factors": [], "suggestions": []})
+    @patch("planning.remediation.remediate_project", return_value={})
+    @patch("planning.engine.detect_date_conflicts", return_value=[])
+    @patch("planning.engine.sync_project_to_wiki", return_value=None)
     def test_ai_architect_manage_updates_existing_items_without_duplicate_project_or_tasks(
-        self, _mock_plan_reindex, _mock_conflicts, _mock_risk, _mock_sync
+        self, _mock_sync, _mock_conflicts, _mock_remediate, _mock_risk, _mock_plan_reindex
     ):
         from planning.agent_executor import run_planner_agent_v2
 
@@ -409,7 +420,27 @@ class PlanningApiTests(APITestCase):
             "members": [{"userId": str(self.editor.id), "role": "Reviewer"}],
         }
 
-        with patch("planning.reasoning_pipeline.PlanningReasoningPipeline", return_value=FakePlannerPipeline(payload)):
+        manage_payload = {
+            "mode": "manage",
+            "mutations": [
+                {
+                    "op": "update",
+                    "entity_type": "task",
+                    "id": str(task.id),
+                    "fields": {"description": "Refine audit with [[Platform Runbook]]."},
+                },
+                {
+                    "op": "update",
+                    "entity_type": "milestone",
+                    "id": str(milestone.id),
+                    "fields": {"description": "Approval moved after scope review."},
+                },
+            ],
+            "impact_summary": {},
+            "projectName": self.project.name,
+        }
+
+        with patch("planning.manage_update_pipeline.ManageUpdatePipeline", return_value=FakeManagePipeline(manage_payload)):
             list(
                 run_planner_agent_v2(
                     team_id=str(self.team.id),
@@ -425,8 +456,140 @@ class PlanningApiTests(APITestCase):
         self.assertEqual(self.project.milestones.count(), 1)
         task.refresh_from_db()
         milestone.refresh_from_db()
-        self.assertEqual(task.title, "Audit infrastructure")
-        self.assertEqual(task.assignee_id, self.editor.id)
-        self.assertEqual(task.end_date.isoformat(), "2026-05-12")
-        self.assertEqual(milestone.target_date.isoformat(), "2026-05-20")
-        self.assertTrue(ProjectMember.objects.filter(project=self.project, user=self.editor, role="Reviewer").exists())
+        self.assertIn("Platform Runbook", task.description)
+        milestone.refresh_from_db()
+        self.assertIn("scope review", milestone.description)
+
+
+class SafePlanUpdateTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="planner",
+            email="planner@example.com",
+            password="test-password",
+        )
+        self.team = Team.objects.create(name="Safe Team", slug="safe-team", created_by=self.user)
+        TeamMember.objects.create(team=self.team, user=self.user, role="owner")
+        self.project = Project.objects.create(
+            team=self.team,
+            name="Crypto Exchange",
+            description="Exchange build",
+            created_by=self.user,
+        )
+        self.task = Task.objects.create(
+            project=self.project,
+            title="Build wallet service",
+            description="Wallet MVP",
+            semantic_key="wallet_svc",
+            status="todo",
+            priority="high",
+            created_by=self.user,
+        )
+        self.task.human_locked_fields = {"priority": "2026-05-01T00:00:00"}
+        self.task.save(update_fields=["human_locked_fields"])
+
+    def test_semantic_key_resolution(self):
+        from planning.reconciliation import resolve_task
+
+        match = resolve_task(
+            self.project,
+            {"semantic_key": "wallet_svc", "fields": {"title": "Implement custody wallet infrastructure"}},
+        )
+        self.assertEqual(match.entity.id, self.task.id)
+        self.assertEqual(match.method, "semantic_key")
+
+    def test_validate_dependency_cycle(self):
+        from planning.mutations import validate_mutations
+
+        t2 = Task.objects.create(
+            project=self.project,
+            title="KYC",
+            semantic_key="kyc",
+            created_by=self.user,
+        )
+        self.task.dependencies.add(t2)
+        result = validate_mutations(
+            self.project,
+            [{"op": "set_dependencies", "task_id": str(t2.id), "depends_on": [str(self.task.id)]}],
+        )
+        self.assertFalse(result.ok)
+        self.assertTrue(any("cycle" in e.lower() for e in result.errors))
+
+    @patch("planning.services.broadcast_project_update")
+    def test_patch_respects_human_lock(self, _mock_broadcast):
+        from planning.services import patch_task
+
+        patch_task(self.task, {"priority": "low", "description": "Updated desc"}, respect_locks=True)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.priority, "high")
+        self.assertEqual(self.task.description, "Updated desc")
+
+    def test_delete_mutation_requires_approval(self):
+        from planning.field_policy import mutation_requires_approval
+
+        self.assertTrue(
+            mutation_requires_approval(
+                {"op": "delete", "entity_type": "task", "id": str(self.task.id)},
+            )
+        )
+
+    def test_approve_changeset_applies_pending(self):
+        from planning.models import PlanChangeSet, PlanVersion
+        from planning.version_services import approve_changeset, create_plan_version
+
+        base = create_plan_version(self.project, user=self.user, source="auto")
+        cs = PlanChangeSet.objects.create(
+            project=self.project,
+            base_version=base,
+            status="pending",
+            mutations=[],
+            pending_mutations=[
+                {
+                    "op": "update",
+                    "entity_type": "task",
+                    "id": str(self.task.id),
+                    "fields": {"title": "Build wallet service v2"},
+                }
+            ],
+            impact_summary={},
+            auto_applied=[],
+            created_by=self.user,
+        )
+        approve_changeset(cs, user=self.user)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.title, "Build wallet service v2")
+        cs.refresh_from_db()
+        self.assertEqual(cs.status, "approved")
+
+    @patch("planning.reindex.reindex_project")
+    def test_manage_skips_reindex_when_pending_changeset(self, mock_reindex):
+        from planning.engine import PlanningEngine
+
+        manage_payload = {
+            "mutations": [
+                {
+                    "op": "delete",
+                    "entity_type": "task",
+                    "id": str(self.task.id),
+                    "reason": "remove",
+                }
+            ],
+            "impact_summary": {},
+            "projectName": self.project.name,
+        }
+        engine = PlanningEngine(team=self.team, user=self.user)
+        with patch("planning.manage_update_pipeline.ManageUpdatePipeline", return_value=FakeManagePipeline(manage_payload)):
+            with patch("planning.engine.sync_project_to_wiki", return_value=None):
+                with patch("planning.engine.detect_date_conflicts", return_value=[]):
+                    with patch("planning.remediation.remediate_project", return_value={}):
+                        with patch("planning.remediation.assess_project_risk", return_value={"score": 0, "factors": [], "suggestions": []}):
+                            list(
+                                engine.run(
+                                    "remove wallet",
+                                    mode="manage",
+                                    project_id=str(self.project.id),
+                                )
+                            )
+        mock_reindex.assert_not_called()
+        self.task.refresh_from_db()
+        self.assertTrue(self.task.title)

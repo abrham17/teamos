@@ -8,8 +8,9 @@ from accounts.models import Team, User
 from chat.agent_core import AgentConfig, AgentCore
 from chat.models import ChatMessage, ChatSession
 from chat.multi_agent import AgentRole, get_orchestrator
-from chat.tools import ToolContext, execute_tool, openai_tool_schemas
+from chat.tools import ToolContext, execute_tool, openai_tool_schemas, select_relevant_tools
 from chat.wiki_search import _retrieve_wiki_citations
+from ingest.vectors import vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,12 @@ def iter_universal_intelligence_events(
     yield _sse("citations", {"citations": citations})
     state["citations"] = citations
 
+    # P1.3: Pre-fetch RAG results to pass into AgentCore (avoids redundant search)
+    try:
+        preloaded_rag = vector_store.search_similar_pages(str(team.id), prompt, limit=10)
+    except Exception:
+        preloaded_rag = None
+
     # 3. Routing Phase
     
     # CASE A: Strategic Planning (Deep Reasoning Pipeline)
@@ -83,7 +90,8 @@ def iter_universal_intelligence_events(
             enable_inner_plan=False,
             enable_thinking_events=False,
         )
-        agent = AgentCore(session=session, ctx=ctx, config=config)
+        agent = AgentCore(session=session, ctx=ctx, config=config,
+                          preloaded_rag=preloaded_rag)
         
         # We need a small wrapper to capture the results for state
         for event in agent.run(context_str, state):
@@ -92,10 +100,24 @@ def iter_universal_intelligence_events(
 
     # CASE C: Operational Specialist (Tool-using loop)
     tools_list = orchestrator.get_tools(classification.primary_agent)
-    tool_schemas = openai_tool_schemas(tools_list)
+    tool_schemas = openai_tool_schemas(tools_list, team_id=str(team.id))
+    tool_schemas = select_relevant_tools(prompt, tool_schemas, max_tools=12)
     
+    sys_prompt = orchestrator.get_system_prompt(classification.primary_agent)
+    try:
+        from django.core.cache import cache
+        directives = cache.get(f"behavior_directives:{str(team.id)}")
+        if directives:
+            directives_text = "\n".join(f"- {d}" for d in directives)
+            sys_prompt += (
+                f"\n\nCRITICAL BEHAVIORAL DIRECTIVES (LEARNED FROM PAST RUNS):\n"
+                f"{directives_text}\n"
+            )
+    except Exception:
+        pass
+
     config = AgentConfig(
-        system_prefix=orchestrator.get_system_prompt(classification.primary_agent),
+        system_prefix=sys_prompt,
         tools=tool_schemas,
         execute_fn=execute_tool,
         mode=classification.primary_agent.value,
@@ -103,7 +125,9 @@ def iter_universal_intelligence_events(
         enable_inner_plan=True,
     )
     
-    agent = AgentCore(session=session, ctx=ctx, config=config)
+    agent = AgentCore(session=session, ctx=ctx, config=config,
+                      preloaded_rag=preloaded_rag)
     for event in agent.run(context_str, state):
         yield event
+
 

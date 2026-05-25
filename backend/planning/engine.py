@@ -72,6 +72,23 @@ def _resolve_team_user_id(data: dict[str, Any], valid_user_ids: set[str]) -> str
     return None
 
 
+def _sanitize_date(date_str: str | None, fallback: str | None = None) -> str | None:
+    """Reject dates before 2026-05-01; return fallback or None if invalid."""
+    if not date_str:
+        return fallback
+    try:
+        from datetime import date as _date
+        parsed = _date.fromisoformat(str(date_str)[:10])
+        cutoff = _date(2026, 5, 1)
+        if parsed < cutoff:
+            logger.warning("Rejected stale date %s (before cutoff)", date_str)
+            return fallback
+        return str(parsed)
+    except (ValueError, TypeError):
+        logger.warning("Unparseable date %s", date_str)
+        return fallback
+
+
 def _apply_project_members(
     *,
     project: Project,
@@ -211,6 +228,10 @@ class PlanningEngine:
 
         Yields SSE-compatible string lines.
         """
+        if mode == "manage":
+            yield from self._run_manage(prompt, project_id=project_id, project_context=project_context)
+            return
+
         from planning.reasoning_pipeline import PlanningReasoningPipeline
         from django.db import transaction
 
@@ -264,45 +285,22 @@ class PlanningEngine:
                         yield _sse("agent_step", {"name": "plan_assign_project_roles", "arguments": json.dumps({"project_id": created_project_id})})
                         yield _sse("agent_result", {"name": "plan_assign_project_roles", "ok": True, "result": {"member_count": member_count}})
 
-                elif mode == "manage":
-                    if not project_id:
-                        yield _sse("agent_error", {"detail": "manage mode requires project_id."})
-                        return
-                    project_obj = get_project_or_none(team_id=self.team_id, project_id=str(project_id))
-                    if not project_obj:
-                        yield _sse("agent_error", {"detail": "Project not found."})
-                        return
-
-                    yield _sse("agent_status", {"status": "Updating existing project..."})
-                    up_payload: dict[str, Any] = {}
-                    pname = draft_data.get("projectName")
-                    if pname:
-                        up_payload["name"] = pname
-                    if "description" in draft_data:
-                        up_payload["description"] = draft_data.get("description", "")
-                    if up_payload:
-                        update_project(project_obj, up_payload)
-                    yield _sse("agent_step", {"name": "plan_update_project", "arguments": json.dumps({"project_id": str(project_id)})})
-                    yield _sse("agent_result", {"name": "plan_update_project", "ok": True, "result": {"project_id": str(project_id)}})
-
-                    member_count = _apply_project_members(
-                        project=project_obj,
-                        members_data=draft_data.get("members", []),
-                        valid_user_ids=valid_user_ids,
-                    )
-                    if member_count:
-                        yield _sse("agent_step", {"name": "plan_assign_project_roles", "arguments": json.dumps({"project_id": str(project_id)})})
-                        yield _sse("agent_result", {"name": "plan_assign_project_roles", "ok": True, "result": {"member_count": member_count}})
                 else:
                     yield _sse("agent_error", {"detail": f"Unsupported mode: {mode}"})
                     return
 
-                # Create or update tasks
+                # Create or update tasks (two-pass: create all first, then resolve dependencies)
                 if tasks_data:
                     existing_tasks = list(project_obj.tasks.all())
                     tasks_by_title: dict[str, Task] = {_title_key(t.title): t for t in existing_tasks}
                     tasks_by_id: dict[str, Task] = {str(t.id): t for t in existing_tasks}
 
+                    # Track deferred dependencies: task_index -> list of upstream indices
+                    deferred_deps: dict[int, list[int]] = {}
+                    # Map original task index -> created Task object
+                    index_to_task: dict[int, Task] = {}
+
+                    # Pass 1: Create/update all tasks without dependencies
                     for idx, t_data in enumerate(tasks_data):
                         title = t_data.get("title", "Untitled Task")
                         existing_task = None
@@ -324,16 +322,22 @@ class PlanningEngine:
                             "status": t_data.get("status", "todo"),
                             "priority": t_data.get("priority", "medium"),
                             "assignee_id": _resolve_team_user_id(t_data, valid_user_ids),
-                            "start_date": t_data.get("startDate") or t_data.get("start_date"),
-                            "end_date": t_data.get("endDate") or t_data.get("end_date"),
+                            "start_date": _sanitize_date(t_data.get("startDate") or t_data.get("start_date")),
+                            "end_date": _sanitize_date(t_data.get("endDate") or t_data.get("end_date")),
                             "order_index": t_data.get("order_index", idx),
                         }
                         if payload["assignee_id"] is None:
                             payload.pop("assignee_id")
 
+                        # Collect inferred deps for deferred resolution (Pass 2)
+                        raw_dep_ids = t_data.get("dependency_ids") or t_data.get("_inferred_deps")
+                        if raw_dep_ids:
+                            deferred_deps[idx] = [int(d) for d in raw_dep_ids if str(d).lstrip("-").isdigit()]
+
                         if existing_task:
                             task = existing_task
                             update_task(task, payload)
+                            index_to_task[idx] = task
                             yield _sse("agent_step", {"name": "plan_update_task", "arguments": json.dumps({"title": task.title, "index": idx + 1, "total": len(tasks_data)})})
                             yield _sse("agent_result", {"name": "plan_update_task", "ok": True, "result": {"task_id": str(task.id), "title": task.title}})
                         else:
@@ -341,8 +345,25 @@ class PlanningEngine:
                             existing_tasks.append(task)
                             tasks_by_id[str(task.id)] = task
                             tasks_by_title[_title_key(task.title)] = task
+                            index_to_task[idx] = task
                             yield _sse("agent_step", {"name": "plan_create_task", "arguments": json.dumps({"title": task.title, "index": idx + 1, "total": len(tasks_data)})})
                             yield _sse("agent_result", {"name": "plan_create_task", "ok": True, "result": {"task_id": str(task.id), "title": task.title}})
+
+                    # Pass 2: Resolve deferred dependencies using index_to_task map
+                    for task_idx, upstream_indices in deferred_deps.items():
+                        task = index_to_task.get(task_idx)
+                        if not task:
+                            continue
+                        resolved_uuids = []
+                        for up_idx in upstream_indices:
+                            upstream_task = index_to_task.get(up_idx)
+                            if upstream_task and str(upstream_task.id) != str(task.id):
+                                resolved_uuids.append(str(upstream_task.id))
+                        if resolved_uuids:
+                            try:
+                                task.dependencies.set(resolved_uuids)
+                            except Exception:
+                                logger.warning("Failed to set dependencies for task %s", task.id)
 
                 # Create or update milestones
                 if milestones_data:
@@ -400,17 +421,7 @@ class PlanningEngine:
             yield _sse("agent_error", {"detail": f"Database creation failed: {e}"})
             return
 
-        # ── Step 3: Reindex ───────────────────────────────────────────
-        if created_project_id:
-            try:
-                from planning.reindex import reindex_project
-                project_obj = get_project_or_none(team_id=self.team_id, project_id=created_project_id)
-                if project_obj:
-                    reindex_project(project_obj)
-            except Exception:
-                logger.exception("Reindex failed")
-
-        # ── Step 4: Conflict detection & Auto-resolution ──────────────
+        # ── Step 3: Conflict detection & Auto-resolution ──────────────
         yield _sse("agent_status", {"status": "Detecting scheduling conflicts..."})
         conflicts = []
         try:
@@ -472,7 +483,7 @@ class PlanningEngine:
         except Exception:
             logger.exception("Overdue check failed")
 
-        # ── Step 8: Final complete response ───────────────────────────
+        # ── Step 8: Final complete response (before slow reindex) ─────
         yield _sse("agent_done", {
             "project_id": created_project_id,
             "project_name": draft_data.get("projectName", ""),
@@ -491,3 +502,205 @@ class PlanningEngine:
             "domain": draft_data.get("domain", "general"),
             "sub_domain": draft_data.get("sub_domain", "software"),
         })
+
+        # ── Step 9: Reindex (deferred — embeddings can take 30s+) ─────
+        if created_project_id:
+            yield _sse("agent_status", {"status": "Updating search index..."})
+            try:
+                from planning.reindex import reindex_project
+
+                project_obj = get_project_or_none(team_id=self.team_id, project_id=created_project_id)
+                if project_obj:
+                    reindex_project(project_obj)
+                yield _sse("agent_step", {"name": "plan_reindex", "arguments": "{}"})
+                yield _sse("agent_result", {"name": "plan_reindex", "ok": True, "result": {"project_id": created_project_id}})
+            except Exception:
+                logger.exception("Reindex failed")
+                yield _sse("agent_result", {"name": "plan_reindex", "ok": False, "result": {"error": "reindex_failed"}})
+
+    def _run_manage(
+        self,
+        prompt: str,
+        *,
+        project_id: str | None,
+        project_context: dict | None,
+    ) -> Iterator[str]:
+        from django.db import transaction
+        from planning.manage_update_pipeline import ManageUpdatePipeline
+        from planning.mutations import split_mutations_by_policy, validate_mutations
+        from planning.plan_apply import apply_plan_mutations
+        from planning.reconciliation import enrich_mutations_with_resolution
+        from planning.services import get_plan_mutation_context
+        from planning.version_services import create_changeset, create_plan_version
+
+        if not project_id:
+            yield _sse("agent_error", {"detail": "manage mode requires project_id."})
+            return
+
+        project_obj = get_project_or_none(team_id=self.team_id, project_id=str(project_id))
+        if not project_obj:
+            yield _sse("agent_error", {"detail": "Project not found."})
+            return
+
+        ctx = project_context or get_plan_mutation_context(project_obj)
+        auto_apply_safe = getattr(self.team, "plan_auto_apply_safe", True)
+
+        base_version = create_plan_version(project_obj, user=self.user, source="auto", prompt=prompt)
+        yield _sse("agent_step", {"name": "plan_version_created", "arguments": json.dumps({"version_id": str(base_version.id)})})
+        yield _sse("agent_result", {"name": "plan_version_created", "ok": True, "result": {"version_id": str(base_version.id)}})
+
+        draft_data = None
+        pipeline = ManageUpdatePipeline(team=self.team, user=self.user)
+        for event in pipeline.run(prompt, project_context=ctx):
+            yield event
+            if "reasoning_done" in event:
+                try:
+                    data_line = event.split("data: ", 1)[1].strip()
+                    draft_data = json.loads(data_line)
+                except Exception:
+                    pass
+
+        if not draft_data:
+            yield _sse("agent_error", {"detail": "Manage pipeline did not produce mutations."})
+            return
+
+        raw_mutations = draft_data.get("mutations", [])
+        mutations = enrich_mutations_with_resolution(project_obj, raw_mutations)
+        validation = validate_mutations(project_obj, mutations)
+        if not validation.ok:
+            yield _sse("agent_error", {"detail": "Mutation validation failed.", "errors": validation.errors})
+            return
+
+        auto_ops, pending_ops = split_mutations_by_policy(
+            project_obj, mutations, auto_apply_safe=auto_apply_safe
+        )
+
+        applied_result: dict[str, Any] = {"applied": [], "skipped": []}
+        try:
+            with transaction.atomic():
+                if auto_ops:
+                    applied_result = apply_plan_mutations(
+                        project_obj,
+                        auto_ops,
+                        actor=self.user,
+                        auto_apply_safe=True,
+                    )
+                    yield _sse("agent_step", {"name": "plan_mutations_auto_applied", "arguments": "{}"})
+                    yield _sse(
+                        "agent_result",
+                        {
+                            "name": "plan_mutations_auto_applied",
+                            "ok": True,
+                            "result": applied_result,
+                        },
+                    )
+        except Exception as e:
+            logger.exception("Manage-mode auto-apply failed")
+            yield _sse("agent_error", {"detail": f"Auto-apply failed: {e}"})
+            return
+
+        remediation_preview: dict[str, Any] = {}
+        conflicts: list[dict[str, Any]] = []
+        try:
+            from planning.remediation import remediate_project
+
+            conflicts = detect_date_conflicts(self.team_id, project_id=str(project_obj.id))
+            remediation_preview = remediate_project(
+                team=self.team,
+                project=project_obj,
+                apply_conflicts=False,
+                apply_risk=False,
+            )
+        except Exception:
+            logger.exception("Remediation preview failed")
+
+        changeset = create_changeset(
+            project_obj,
+            base_version=base_version,
+            mutations=mutations,
+            impact_summary=validation.impact_summary,
+            auto_applied=applied_result.get("applied", []),
+            pending_mutations=pending_ops,
+            user=self.user,
+            remediation_preview=remediation_preview,
+        )
+
+        if pending_ops:
+            yield _sse(
+                "plan_changeset_ready",
+                {
+                    "changeset_id": str(changeset.id),
+                    "status": changeset.status,
+                    "pending_count": len(pending_ops),
+                    "impact_summary": validation.impact_summary,
+                    "conflicts_preview": conflicts[:5],
+                },
+            )
+            for op in pending_ops[:20]:
+                yield _sse("plan_mutation_pending", {"mutation": op})
+        else:
+            yield _sse("plan_mutation_applied", {"changeset_id": str(changeset.id), "status": "approved"})
+
+        created_project_id = str(project_obj.id)
+        yield from self._post_process_manage(
+            project_id=created_project_id,
+            draft_data=draft_data,
+            conflicts=conflicts,
+            changeset=changeset,
+            reindex_ok=not pending_ops,
+        )
+
+    def _post_process_manage(
+        self,
+        *,
+        project_id: str,
+        draft_data: dict[str, Any],
+        conflicts: list[dict[str, Any]],
+        changeset,
+        reindex_ok: bool,
+    ) -> Iterator[str]:
+        risk = {"score": 0, "factors": [], "suggestions": []}
+        try:
+            from planning.remediation import assess_project_risk
+
+            project_for_risk = get_project_or_none(team_id=self.team_id, project_id=project_id)
+            risk = assess_project_risk(self.team, project_for_risk, conflicts) if project_for_risk else _assess_plan_risk(self.team, draft_data, conflicts)
+            yield _sse("agent_step", {"name": "plan_risk_assessment", "arguments": "{}"})
+            yield _sse("agent_result", {"name": "plan_risk_assessment", "ok": True, "result": risk})
+        except Exception:
+            logger.exception("Risk assessment failed")
+
+        wiki_page_url = None
+        try:
+            project_obj = get_project_or_none(team_id=self.team_id, project_id=project_id)
+            if project_obj:
+                page = sync_project_to_wiki(project_obj)
+                if page:
+                    wiki_page_url = f"/wiki?page={page.slug}"
+        except Exception:
+            logger.exception("Wiki sync failed")
+
+        yield _sse("agent_done", {
+            "project_id": project_id,
+            "project_name": draft_data.get("projectName", ""),
+            "mode": "manage",
+            "changeset_id": str(changeset.id),
+            "changeset_status": changeset.status,
+            "pending_mutation_count": len(changeset.pending_mutations or []),
+            "conflict_count": len(conflicts),
+            "risk": risk,
+            "wiki_page_url": wiki_page_url,
+        })
+
+        if reindex_ok:
+            yield _sse("agent_status", {"status": "Updating search index..."})
+            try:
+                from planning.reindex import reindex_project
+
+                project_obj = get_project_or_none(team_id=self.team_id, project_id=project_id)
+                if project_obj:
+                    reindex_project(project_obj)
+                yield _sse("agent_result", {"name": "plan_reindex", "ok": True, "result": {"project_id": project_id}})
+            except Exception:
+                logger.exception("Reindex failed")
+                yield _sse("agent_result", {"name": "plan_reindex", "ok": False, "result": {"error": "reindex_failed"}})

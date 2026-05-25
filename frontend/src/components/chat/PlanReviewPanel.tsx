@@ -3,15 +3,15 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
-  X, Check, AlertCircle, Trash2, Edit3, Plus, ArrowRight, Play, RefreshCw, 
-  MessageSquare, Layers, Clock, Shield, Flag, CheckSquare, Sparkles 
+  X, Check, RefreshCw, 
+  MessageSquare, Layers, Flag, CheckSquare, Sparkles 
 } from "lucide-react";
 
 export interface ReviewMutation {
   id?: string;
   op: "create" | "update" | "delete" | "set_dependencies";
   entity_type: "task" | "milestone" | "project";
-  fields?: Record<string, any>;
+  fields?: Record<string, unknown>;
   depends_on?: string[];
   title?: string;
 }

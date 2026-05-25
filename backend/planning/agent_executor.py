@@ -43,6 +43,10 @@ PLANNER_AGENT_SYSTEM = (
     "You are the TeamOS Plan Architect — a deep-reasoning agent that creates, updates, and validates project plans. "
     "You have deep access to the team's Wiki knowledge base. Use it to INFER requirements, dependencies, and risks even when not explicitly stated. "
     "Always synthesize information across multiple wiki snippets to ground your plan in the team's actual technical standards and past experiences.\n\n"
+    "## Interactive Questions Guideline:\n"
+    "Before generating or modifying any plans, if there are open design decisions, missing dates, priority gaps, or wiki knowledge gaps, "
+    "proactively ask the user 1 or 2 extremely friendly, engaging questions about (1) including daily subtasks, (2) milestone selection, "
+    "(3) task priority preferences, or (4) any project related details. Keep it conversational and focus on bridging knowledge gaps.\n\n"
     "## Execution Protocol:\n"
     "1. When asked to CREATE a plan: use the retrieved context to INFER the project's scope, then call plan_generate_draft.\n"
     "2. When asked to MANAGE a plan: call plan_generate_draft with project_id, analyzing how new context affects existing tasks.\n"
@@ -84,34 +88,17 @@ def _resolve_team_user_id(data: dict[str, Any], valid_user_ids: set[str]) -> str
 
 
 def get_slim_project_context(project: Project) -> dict[str, Any]:
-    """
-    Returns a lightweight project context for LLM consumption.
-    Limits tasks and milestones to avoid context bloat and memory pressure.
-    """
+    """Backward-compatible slim context; prefer get_plan_mutation_context for manage mode."""
+    from planning.services import get_plan_mutation_context
+
+    ctx = get_plan_mutation_context(project)
     return {
-        "id": str(project.id),
-        "name": project.name,
-        "description": project.description,
-        "status": project.status,
-        "tasks": [
-            {
-                "id": str(t.id),
-                "title": t.title,
-                "status": t.status,
-                "priority": t.priority,
-                "start_date": t.start_date.isoformat() if t.start_date else None,
-                "end_date": t.end_date.isoformat() if t.end_date else None,
-            }
-            for t in project.tasks.order_by("-updated_at")[:20]
-        ],
-        "milestones": [
-            {
-                "id": str(m.id),
-                "title": m.title,
-                "target_date": m.target_date.isoformat() if m.target_date else None,
-            }
-            for m in project.milestones.order_by("-updated_at")[:10]
-        ],
+        "id": ctx["id"],
+        "name": ctx["name"],
+        "description": ctx["description"],
+        "status": ctx["status"],
+        "tasks": ctx["tasks"],
+        "milestones": ctx["milestones"],
     }
 
 
