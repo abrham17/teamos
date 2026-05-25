@@ -13,6 +13,7 @@ import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentThinking, AgentReflection, AgentStep, AgentStrategy } from "@/components/chat/chatTypes";
 import { AgentThinkingPane } from "@/components/chat/AgentThinkingPane";
+import { CollapsibleThoughtBlock } from "@/components/chat/CollapsibleThoughtBlock";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ICONSCOUT } from "@/lib/iconscoutAssets";
 import { PlanReviewPanel, type ReviewMutation, type ReviewPlanPreview } from "@/components/chat/PlanReviewPanel";
@@ -314,6 +315,8 @@ export function ChatInterface() {
         id: assistantId,
         toolSteps: [],
         agentSteps: [],
+        reasoning: "",
+        isStreaming: true,
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
@@ -453,6 +456,12 @@ export function ChatInterface() {
                   const content = String((data as { content?: string }).content ?? "");
                   if (content) {
                     setAgentThoughts((prev) => [...prev, { content, timestamp: Date.now() }]);
+                    working = { ...working, reasoning: (working.reasoning ?? "") + content, isStreaming: true };
+                    setMessages((prev) => {
+                      const next = [...prev];
+                      next[next.length - 1] = { ...working };
+                      return next;
+                    });
                   }
                 } else if (currentEvent === "reflection") {
                   const reflection = data as unknown as AgentReflection;
@@ -464,6 +473,12 @@ export function ChatInterface() {
                 } else if (currentEvent === "done") {
                   setIsStreaming(false);
                   setStatus("");
+                  working = { ...working, isStreaming: false };
+                  setMessages((prev) => {
+                    const next = [...prev];
+                    next[next.length - 1] = { ...working };
+                    return next;
+                  });
                 } else if (currentEvent === "error") {
                   throw new Error("Stream error");
                 }
@@ -471,6 +486,14 @@ export function ChatInterface() {
             }
           }
         }
+        
+        // Ensure isStreaming is set to false on completion
+        working = { ...working, isStreaming: false };
+        setMessages((prev) => {
+          const next = [...prev];
+          next[next.length - 1] = { ...working };
+          return next;
+        });
       } catch (e: unknown) {
         if (e instanceof Error && e.name === "AbortError") {
           setIsStreaming(false);
@@ -682,6 +705,12 @@ export function ChatInterface() {
                               </div>
                             ) : m.role === "assistant" ? (
                               <div className="w-full max-w-none overflow-x-auto">
+                                {m.reasoning && (
+                                  <CollapsibleThoughtBlock
+                                    thoughtText={m.reasoning}
+                                    isStreaming={m.isStreaming ?? isLiveAssistant}
+                                  />
+                                )}
                                 <ChatMessageContent content={m.content} streaming={isLiveAssistant} />
                               </div>
                             ) : (

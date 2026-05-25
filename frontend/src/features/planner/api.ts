@@ -126,6 +126,11 @@ export async function planAssistStream(
             case "agent_error":
               callbacks.onError?.(data.detail || "Agent execution failed");
               break;
+            case "thinking":
+              if (typeof data.content === "string") {
+                callbacks.onStatus?.(data.content);
+              }
+              break;
             case "reasoning_done":
               callbacks.onReasoningDone?.(data as PlannerReasoningDone);
               break;

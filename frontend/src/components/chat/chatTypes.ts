@@ -56,6 +56,8 @@ export type ChatMessage = {
   toolSteps?: AgentToolStep[];
   agentSteps?: AgentStep[];
   strategy?: AgentStrategy;
+  reasoning?: string;
+  isStreaming?: boolean;
 };
 
 export type ChatCapabilities = {

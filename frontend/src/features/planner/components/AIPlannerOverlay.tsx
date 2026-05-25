@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { getApiAuthHeaders } from "@/lib/api";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
+import { CollapsibleThoughtBlock } from "@/components/chat/CollapsibleThoughtBlock";
 import { cn } from "@/lib/utils";
 import { PlanReviewPanel, type ReviewMutation, type ReviewPlanPreview } from "@/components/chat/PlanReviewPanel";
 
@@ -71,6 +72,7 @@ interface ChatMessage {
     agentSteps: AgentStepEntry[];
     planResult?: PlanResult | null;
   };
+  reasoningText?: string;
 }
 
 const STEP_LABELS: Record<string, string> = {
@@ -163,6 +165,13 @@ function applyArchitectStreamEvent(
   event: string,
   data: Record<string, unknown>
 ): ChatMessage {
+  if (event === "thinking") {
+    return {
+      ...msg,
+      reasoningText: `${msg.reasoningText ?? ""}${typeof data.content === "string" ? data.content : ""}`,
+      isStreaming: true,
+    };
+  }
   if (event === "agent_chat_chunk") {
     return {
       ...msg,
@@ -215,6 +224,7 @@ function applyArchitectStreamEvent(
     planState.statusText = "Reasoning complete. Applying plan to your project...";
     const summary = buildPlanSummary(data);
     if (summary) text = summary;
+    return { ...msg, text, isStreaming: false, planningState: planState };
   } else if (event === "agent_done") {
     const summary = buildPlanSummary(data);
     if (summary) text = summary;
@@ -834,12 +844,22 @@ export function AIPlannerOverlay({
                                 : "bg-[var(--surface-2)]/50 backdrop-blur-md border border-white/5 text-[var(--text-primary)] rounded-tl-none"
                             )}>
                               {msg.sender === "architect" ? (
-                                msg.text
-                                  ? <ChatMessageContent content={msg.text} streaming={!!msg.isStreaming} />
-                                  : <span className="flex items-center gap-2 text-[var(--text-muted)] py-1">
+                                <>
+                                  {msg.reasoningText && (
+                                    <CollapsibleThoughtBlock
+                                      thoughtText={msg.reasoningText}
+                                      isStreaming={!!msg.isStreaming}
+                                    />
+                                  )}
+                                  {msg.text ? (
+                                    <ChatMessageContent content={msg.text} streaming={!!msg.isStreaming} />
+                                  ) : (
+                                    <span className="flex items-center gap-2 text-[var(--text-muted)] py-1">
                                       <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" />
                                       <span className="text-[12px]">Architect is thinking…</span>
                                     </span>
+                                  )}
+                                </>
                               ) : (
                                 <p className="whitespace-pre-wrap">{msg.text}</p>
                               )}
