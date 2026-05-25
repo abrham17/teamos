@@ -66,6 +66,7 @@ export interface PlannerStreamCallbacks {
   onDone?: (data: PlannerAgentDone) => void;
   onError?: (detail: string) => void;
   onReasoningDone?: (data: PlannerReasoningDone) => void;
+  onQuestion?: (question: string, options?: string[]) => void;
 }
 
 export async function planAssistStream(
@@ -127,6 +128,12 @@ export async function planAssistStream(
               break;
             case "reasoning_done":
               callbacks.onReasoningDone?.(data as PlannerReasoningDone);
+              break;
+            case "ask_user":
+              callbacks.onQuestion?.(
+                typeof data.question === "string" ? data.question : "Can you provide more details?",
+                Array.isArray(data.options) ? (data.options as string[]) : undefined,
+              );
               break;
           }
         } catch {
@@ -325,6 +332,16 @@ export async function listPendingChangeSets(teamId: string, projectId: string) {
   return api.get<import("./types").PlanChangeSet[]>(
     `/planning/${teamId}/projects/${projectId}/changesets/?status=pending`,
   );
+}
+
+export async function listApprovedChangeSets(teamId: string, projectId: string) {
+  return api.get<import("./types").PlanChangeSet[]>(
+    `/planning/${teamId}/projects/${projectId}/changesets/?status=approved`,
+  );
+}
+
+export async function restorePlanVersion(teamId: string, projectId: string, versionId: string) {
+  return api.post(`/planning/${teamId}/projects/${projectId}/versions/${versionId}/restore/`, {});
 }
 
 export async function getChangeSet(teamId: string, projectId: string, changesetId: string) {

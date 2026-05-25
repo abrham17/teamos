@@ -77,6 +77,7 @@ export interface PlanCalendarEvent {
   description?: string;
   priority?: string;
   assignee_email?: string | null;
+  parent_task_id?: string | null;
 }
 
 export interface ProjectMember {
@@ -237,4 +238,6 @@ export interface PlanChangeSet {
   created_at: string;
   base_version_id: string;
   mutations?: Array<Record<string, unknown>>;
+  proposed_version_id?: string | null;
+  created_by?: string;
 }

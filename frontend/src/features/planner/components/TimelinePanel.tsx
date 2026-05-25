@@ -160,38 +160,37 @@ export function TimelinePanel({ tasks, milestones, onAddTask, onAddMilestone }: 
         className="flex-1 overflow-auto custom-scrollbar relative border border-[var(--border-subtle)] rounded-2xl bg-[var(--bg-900)]/50"
         ref={isFull ? expandedContainerRef : containerRef}
       >
+        {/* Sticky month-only header */}
         <div className="flex border-b border-[var(--border-subtle)] min-w-max sticky top-0 bg-[var(--bg-900)]/90 backdrop-blur-md z-20">
           <div className="w-56 flex-shrink-0 border-r border-[var(--border-subtle)] p-4 text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest bg-[var(--surface-1)]">
             Resource / Task
           </div>
-          <div className="flex flex-col">
-            <div className="flex h-12 border-b border-[var(--border-subtle)]">
-              {months.map((m, i) => (
-                <div
-                  key={i}
-                  style={{ width: m.width }}
-                  className="border-r border-[var(--border-subtle)] px-4 flex items-center text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider bg-[var(--surface-1)]/50"
-                >
-                  {m.name}
-                </div>
-              ))}
-            </div>
-            <div className="flex h-8">
-              {weeks.map((w, i) => (
-                <div
-                  key={i}
-                  style={{ width: weekWidth }}
-                  className="border-r border-[var(--border-subtle)] flex flex-col items-center justify-center text-[9px] font-bold text-[var(--text-muted)] bg-[var(--surface-1)]/35 leading-tight"
-                >
-                  <span>{w.label}</span>
-                  <span className="text-[8px] font-semibold text-[var(--text-dim)]">{w.dateStr}</span>
-                </div>
-              ))}
-            </div>
+          <div className="flex h-12">
+            {months.map((m, i) => (
+              <div
+                key={i}
+                style={{ width: m.width }}
+                className="border-r border-[var(--border-subtle)] px-4 flex items-center text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider bg-[var(--surface-1)]/50"
+              >
+                {m.name}
+              </div>
+            ))}
           </div>
         </div>
 
         <div className="min-w-max relative overflow-y-visible">
+          {/* Alternating weekly band overlay */}
+          <div className="absolute left-56 top-0 bottom-0 flex pointer-events-none z-0">
+            {weeks.map((_, i) => (
+              <div
+                key={i}
+                style={{ width: weekWidth }}
+                className={`border-r border-[var(--border-subtle)]/20 h-full ${
+                  i % 2 === 0 ? "bg-transparent" : "bg-[var(--surface-1)]/20"
+                }`}
+              />
+            ))}
+          </div>
           {visibleTasks.map((task, idx) => (
             <div
               key={task.id}

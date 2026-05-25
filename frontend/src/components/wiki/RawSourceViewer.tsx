@@ -18,7 +18,7 @@ import {
   ZoomOut,
   ChevronLeft,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, getApiAuthHeaders } from "@/lib/api";
 
 interface RawSourceSummary {
   id: string;
@@ -102,7 +102,8 @@ function normalizeFileUrl(url: string | null) {
   if (!apiBase) return url;
   try {
     const origin = new URL(apiBase).origin;
-    return `${origin}${url}`;
+    const path = url.startsWith("/") ? url : `/${url}`;
+    return `${origin}${path}`;
   } catch {
     return url;
   }
@@ -110,7 +111,10 @@ function normalizeFileUrl(url: string | null) {
 
 async function downloadFile(url: string, filename: string) {
   try {
-    const response = await fetch(url);
+    const authHeaders = await getApiAuthHeaders();
+    const response = await fetch(url, {
+      headers: authHeaders,
+    });
     if (!response.ok) throw new Error("Download failed");
     const blob = await response.blob();
     const blobUrl = URL.createObjectURL(blob);
@@ -583,13 +587,31 @@ function OriginalDocument({ detail }: { detail: RawSourceDetail }) {
   }
 
   return (
-    <div className="h-full min-h-[420px] overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-white">
-      {detail.source_type === "image" ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={detail.file_url} className="h-full w-full object-contain" alt={sourceTitle(detail)} />
-      ) : (
-        <iframe src={detail.file_url} className="h-full w-full border-0" title={sourceTitle(detail)} />
-      )}
+    <div className="flex flex-col h-full min-h-[420px] rounded-2xl border border-[var(--border-subtle)] bg-white overflow-hidden">
+      <div className="flex-1 overflow-hidden relative">
+        {detail.source_type === "image" ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={detail.file_url} className="h-full w-full object-contain" alt={sourceTitle(detail)} />
+        ) : (
+          <iframe 
+            src={detail.file_url} 
+            className="h-full w-full border-0" 
+            title={sourceTitle(detail)} 
+          />
+        )}
+      </div>
+      <div className="bg-slate-50 border-t border-slate-200 px-4 py-2 text-[11px] text-slate-500 flex items-center justify-between">
+        <span>If the document does not display correctly, it might be due to browser security policies.</span>
+        <a 
+          href={detail.file_url} 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="font-bold text-[var(--accent)] hover:underline flex items-center gap-1"
+        >
+          <ExternalLink className="h-3 w-3" />
+          Open in New Tab
+        </a>
+      </div>
     </div>
   );
 }
@@ -607,7 +629,24 @@ function BrowserDocument({ detail, onFallback }: { detail: RawSourceDetail; onFa
           Snapshot fallback
         </button>
       </div>
-      <iframe src={detail.source_url} className="min-h-0 flex-1 border-0" title={sourceTitle(detail)} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+      <iframe 
+        src={detail.source_url} 
+        className="min-h-0 flex-1 border-0" 
+        title={sourceTitle(detail)} 
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups" 
+      />
+      <div className="bg-slate-50 border-t border-slate-200 px-4 py-2 text-[11px] text-slate-500 flex items-center justify-between">
+        <span>Websites may block embedding due to Cross-Origin Resource policies.</span>
+        <a 
+          href={detail.source_url} 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="font-bold text-[var(--accent)] hover:underline flex items-center gap-1"
+        >
+          <ExternalLink className="h-3 w-3" />
+          Open in New Tab
+        </a>
+      </div>
     </div>
   );
 }

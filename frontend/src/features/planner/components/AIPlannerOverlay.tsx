@@ -55,11 +55,17 @@ interface PlanResult {
   critiqueScore?: number;
 }
 
+interface AIPlannerQuestion {
+  question: string;
+  options?: string[];
+}
+
 interface ChatMessage {
   id: string;
   sender: "user" | "architect";
   text?: string;
   isStreaming?: boolean;
+  question?: AIPlannerQuestion;
   planningState?: {
     statusText: string;
     agentSteps: AgentStepEntry[];
@@ -173,6 +179,20 @@ function applyArchitectStreamEvent(
     msg.planningState ?? { statusText: "", agentSteps: [], planResult: null }
   );
   let text = msg.text ?? "";
+
+  if (event === "ask_user") {
+    return {
+      ...msg,
+      isStreaming: false,
+      planningState: undefined,
+      question: {
+        question: typeof data.question === "string" ? data.question : "Can you share more details?",
+        options: Array.isArray(data.options)
+          ? (data.options as string[])
+          : undefined,
+      },
+    };
+  }
 
   if (event === "agent_status") {
     planState.statusText = typeof data.status === "string" ? data.status : "";
@@ -399,6 +419,15 @@ export function AIPlannerOverlay({
   const recognitionRef = useRef<any>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Close review panel on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsReviewOpen(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   // Review states
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [reviewMutations, setReviewMutations] = useState<ReviewMutation[]>([]);
@@ -608,6 +637,9 @@ export function AIPlannerOverlay({
               setIsReviewOpen(true);
             }
           }
+        } else if (event === "ask_user") {
+          // ask_user: stop loading flag, show question card inline
+          setLoading(false);
         }
 
         setMessages((prev) =>
@@ -826,6 +858,31 @@ export function AIPlannerOverlay({
                                 });
                               }}
                             />
+                          )}
+
+                          {/* AI Question Card — Phase 2.5 */}
+                          {msg.question && (
+                            <div className="mt-3 p-4 bg-[var(--accent-subtle)] border border-[var(--accent)]/20 rounded-2xl space-y-3">
+                              <p className="text-sm font-semibold text-[var(--text-primary)] leading-snug">
+                                {msg.question.question}
+                              </p>
+                              {msg.question.options && msg.question.options.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                  {msg.question.options.map((opt, oi) => (
+                                    <button
+                                      key={oi}
+                                      onClick={() => void handleSend(opt)}
+                                      disabled={loading}
+                                      className="px-3 py-1.5 bg-[var(--surface-2)] hover:bg-[var(--accent)] hover:text-white text-[var(--text-secondary)] text-[11px] font-bold rounded-lg border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-all disabled:opacity-50"
+                                    >
+                                      {opt}
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-[var(--text-muted)]">Type your answer below ↓</p>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
