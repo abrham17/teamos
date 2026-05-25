@@ -24,17 +24,23 @@ interface TimelinePanelProps {
 
 export function TimelinePanel({ tasks, milestones, onAddTask, onAddMilestone }: Omit<TimelinePanelProps, 'teamMembers'>) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showSubtasks, setShowSubtasks] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const expandedContainerRef = useRef<HTMLDivElement>(null);
 
+  const visibleTasks = useMemo(() => {
+    if (showSubtasks) return tasks;
+    return tasks.filter((t) => !t.parent_task_id);
+  }, [tasks, showSubtasks]);
+
   const { start, end } = useMemo(() => {
-    if (tasks.length === 0 && milestones.length === 0) {
+    if (visibleTasks.length === 0 && milestones.length === 0) {
       const now = new Date();
       return { start: now, end: new Date(now.getTime() + 86400000 * 60) }; // 60 days
     }
     const dates = [
-      ...tasks.map((t) => new Date(t.start_date || Date.now()).getTime()),
-      ...tasks.map((t) => new Date(t.end_date || Date.now()).getTime()),
+      ...visibleTasks.map((t) => new Date(t.start_date || Date.now()).getTime()),
+      ...visibleTasks.map((t) => new Date(t.end_date || Date.now()).getTime()),
       ...milestones.map((m) => new Date(m.target_date || Date.now()).getTime()),
     ];
     // Align start to the beginning of the week (Sunday)
@@ -46,7 +52,7 @@ export function TimelinePanel({ tasks, milestones, onAddTask, onAddMilestone }: 
       start: minDate,
       end: maxDate,
     };
-  }, [tasks, milestones]);
+  }, [visibleTasks, milestones]);
 
   const daysCount = Math.ceil((end.getTime() - start.getTime()) / 86400000);
   const weeksCount = Math.ceil(daysCount / 7);
@@ -124,6 +130,16 @@ export function TimelinePanel({ tasks, milestones, onAddTask, onAddMilestone }: 
             <Flag className="w-3.5 h-3.5" />
             Add Milestone
           </button>
+          <button
+            onClick={() => setShowSubtasks(!showSubtasks)}
+            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all border border-[var(--border-subtle)] ${
+              showSubtasks
+                ? "bg-[var(--accent-subtle)] text-[var(--accent)] border-[var(--accent)]/20"
+                : "bg-[var(--surface-2)] text-[var(--text-secondary)] hover:bg-[var(--surface-3)]"
+            }`}
+          >
+            {showSubtasks ? "Hide Subtasks" : "Show Subtasks"}
+          </button>
           <div className="w-px h-6 bg-[var(--border-subtle)] mx-1" />
           <button
             onClick={() => setIsExpanded(!isExpanded)}
@@ -176,7 +192,7 @@ export function TimelinePanel({ tasks, milestones, onAddTask, onAddMilestone }: 
         </div>
 
         <div className="min-w-max relative overflow-y-visible">
-          {tasks.map((task, idx) => (
+          {visibleTasks.map((task, idx) => (
             <div
               key={task.id}
               className="flex border-b border-[var(--border-subtle)] group hover:bg-[var(--accent-subtle)]/5 transition-colors relative h-16"

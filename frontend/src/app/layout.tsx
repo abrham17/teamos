@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { getClerkPublishableKey } from "@/lib/clerk-env";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ui/ThemeProvider";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -16,7 +17,10 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: "TeamOS — Team Knowledge Wiki",
   description: "Your team's intelligence, beautifully structured and seamlessly interlinked.",
   openGraph: {
@@ -46,7 +50,7 @@ export default function RootLayout({
         <ThemeScript />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <ClerkProvider>
+        <ClerkProvider publishableKey={getClerkPublishableKey()}>
           <ThemeProvider>
             <ToastProvider>
               <PaddleProvider>

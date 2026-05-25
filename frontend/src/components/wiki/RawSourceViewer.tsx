@@ -98,12 +98,31 @@ function clampRange(start: number | undefined, end: number | undefined, textLeng
 function normalizeFileUrl(url: string | null) {
   if (!url) return null;
   if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
+  if (!apiBase) return url;
   try {
     const origin = new URL(apiBase).origin;
     return `${origin}${url}`;
   } catch {
     return url;
+  }
+}
+
+async function downloadFile(url: string, filename: string) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Download failed");
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  } catch {
+    window.open(url, "_blank");
   }
 }
 
@@ -362,16 +381,13 @@ export default function RawSourceViewer({
                   </a>
                 )}
                 {detail.file_url && (
-                  <a
-                    href={detail.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    download
+                  <button
+                    onClick={() => downloadFile(detail.file_url!, sourceTitle(detail))}
                     className="flex h-8.5 w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-[11px] font-bold text-white transition-all hover:shadow-lg"
                   >
                     <Download className="h-3.5 w-3.5" />
                     Download Original File
-                  </a>
+                  </button>
                 )}
               </div>
             </div>

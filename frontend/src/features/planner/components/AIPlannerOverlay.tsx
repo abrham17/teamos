@@ -24,6 +24,7 @@ import {
 import { getApiAuthHeaders } from "@/lib/api";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { cn } from "@/lib/utils";
+import { PlanReviewPanel, type ReviewMutation, type ReviewPlanPreview } from "@/components/chat/PlanReviewPanel";
 
 interface AIPlannerOverlayProps {
   teamId: string;
@@ -398,6 +399,67 @@ export function AIPlannerOverlay({
   const recognitionRef = useRef<any>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Review states
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const [reviewMutations, setReviewMutations] = useState<ReviewMutation[]>([]);
+  const [reviewPlanPreview, setReviewPlanPreview] = useState<ReviewPlanPreview | null>(null);
+  const [reviewChangesetId, setReviewChangesetId] = useState<string | null>(null);
+
+  const handleApproveReview = async (approvedIndices?: string[]) => {
+    setLoading(true);
+    try {
+      if (mode === "manage" && reviewChangesetId && projectId) {
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+        const auth = await getApiAuthHeaders();
+        const res = await fetch(`${API_BASE}/planning/${teamId}/projects/${projectId}/changesets/${reviewChangesetId}/approve/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...auth },
+          body: JSON.stringify({ approved_indices: approvedIndices, apply_remediation: true }),
+        });
+        if (!res.ok) throw new Error("Approval failed");
+      }
+      setIsReviewOpen(false);
+      onPlanGenerated({
+        projectName: reviewPlanPreview?.projectName || "Approved Plan",
+        description: reviewPlanPreview?.description || "",
+        tasks: [],
+        milestones: [],
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Failed to approve plan.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRejectReview = async () => {
+    setLoading(true);
+    try {
+      if (mode === "manage" && reviewChangesetId && projectId) {
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+        const auth = await getApiAuthHeaders();
+        await fetch(`${API_BASE}/planning/${teamId}/projects/${projectId}/changesets/${reviewChangesetId}/reject/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...auth },
+        });
+      }
+      setIsReviewOpen(false);
+      setReviewMutations([]);
+      setReviewPlanPreview(null);
+      setReviewChangesetId(null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReviseReview = async (feedback: string) => {
+    setIsReviewOpen(false);
+    await handleSend(`Revise the current plan based on this feedback: ${feedback}`);
+  };
+
   // Manual Setup State
   const [isManualMode, setIsManualMode] = useState(false);
   const [manualName, setManualName] = useState("");
@@ -525,6 +587,29 @@ export function AIPlannerOverlay({
       const currentEventRef = { value: "" };
 
       const handleStreamEvent = (event: string, data: Record<string, unknown>) => {
+        if (event === "plan_changeset_ready") {
+          setReviewChangesetId(String(data.changeset_id || ""));
+          setReviewMutations([]);
+          setIsReviewOpen(true);
+        } else if (event === "plan_mutation_pending") {
+          const mut = data.mutation as any;
+          if (mut) {
+            setReviewMutations((prev) => [...prev, mut]);
+          }
+        } else if (event === "reasoning_done" || event === "agent_done") {
+          if (data.projectName || data.tasks || data.milestones || data.project_name) {
+            setReviewPlanPreview({
+              projectName: String(data.projectName || data.project_name || "New Plan"),
+              description: String(data.description || ""),
+              tasks: Array.isArray(data.tasks) ? data.tasks : [],
+              milestones: Array.isArray(data.milestones) ? data.milestones : [],
+            });
+            if (mode === "create") {
+              setIsReviewOpen(true);
+            }
+          }
+        }
+
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMsgId ? applyArchitectStreamEvent(msg, event, data) : msg
@@ -874,6 +959,17 @@ export function AIPlannerOverlay({
           </AnimatePresence>
         </div>
       </motion.div>
+
+      <PlanReviewPanel
+        isOpen={isReviewOpen}
+        onClose={() => setIsReviewOpen(false)}
+        mutations={reviewMutations}
+        planPreview={reviewPlanPreview}
+        onApprove={handleApproveReview}
+        onReject={handleRejectReview}
+        onRevise={handleReviseReview}
+        isProcessing={loading}
+      />
     </motion.div>
   );
 }

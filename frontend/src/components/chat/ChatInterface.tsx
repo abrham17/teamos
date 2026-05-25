@@ -15,6 +15,7 @@ import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentThinking, 
 import { AgentThinkingPane } from "@/components/chat/AgentThinkingPane";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ICONSCOUT } from "@/lib/iconscoutAssets";
+import { PlanReviewPanel, type ReviewMutation, type ReviewPlanPreview } from "@/components/chat/PlanReviewPanel";
 
 type SessionDetailResponse = { messages?: ChatMessage[] };
 
@@ -58,6 +59,63 @@ export function ChatInterface() {
   const [strategy, setStrategy] = useState<AgentStrategy | null>(null);
   const [agentThoughts, setAgentThoughts] = useState<AgentThinking[]>([]);
   const [agentReflections, setAgentReflections] = useState<AgentReflection[]>([]);
+
+  // Review states
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const [reviewMutations, setReviewMutations] = useState<ReviewMutation[]>([]);
+  const [reviewPlanPreview, setReviewPlanPreview] = useState<ReviewPlanPreview | null>(null);
+  const [reviewChangesetId, setReviewChangesetId] = useState<string | null>(null);
+  const [reviewProjectId, setReviewProjectId] = useState<string | null>(null);
+
+  const handleApproveReview = async (approvedIndices?: string[]) => {
+    setIsStreaming(true);
+    try {
+      if (reviewChangesetId && reviewProjectId && currentTeamId) {
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+        const auth = await getApiAuthHeaders();
+        const res = await fetch(`${API_BASE}/planning/${currentTeamId}/projects/${reviewProjectId}/changesets/${reviewChangesetId}/approve/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...auth },
+          body: JSON.stringify({ approved_indices: approvedIndices, apply_remediation: true }),
+        });
+        if (!res.ok) throw new Error("Approval failed");
+      }
+      setIsReviewOpen(false);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to approve plan.");
+    } finally {
+      setIsStreaming(false);
+    }
+  };
+
+  const handleRejectReview = async () => {
+    setIsStreaming(true);
+    try {
+      if (reviewChangesetId && reviewProjectId && currentTeamId) {
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+        const auth = await getApiAuthHeaders();
+        await fetch(`${API_BASE}/planning/${currentTeamId}/projects/${reviewProjectId}/changesets/${reviewChangesetId}/reject/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...auth },
+        });
+      }
+      setIsReviewOpen(false);
+      setReviewMutations([]);
+      setReviewPlanPreview(null);
+      setReviewChangesetId(null);
+      setReviewProjectId(null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsStreaming(false);
+    }
+  };
+
+  const handleReviseReview = async (feedback: string) => {
+    setIsReviewOpen(false);
+    await sendUserMessage(`Revise the current plan based on this feedback: ${feedback}`);
+  };
 
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editInput, setEditInput] = useState("");
@@ -370,6 +428,27 @@ export function ChatInterface() {
                     next[next.length - 1] = { ...working };
                     return next;
                   });
+                } else if (currentEvent === "plan_changeset_ready") {
+                  setReviewChangesetId(String(data.changeset_id || ""));
+                  setReviewMutations([]);
+                  setIsReviewOpen(true);
+                } else if (currentEvent === "plan_mutation_pending") {
+                  const mut = data.mutation as any;
+                  if (mut) {
+                    setReviewMutations((prev) => [...prev, mut]);
+                  }
+                } else if (currentEvent === "reasoning_done" || currentEvent === "agent_done") {
+                  if (data.projectName || data.tasks || data.milestones || data.project_name) {
+                    setReviewPlanPreview({
+                      projectName: String(data.projectName || data.project_name || "New Plan"),
+                      description: String(data.description || ""),
+                      tasks: Array.isArray(data.tasks) ? data.tasks : [],
+                      milestones: Array.isArray(data.milestones) ? data.milestones : [],
+                    });
+                    if (data.project_id) {
+                      setReviewProjectId(String(data.project_id));
+                    }
+                  }
                 } else if (currentEvent === "thinking") {
                   const content = String((data as { content?: string }).content ?? "");
                   if (content) {
@@ -839,6 +918,17 @@ export function ChatInterface() {
           </div>
         )}
       </div>
+
+      <PlanReviewPanel
+        isOpen={isReviewOpen}
+        onClose={() => setIsReviewOpen(false)}
+        mutations={reviewMutations}
+        planPreview={reviewPlanPreview}
+        onApprove={handleApproveReview}
+        onReject={handleRejectReview}
+        onRevise={handleReviseReview}
+        isProcessing={isStreaming}
+      />
     </div>
   );
 }

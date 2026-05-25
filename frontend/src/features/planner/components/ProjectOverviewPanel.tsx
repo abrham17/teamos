@@ -635,7 +635,7 @@ export function ProjectOverviewPanel({
                 {activeProject.related_wiki_pages?.map((doc) => (
                   <a
                     key={doc.id}
-                    href={`/wiki/${doc.slug}`}
+                    href={`/wiki?page=${doc.slug}`}
                     className="flex items-center gap-3 p-3 bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl shadow-sm hover:border-[var(--accent-subtle)] hover:bg-[var(--surface-2)] transition-all group"
                   >
                     <div className="w-8 h-8 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center text-[var(--accent)] font-bold shrink-0">
