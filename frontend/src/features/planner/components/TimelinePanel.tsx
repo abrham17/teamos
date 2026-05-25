@@ -87,7 +87,7 @@ export function TimelinePanel({ tasks, milestones, onAddTask, onAddMilestone }: 
       current = nextMonth;
     }
     return items;
-  }, [start, end]);
+  }, [start, end, pxPerDay]);
 
   const weeks = useMemo(() => {
     const items = [];

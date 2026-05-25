@@ -7,10 +7,7 @@ import {
   Loader2, 
   Upload, 
   Cpu, 
-  Network, 
   CheckCircle, 
-  Database,
-  Search,
   Sparkles
 } from 'lucide-react';
 import { cn } from '@/lib/utils';

@@ -12,7 +12,6 @@ import {
   MessageSquare, 
   CheckCircle2, 
   Clock,
-  User,
   Activity
 } from 'lucide-react';
 import { cn } from '@/lib/utils';

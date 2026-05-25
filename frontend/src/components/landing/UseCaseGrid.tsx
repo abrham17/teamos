@@ -7,7 +7,6 @@ import {
   Compass, 
   FlaskConical, 
   Rocket, 
-  ArrowRight,
   GitBranch,
   Network,
   ClipboardCheck,

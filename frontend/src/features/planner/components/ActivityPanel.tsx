@@ -3,7 +3,6 @@
 import { useState, useMemo } from "react";
 import { motion } from "motion/react";
 import {
-  History,
   Target,
   CheckCircle2,
   Flag,

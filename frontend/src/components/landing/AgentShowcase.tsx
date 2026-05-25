@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Cpu, 
@@ -10,36 +10,33 @@ import {
   CheckCircle, 
   ShieldCheck, 
   Database,
-  ArrowRight,
   UserCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function AgentShowcase() {
   const [activeStage, setActiveStage] = useState(0);
-  const [isHovered, setIsHovered] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isAutoModeRef = useRef(true);
 
-  useEffect(() => {
-    startCycle();
-    return () => stopCycle();
+  const stopCycle = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
   }, []);
 
-  const startCycle = () => {
+  const startCycle = useCallback(() => {
     stopCycle();
     isAutoModeRef.current = true;
     timerRef.current = setInterval(() => {
       setActiveStage(prev => (prev + 1) % 4);
     }, 4500);
-  };
+  }, [stopCycle]);
 
-  const stopCycle = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  };
+  useEffect(() => {
+    startCycle();
+    return () => stopCycle();
+  }, [startCycle, stopCycle]);
+
+
 
   const selectStage = (idx: number) => {
     stopCycle();
@@ -102,8 +99,6 @@ export default function AgentShowcase() {
               <div
                 key={i}
                 onClick={() => selectStage(i)}
-                onMouseEnter={() => setIsHovered(i)}
-                onMouseLeave={() => setIsHovered(null)}
                 className={cn(
                   "p-4 rounded-xl border text-left transition-all duration-300 cursor-pointer relative overflow-hidden",
                   isActive

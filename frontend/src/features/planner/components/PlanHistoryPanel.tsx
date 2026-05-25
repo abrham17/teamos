@@ -141,7 +141,7 @@ export function PlanHistoryPanel({ teamId, projectId, onRestore }: PlanHistoryPa
                         <p className="text-xs text-[var(--text-muted)] leading-relaxed pl-6">
                           Details:{" "}
                           {cs.pending_mutations
-                            .map((m: any, idx) => {
+                            .map((m: { op?: string; title?: string; fields?: { title?: string; name?: string } }, idx) => {
                               const t = m.title || m.fields?.title || m.fields?.name || `Mutation #${idx + 1}`;
                               return `[${m.op}] ${t}`;
                             })

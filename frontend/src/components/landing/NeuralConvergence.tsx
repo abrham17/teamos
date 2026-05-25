@@ -9,7 +9,6 @@ import {
   GitFork, 
   Globe, 
   Link as LinkIcon, 
-  Cpu, 
   Database,
   ArrowRight
 } from 'lucide-react';
