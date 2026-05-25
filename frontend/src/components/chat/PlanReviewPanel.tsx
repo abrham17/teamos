@@ -217,7 +217,7 @@ export function PlanReviewPanel({
                             {title}
                           </h4>
 
-                          {mut.fields?.description && (
+                          {mut.fields?.description && typeof mut.fields.description === 'string' && (
                             <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed">
                               {mut.fields.description}
                             </p>
