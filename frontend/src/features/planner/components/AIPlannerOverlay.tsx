@@ -22,9 +22,8 @@ import {
   buildPlanSummary,
   getStepLabel,
   processSseLines,
-  initReasoningStages,
-  updateReasoningStage,
-  getReasoningStageFromAgentStep,
+  appendActivityEntry,
+  completeLastActivityEntry,
 } from "./ai-architect";
 
 interface AIPlannerOverlayProps {
@@ -51,9 +50,15 @@ function applyArchitectStreamEvent(
   data: Record<string, unknown>
 ): ChatMessage {
   if (event === "thinking") {
+    const thinkingContent = typeof data.content === "string" ? data.content : "";
+    const planState = msg.planningState
+      ? clonePlanningState(msg.planningState)
+      : { statusText: "", agentSteps: [], planResult: null, activityFeed: [] };
+
     return {
       ...msg,
-      reasoningText: `${msg.reasoningText ?? ""}${typeof data.content === "string" ? data.content : ""}`,
+      reasoningText: `${msg.reasoningText ?? ""}${thinkingContent}`,
+      planningState: planState,
       isStreaming: true,
     };
   }
@@ -70,14 +75,10 @@ function applyArchitectStreamEvent(
   }
 
   const planState = clonePlanningState(
-    msg.planningState ?? { statusText: "", agentSteps: [], planResult: null, reasoningStages: initReasoningStages() }
+    msg.planningState ?? { statusText: "", agentSteps: [], planResult: null, activityFeed: [] }
   );
-  
-  // Initialize reasoning stages if not present
-  if (!planState.reasoningStages) {
-    planState.reasoningStages = initReasoningStages();
-  }
-  
+  if (!planState.activityFeed) planState.activityFeed = [];
+
   let text = msg.text ?? "";
 
   if (event === "ask_user") {
@@ -94,18 +95,25 @@ function applyArchitectStreamEvent(
     };
   }
 
-  if (event === "agent_status") {
+  if (event === "agent_activity") {
+    const kind = (typeof data.kind === "string" ? data.kind : "status") as "status" | "thinking" | "tool";
+    const message = typeof data.message === "string" ? data.message : "";
+    const status = (typeof data.status === "string" ? data.status : "running") as "running" | "done" | "error";
+    const detail = data.detail as Record<string, unknown> | undefined;
+
+    if (message) {
+      planState.activityFeed = appendActivityEntry(planState.activityFeed, kind, message, status, detail);
+    }
+  } else if (event === "agent_status") {
     planState.statusText = typeof data.status === "string" ? data.status : "";
+    // Also add to activity feed as a status entry
+    if (planState.statusText) {
+      planState.activityFeed = appendActivityEntry(planState.activityFeed, "status", planState.statusText, "running");
+    }
   } else if (event === "agent_step") {
     const name = typeof data.name === "string" ? data.name : "";
     const label = getStepLabel(name, JSON.stringify(data.arguments || {}));
     planState.agentSteps = [...planState.agentSteps, { name, label, status: "running" }];
-    
-    // Update reasoning stage status
-    const reasoningStageName = getReasoningStageFromAgentStep(name);
-    if (reasoningStageName) {
-      planState.reasoningStages = updateReasoningStage(planState.reasoningStages, reasoningStageName, { status: "running" });
-    }
   } else if (event === "agent_result") {
     const name = typeof data.name === "string" ? data.name : "";
     planState.agentSteps = planState.agentSteps.map((step) =>
@@ -117,26 +125,23 @@ function applyArchitectStreamEvent(
           }
         : step
     );
-    
-    // Update reasoning stage status
-    const reasoningStageName = getReasoningStageFromAgentStep(name);
-    if (reasoningStageName) {
-      planState.reasoningStages = updateReasoningStage(planState.reasoningStages, reasoningStageName, data);
-    }
+    // Complete the last running activity entry
+    planState.activityFeed = completeLastActivityEntry(
+      planState.activityFeed,
+      undefined,
+      data.ok ? "done" : "error",
+      (data.result as Record<string, unknown> | undefined)
+    );
   } else if (event === "reasoning_done") {
-    planState.statusText = "Reasoning complete. Applying plan to your project...";
+    planState.statusText = "Plan reasoning complete.";
     const summary = buildPlanSummary(data);
     if (summary) text = summary;
-    
-    // Mark all remaining pending stages as done
-    planState.reasoningStages = planState.reasoningStages.map((stage) =>
-      stage.status === "pending" ? { ...stage, status: "done" as const } : stage
-    );
-    
+    planState.activityFeed = completeLastActivityEntry(planState.activityFeed, "Reasoning complete", "done");
     return { ...msg, text, isStreaming: false, planningState: planState };
   } else if (event === "agent_done") {
     const summary = buildPlanSummary(data);
     if (summary) text = summary;
+    planState.activityFeed = completeLastActivityEntry(planState.activityFeed, "Plan ready", "done");
     planState.planResult = {
       projectId: typeof data.project_id === "string" ? data.project_id : undefined,
       projectName: typeof data.project_name === "string" ? data.project_name : undefined,
@@ -317,6 +322,7 @@ export function AIPlannerOverlay({
   const handleSend = async (textToSend?: string) => {
     const text = (textToSend || inputText).trim();
     if (!text) return;
+    if (loading) return;
     if (mode === "manage" && !projectId) {
       alert("No project is selected. Open a project and use AI Architect from the overview.");
       return;
@@ -354,12 +360,14 @@ export function AIPlannerOverlay({
       }
 
       // Pass conversation history so the AI never asks repeated questions
-      const history = messages
-        .filter((m) => !m.isStreaming && (m.text || "").trim())
-        .map((m) => ({
-          role: m.sender === "user" ? "user" : "assistant",
-          content: m.text || "",
-        }));
+      // Include the current user message which hasn't been applied to state yet
+      const history = [
+        ...messages.filter((m) => !m.isStreaming && (m.text || "").trim()),
+        { sender: "user", text },
+      ].map((m) => ({
+        role: m.sender === "user" ? "user" : "assistant",
+        content: m.text || "",
+      }));
       if (history.length > 0) {
         streamBody.history = history;
       }

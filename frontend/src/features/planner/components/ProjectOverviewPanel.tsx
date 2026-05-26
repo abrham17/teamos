@@ -3,13 +3,13 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { PlanProjectDetail, PlanTask, TeamMember, PlanMilestone, OverdueTask, MissedMilestone } from "../types";
+import { ExportDropdown } from "./ExportDropdown";
 import {
   Search,
   Plus,
   Clock,
   CheckCircle2,
   FileText,
-  Download,
   Sparkles,
   PlusCircle,
   Flag,
@@ -158,139 +158,6 @@ export function ProjectOverviewPanel({
     );
   }
 
-  const handleExportHTML = () => {
-    if (!activeProject) return;
-
-    const htmlContent = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${activeProject.name} - Project Report</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg: #030712;
-            --surface: #111827;
-            --accent: #6366f1;
-            --text: #f9fafb;
-            --muted: #9ca3af;
-            --border: rgba(255,255,255,0.1);
-        }
-        body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            line-height: 1.6;
-            margin: 0;
-            padding: 40px 20px;
-        }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
-        header {
-            margin-bottom: 60px;
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 40px;
-        }
-        h1 { font-size: 48px; font-weight: 800; margin: 0 0 16px; letter-spacing: -0.05em; }
-        .description { font-size: 18px; color: var(--muted); max-width: 600px; }
-        
-        .section { margin-bottom: 48px; }
-        h2 { font-size: 24px; font-weight: 800; margin-bottom: 24px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.1em; }
-        
-        .card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 24px;
-            padding: 24px;
-            margin-bottom: 16px;
-        }
-        .task-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-        .task-title { font-weight: 600; font-size: 16px; }
-        .badge { font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,0.05); }
-        
-        .team-grid { display: grid; grid-cols: 2; gap: 16px; }
-        .member { display: flex; align-items: center; gap: 12px; }
-        .avatar { width: 32px; height: 32px; border-radius: 8px; background: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; }
-        
-        @media print {
-            body { background: white; color: black; }
-            .card { border: 1px solid #eee; }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <div class="badge" style="color: var(--accent)">Strategic Plan</div>
-            <h1>${activeProject.name}</h1>
-            <p class="description">${activeProject.description || 'No mission statement provided.'}</p>
-            <p style="font-size: 12px; color: var(--muted)">Exported on ${new Date().toLocaleDateString()}</p>
-        </header>
-
-        <div class="section">
-            <h2>Project Team</h2>
-            <div class="card">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                    ${activeProject.members.map(m => `
-                        <div class="member">
-                            <div class="avatar">${(m.user.first_name || m.user.email).substring(0, 2).toUpperCase()}</div>
-                            <div>
-                                <div style="font-weight: 600; font-size: 14px;">${m.user.first_name || m.user.email}</div>
-                                <div style="font-size: 10px; color: var(--muted); text-transform: uppercase;">${m.role}</div>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        </div>
-
-        <div class="section">
-            <h2>Strategic Roadmap</h2>
-            ${activeProject.tasks.map(t => `
-                <div class="card">
-                    <div class="task-header">
-                        <div class="task-title">${t.title}</div>
-                        <div class="badge">${t.status}</div>
-                    </div>
-                    <p style="font-size: 13px; color: var(--muted); margin: 0;">${t.description || 'No additional details.'}</p>
-                    <div style="margin-top: 12px; font-size: 11px; font-weight: 600; display: flex; gap: 12px;">
-                        <span>Priority: ${t.priority}</span>
-                        <span>End Date: ${t.end_date || 'TBD'}</span>
-                    </div>
-                </div>
-            `).join('')}
-        </div>
-
-        <div class="section">
-            <h2>Checkpoints</h2>
-            <div class="card">
-                ${activeProject.milestones.map(m => `
-                    <div style="margin-bottom: 16px; display: flex; justify-content: space-between;">
-                        <div style="font-weight: 600;">${m.title}</div>
-                        <div style="font-size: 12px; color: var(--muted);">${m.target_date || 'TBD'}</div>
-                    </div>
-                `).join('')}
-            </div>
-        </div>
-    </div>
-</body>
-</html>
-    `;
-
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${activeProject.name.replace(/\s+/g, '_')}_Report.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
 
   const handleToggleTask = async (task: PlanTask) => {
     if (!currentTeamId) return;
@@ -429,14 +296,12 @@ export function ProjectOverviewPanel({
             >
               <Trash2 className="w-5 h-5 group-hover:scale-110 transition-transform" />
             </button>
-            <button 
-              onClick={handleExportHTML}
-              className="h-12 w-12 bg-[var(--surface-1)] text-[var(--text-muted)] rounded-2xl flex items-center justify-center border border-[var(--border-subtle)] hover:text-[var(--text-primary)] transition-all"
-              title="Export to HTML"
-              aria-label="Export to HTML"
-            >
-              <Download className="w-4 h-4" />
-            </button>
+            {activeProject && currentTeamId && (
+              <ExportDropdown
+                teamId={currentTeamId}
+                project={activeProject}
+              />
+            )}
           </div>
         </div>
 

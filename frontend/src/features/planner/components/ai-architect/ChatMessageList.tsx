@@ -5,8 +5,8 @@ import { cn } from "@/lib/utils";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { CollapsibleThoughtBlock } from "@/components/chat/CollapsibleThoughtBlock";
 import { QuestionCard } from "@/components/chat/QuestionCard";
+import { AgentActivityFeed } from "@/components/chat/AgentActivityFeed";
 import { PlanSummaryCard } from "./PlanSummaryCard";
-import { ReasoningTimeline } from "./ReasoningTimeline";
 import { ReasoningPanel } from "./ReasoningPanel";
 import { PlanPreviewPanel } from "./PlanPreviewPanel";
 import type { ChatMessage } from "./types";
@@ -92,9 +92,9 @@ export function ChatMessageList({
             )}
             {msg.planningState && (
               <>
-                {msg.planningState.reasoningStages && msg.planningState.reasoningStages.length > 0 && (
-                  <ReasoningTimeline
-                    stages={msg.planningState.reasoningStages}
+                {msg.planningState.activityFeed && msg.planningState.activityFeed.length > 0 && (
+                  <AgentActivityFeed
+                    entries={msg.planningState.activityFeed}
                     isRunning={!!msg.isStreaming}
                   />
                 )}

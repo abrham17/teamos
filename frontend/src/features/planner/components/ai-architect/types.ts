@@ -32,18 +32,9 @@ export interface ChatMessage {
     statusText: string;
     agentSteps: AgentStepEntry[];
     planResult?: PlanResult | null;
-    reasoningStages?: ReasoningStage[];
+    activityFeed?: import("@/components/chat/chatTypes").ActivityEntry[];
   };
   reasoningText?: string;
-}
-
-export interface ReasoningStage {
-  name: string;
-  label: string;
-  status: "pending" | "running" | "done" | "error";
-  durationMs?: number;
-  summary?: string;
-  metrics?: Record<string, unknown>;
 }
 
 export type { ReviewMutation, ReviewPlanPreview } from "@/components/chat/chatTypes";

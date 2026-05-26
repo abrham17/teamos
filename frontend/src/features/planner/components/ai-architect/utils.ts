@@ -1,4 +1,5 @@
-import type { AgentStepEntry, ChatMessage, ReasoningStage } from "./types";
+import type { AgentStepEntry, ChatMessage } from "./types";
+import type { ActivityEntry } from "@/components/chat/chatTypes";
 
 const STEP_LABELS: Record<string, string> = {
   reasoning_decompose: "Decomposing mission into sub-goals",
@@ -24,15 +25,6 @@ const STEP_LABELS: Record<string, string> = {
   plan_check_overdue: "Checking for overdue items",
   wiki_search_pages: "Searching wiki",
   wiki_create_page: "Creating wiki page",
-};
-
-const REASONING_STAGE_LABELS: Record<string, string> = {
-  reasoning_research: "Research",
-  reasoning_synthesize: "Synthesize",
-  reasoning_decompose: "Decompose",
-  reasoning_draft: "Draft",
-  reasoning_critique: "Critique",
-  reasoning_finalize: "Finalize",
 };
 
 export function getStepLabel(name: string, args?: string): string {
@@ -64,6 +56,7 @@ export function clonePlanningState(
   return {
     statusText: state.statusText,
     agentSteps: state.agentSteps.map((step) => ({ ...step })),
+    activityFeed: state.activityFeed ? state.activityFeed.map((e) => ({ ...e })) : undefined,
     planResult: state.planResult
       ? {
           ...state.planResult,
@@ -157,59 +150,37 @@ export function groupAgentSteps(steps: AgentStepEntry[]) {
   return groups;
 }
 
-export function initReasoningStages(): ReasoningStage[] {
-  return Object.entries(REASONING_STAGE_LABELS).map(([name, label]) => ({
-    name,
-    label,
-    status: "pending",
-  }));
-}
-
-export function updateReasoningStage(
-  stages: ReasoningStage[],
-  eventName: string,
-  data: Record<string, unknown>
-): ReasoningStage[] {
-  return stages.map((stage) => {
-    if (stage.name !== eventName) return stage;
-
-    if (eventName.startsWith("reasoning_") && eventName.endsWith("_done")) {
-      const baseName = eventName.replace("_done", "");
-      if (stage.name === baseName) {
-        return {
-          ...stage,
-          status: "done",
-          durationMs: typeof data.duration_ms === "number" ? data.duration_ms : stage.durationMs,
-          summary: typeof data.summary === "string" ? data.summary : stage.summary,
-          metrics: data.metrics as Record<string, unknown> | undefined,
-        };
-      }
-    }
-
-    if (data.status === "running" || eventName === `agent_step`) {
-      return { ...stage, status: "running" as const };
-    }
-
-    if (data.ok === true || data.status === "done") {
-      return { ...stage, status: "done" as const };
-    }
-
-    if (data.ok === false || data.status === "error") {
-      return { ...stage, status: "error" as const };
-    }
-
-    return stage;
-  });
-}
-
-export function getReasoningStageFromAgentStep(name: string): string | null {
-  const mapping: Record<string, string> = {
-    reasoning_research: "reasoning_research",
-    reasoning_synthesize: "reasoning_synthesize",
-    reasoning_decompose: "reasoning_decompose",
-    reasoning_draft: "reasoning_draft",
-    reasoning_critique: "reasoning_critique",
-    reasoning_finalize: "reasoning_finalize",
+export function appendActivityEntry(
+  entries: ActivityEntry[],
+  kind: ActivityEntry["kind"],
+  message: string,
+  status: ActivityEntry["status"] = "running",
+  detail?: Record<string, unknown>
+): ActivityEntry[] {
+  const entry: ActivityEntry = {
+    id: `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    timestamp: Date.now(),
+    kind,
+    message,
+    status,
+    detail,
   };
-  return mapping[name] || null;
+  return [...entries, entry];
+}
+
+export function completeLastActivityEntry(
+  entries: ActivityEntry[],
+  message?: string,
+  status: ActivityEntry["status"] = "done",
+  detail?: Record<string, unknown>
+): ActivityEntry[] {
+  if (entries.length === 0) return entries;
+  const last = entries[entries.length - 1];
+  const updated = {
+    ...last,
+    status,
+    ...(message ? { message } : {}),
+    ...(detail ? { detail } : {}),
+  };
+  return [...entries.slice(0, -1), updated];
 }

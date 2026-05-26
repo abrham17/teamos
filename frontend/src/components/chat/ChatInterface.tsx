@@ -11,8 +11,8 @@ import { ChatAgentToolTimeline } from "@/components/chat/ChatAgentToolTimeline";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
-import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentThinking, AgentReflection, AgentStep, AgentStrategy } from "@/components/chat/chatTypes";
-import { AgentThinkingPane } from "@/components/chat/AgentThinkingPane";
+import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentStrategy, ActivityEntry } from "@/components/chat/chatTypes";
+import { AgentActivityFeed } from "@/components/chat/AgentActivityFeed";
 import { CollapsibleThoughtBlock } from "@/components/chat/CollapsibleThoughtBlock";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ICONSCOUT } from "@/lib/iconscoutAssets";
@@ -58,10 +58,7 @@ export function ChatInterface() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
-  const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [strategy, setStrategy] = useState<AgentStrategy | null>(null);
-  const [agentThoughts, setAgentThoughts] = useState<AgentThinking[]>([]);
-  const [agentReflections, setAgentReflections] = useState<AgentReflection[]>([]);
 
   // Review states
   const [isReviewOpen, setIsReviewOpen] = useState(false);
@@ -178,6 +175,7 @@ export function ChatInterface() {
       } else {
         setIsRecording(false);
       }
+      return;
     }
 
     if (isRecording) {
@@ -299,9 +297,6 @@ export function ChatInterface() {
 
       setIsStreaming(true);
       setStatus("Analyzing mission...");
-      setAgentThoughts([]);
-      setAgentReflections([]);
-      setAgentSteps([]);
       setStrategy(null);
       
       const userMsgObj: ChatMessage = { role: "user", content: trimmed, id: `u-${Date.now()}` };
@@ -317,6 +312,7 @@ export function ChatInterface() {
         toolSteps: [],
         agentSteps: [],
         reasoning: "",
+        activityFeed: [],
         isStreaming: true,
       };
       setMessages((prev) => [...prev, assistantMsg]);
@@ -340,53 +336,54 @@ export function ChatInterface() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let working = { ...assistantMsg };
+        let buffer = "";
 
         while (true) {
           const { value, done } = await reader.read();
-          if (done) break;
+          if (value) {
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
 
-          const chunk = decoder.decode(value);
-          const lines = chunk.split("\n");
+            let currentEvent = "";
+            for (const line of lines) {
+              if (line.startsWith("event:")) {
+                currentEvent = line.replace("event:", "").trim();
+              } else if (line.startsWith("data:")) {
+                const dataStr = line.replace("data:", "").trim();
+                if (!dataStr) continue;
 
-          let currentEvent = "";
-          for (const line of lines) {
-            if (line.startsWith("event:")) {
-              currentEvent = line.replace("event:", "").trim();
-            } else if (line.startsWith("data:")) {
-              const dataStr = line.replace("data:", "").trim();
-              if (!dataStr) continue;
-
-              try {
-                const data = JSON.parse(dataStr) as Record<string, unknown>;
-                if (currentEvent === "status") {
-                  setStatus(String(data.status ?? ""));
-                } else if (currentEvent === "agent_strategy") {
-                  const strat = data as unknown as AgentStrategy;
-                  setStrategy(strat);
-                } else if (currentEvent === "chunk") {
-                  setStatus("");
-                  const token = String((data as { token?: string }).token ?? "");
-                  working = { ...working, content: working.content + token };
-                  setMessages((prev) => {
-                    const next = [...prev];
-                    next[next.length - 1] = { ...working };
-                    return next;
-                  });
-                } else if (currentEvent === "citations") {
-                  const cits = (data as { citations?: Citation[] }).citations ?? [];
-                  working = { ...working, citations: cits };
-                  setMessages((prev) => {
-                    const next = [...prev];
-                    next[next.length - 1] = { ...working };
-                    return next;
-                  });
-                } else if (currentEvent === "tool_call") {
-                  const name = String((data as { name?: string }).name ?? "");
-                  const arg = String((data as { arguments?: string }).arguments ?? "");
-                  const steps = [...(working.toolSteps ?? []), { name, arguments: arg }];
-                  working = { ...working, toolSteps: steps };
-                  setMessages((prev) => {
-                    const next = [...prev];
+                try {
+                  const data = JSON.parse(dataStr) as Record<string, unknown>;
+                  if (currentEvent === "status") {
+                    setStatus(String(data.status ?? ""));
+                  } else if (currentEvent === "agent_strategy") {
+                    const strat = data as unknown as AgentStrategy;
+                    setStrategy(strat);
+                  } else if (currentEvent === "chunk") {
+                    setStatus("");
+                    const token = String((data as { token?: string }).token ?? "");
+                    working = { ...working, content: working.content + token };
+                    setMessages((prev) => {
+                      const next = [...prev];
+                      next[next.length - 1] = { ...working };
+                      return next;
+                    });
+                  } else if (currentEvent === "citations") {
+                    const cits = (data as { citations?: Citation[] }).citations ?? [];
+                    working = { ...working, citations: cits };
+                    setMessages((prev) => {
+                      const next = [...prev];
+                      next[next.length - 1] = { ...working };
+                      return next;
+                    });
+                  } else if (currentEvent === "tool_call") {
+                    const name = String((data as { name?: string }).name ?? "");
+                    const arg = String((data as { arguments?: string }).arguments ?? "");
+                    const steps = [...(working.toolSteps ?? []), { name, arguments: arg }];
+                    working = { ...working, toolSteps: steps };
+                    setMessages((prev) => {
+                      const next = [...prev];
                     next[next.length - 1] = { ...working };
                     return next;
                   });
@@ -456,7 +453,6 @@ export function ChatInterface() {
                 } else if (currentEvent === "thinking") {
                   const content = String((data as { content?: string }).content ?? "");
                   if (content) {
-                    setAgentThoughts((prev) => [...prev, { content, timestamp: Date.now() }]);
                     working = { ...working, reasoning: (working.reasoning ?? "") + content, isStreaming: true };
                     setMessages((prev) => {
                       const next = [...prev];
@@ -465,9 +461,27 @@ export function ChatInterface() {
                     });
                   }
                 } else if (currentEvent === "reflection") {
-                  const reflection = data as unknown as AgentReflection;
-                  if (reflection && !reflection.success) {
-                    setAgentReflections((prev) => [...prev, reflection]);
+                  // Reflection feedback is handled via agent_activity events
+                } else if (currentEvent === "agent_activity") {
+                  const activityData = data as unknown as ActivityEntry;
+                  if (activityData.message) {
+                    const entry: ActivityEntry = {
+                      id: activityData.id || `act-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                      timestamp: activityData.timestamp || Date.now(),
+                      kind: activityData.kind || "status",
+                      message: activityData.message,
+                      detail: activityData.detail,
+                      status: activityData.status || "running",
+                    };
+                    working = {
+                      ...working,
+                      activityFeed: [...(working.activityFeed || []), entry],
+                    };
+                    setMessages((prev) => {
+                      const next = [...prev];
+                      next[next.length - 1] = { ...working };
+                      return next;
+                    });
                   }
                 } else if (currentEvent === "ask_user") {
                   // Planning agent needs one clarifying answer before proceeding
@@ -502,6 +516,34 @@ export function ChatInterface() {
                 }
               } catch { /* skip parse errs */ }
             }
+          }
+          }
+          if (done) {
+            if (buffer.trim()) {
+              const lines = buffer.split("\n");
+              let currentEvent = "";
+              for (const line of lines) {
+                if (line.startsWith("event:")) {
+                  currentEvent = line.replace("event:", "").trim();
+                } else if (line.startsWith("data:")) {
+                  const dataStr = line.replace("data:", "").trim();
+                  if (!dataStr) continue;
+                  try {
+                    JSON.parse(dataStr);
+                    if (currentEvent === "done") {
+                      setIsStreaming(false);
+                      working = { ...working, isStreaming: false };
+                      setMessages((prev) => {
+                        const next = [...prev];
+                        next[next.length - 1] = { ...working };
+                        return next;
+                      });
+                    }
+                  } catch { /* ignore */ }
+                }
+              }
+            }
+            break;
           }
         }
         
@@ -675,14 +717,6 @@ export function ChatInterface() {
                       </div>
                     )}
                     <div className={cn("flex max-w-[85%] flex-col gap-2 min-w-0", isUser ? "items-end" : "items-start")}>
-                      {!isUser && i === messages.length - 1 && isStreaming && (agentThoughts.length > 0 || agentReflections.length > 0) && (
-                        <AgentThinkingPane
-                          thoughts={agentThoughts}
-                          reflections={agentReflections}
-                          steps={agentSteps}
-                          isActive={isStreaming}
-                        />
-                      )}
                       {!isUser && agentStepsForMessage(m).length > 0 && <ChatAgentToolTimeline steps={agentStepsForMessage(m)} />}
                       <div className="relative group/msg-content w-full">
                         <div className={cn(
@@ -723,6 +757,12 @@ export function ChatInterface() {
                               </div>
                             ) : m.role === "assistant" ? (
                               <div className="w-full max-w-none overflow-x-auto">
+                                {m.activityFeed && m.activityFeed.length > 0 && (
+                                  <AgentActivityFeed
+                                    entries={m.activityFeed}
+                                    isRunning={!!(m.isStreaming ?? isLiveAssistant)}
+                                  />
+                                )}
                                 {m.reasoning && (
                                   <CollapsibleThoughtBlock
                                     thoughtText={m.reasoning}

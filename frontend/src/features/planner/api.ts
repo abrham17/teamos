@@ -85,6 +85,12 @@ export async function planAssistStream(
     body: JSON.stringify(payload),
   });
 
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    callbacks.onError?.(`Server error ${response.status}: ${errorText || response.statusText}`);
+    return;
+  }
+
   if (!response.body) {
     callbacks.onError?.("No response body from server.");
     return;

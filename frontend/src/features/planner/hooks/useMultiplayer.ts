@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useUser } from "@clerk/clerk-react";
 
 export interface CursorPosition {
@@ -19,16 +19,19 @@ export function useMultiplayer(
 ) {
   const { user } = useUser();
   const [cursors, setCursors] = useState<Record<string, CursorPosition>>({});
+  const [connectionKey, setConnectionKey] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
   const colorRef = useRef<string>(COLORS[Math.floor(Math.random() * COLORS.length)]);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const callbacksRef = useRef({ onStateChange, onNodeMove });
+
+  callbacksRef.current = { onStateChange, onNodeMove };
 
   useEffect(() => {
-    if (!teamId || !projectId) return;
+    if (!teamId || !projectId || !user?.id) return;
 
-    // Build ws url based on current host
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
-    // In dev, the API is often on 8000
     const wsUrl = `${protocol}//${host}/ws/planning/${teamId}/projects/${projectId}/`;
 
     const ws = new WebSocket(wsUrl);
@@ -37,8 +40,10 @@ export function useMultiplayer(
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+        const { onStateChange: sc, onNodeMove: nm } = callbacksRef.current;
+
         if (data.type === "cursor_move") {
-          if (data.userId === user?.id) return; // ignore our own
+          if (data.userId === user?.id) return;
           setCursors((prev) => ({
             ...prev,
             [data.userId]: {
@@ -50,10 +55,10 @@ export function useMultiplayer(
             },
           }));
         } else if (data.type === "node_move") {
-          if (data.userId === user?.id) return; // ignore our own
-          onNodeMove?.(data.nodeId, data.position);
+          if (data.userId === user?.id) return;
+          nm?.(data.nodeId, data.position);
         } else if (data.type === "state_change" || data.type === "plan_update") {
-          onStateChange?.();
+          sc?.();
         }
       } catch {
         // ignore malformed
@@ -61,30 +66,29 @@ export function useMultiplayer(
     };
 
     ws.onclose = () => {
-      // Auto-reconnect after 3 seconds
-      setTimeout(() => {
-        if (teamId && projectId) {
-          // Trigger re-render to recreate WebSocket
-          setCursors({});
-        }
+      reconnectTimeoutRef.current = setTimeout(() => {
+        setConnectionKey((k) => k + 1);
       }, 3000);
     };
 
-    // Cleanup stale cursors
-    const interval = setInterval(() => {
-      // we would clear cursors here if needed, but keeping it simple for now
-    }, 5000);
+    ws.onerror = () => {
+      ws.close();
+    };
 
     return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      ws.onclose = null;
+      ws.onerror = null;
       ws.close();
-      clearInterval(interval);
     };
-  }, [teamId, projectId, user?.id, onStateChange, onNodeMove]);
+  }, [teamId, projectId, user?.id, connectionKey]);
 
-  const sendCursorMove = (e: React.MouseEvent | MouseEvent) => {
+  const sendCursorMove = useCallback((e: React.MouseEvent | MouseEvent) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    
-    // We send percentage coordinates so it works across different screen sizes
+
     const x = e.clientX / window.innerWidth;
     const y = e.clientY / window.innerHeight;
 
@@ -94,11 +98,11 @@ export function useMultiplayer(
       x: x,
       y: y,
       color: colorRef.current,
-      name: user?.firstName || user?.emailAddresses[0]?.emailAddress || "Anonymous",
+      name: user?.firstName || user?.emailAddresses?.[0]?.emailAddress || "Anonymous",
     }));
-  };
+  }, [user]);
 
-  const sendNodeMove = (nodeId: string, position: { x: number; y: number }) => {
+  const sendNodeMove = useCallback((nodeId: string, position: { x: number; y: number }) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     wsRef.current.send(JSON.stringify({
       type: "node_move",
@@ -106,7 +110,7 @@ export function useMultiplayer(
       nodeId: nodeId,
       position: position,
     }));
-  };
+  }, [user]);
 
   return { cursors, sendCursorMove, sendNodeMove };
 }

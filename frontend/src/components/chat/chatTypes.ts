@@ -48,6 +48,15 @@ export type AgentStrategy = {
   confidence: number;
 };
 
+export type ActivityEntry = {
+  id: string;
+  timestamp: number;
+  kind: "status" | "thinking" | "tool";
+  message: string;
+  detail?: Record<string, unknown>;
+  status: "running" | "done" | "error";
+};
+
 export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -59,7 +68,7 @@ export type ChatMessage = {
   strategy?: AgentStrategy;
   reasoning?: string;
   isStreaming?: boolean;
-  /** Inline clarification question emitted by the planning agent */
+  activityFeed?: ActivityEntry[];
   question?: {
     question: string;
     options?: string[];
