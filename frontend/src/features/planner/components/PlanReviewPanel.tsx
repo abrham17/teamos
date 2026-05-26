@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, Loader2, X, AlertTriangle } from "lucide-react";
+import { Check, Loader2, X, AlertTriangle, ChevronDown, ChevronRight, ArrowRight } from "lucide-react";
 import {
   approveChangeSet,
   getChangeSet,
@@ -7,6 +7,74 @@ import {
   rejectChangeSet,
 } from "../api";
 import { PlanChangeSet } from "../types";
+
+interface PlanReviewPanelProps {
+  teamId: string;
+  projectId: string;
+  onResolved: () => void;
+}
+
+const OP_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
+  create: { label: "Create", color: "text-emerald-400", bgColor: "bg-emerald-600/10" },
+  update: { label: "Update", color: "text-amber-400", bgColor: "bg-amber-600/10" },
+  delete: { label: "Delete", color: "text-rose-400", bgColor: "bg-rose-600/10" },
+  set_dependencies: { label: "Link", color: "text-sky-400", bgColor: "bg-sky-600/10" },
+  update_project: { label: "Project", color: "text-violet-400", bgColor: "bg-violet-600/10" },
+};
+
+function MutationDiff({ mutation }: { mutation: Record<string, unknown> }) {
+  const [expanded, setExpanded] = useState(false);
+  const op = String(mutation.op || "update");
+  const config = OP_CONFIG[op] || OP_CONFIG.update;
+  const title = String(mutation.title || mutation.entity_type || "Entity");
+  const fields = (mutation.fields || {}) as Record<string, unknown>;
+  const oldFields = (mutation.old_fields || {}) as Record<string, unknown>;
+  const hasChanges = Object.keys(fields).length > 0 && Object.keys(oldFields).length > 0;
+
+  return (
+    <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)]/50 overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[var(--surface-1)] transition-colors"
+      >
+        <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${config.bgColor} ${config.color}`}>
+          {config.label}
+        </span>
+        <span className="text-[11px] font-medium text-[var(--text-primary)]">{title}</span>
+        {expanded ? (
+          <ChevronDown className="h-3 w-3 text-[var(--text-dim)] ml-auto" />
+        ) : (
+          <ChevronRight className="h-3 w-3 text-[var(--text-dim)] ml-auto" />
+        )}
+      </button>
+
+      {expanded && hasChanges && (
+        <div className="px-3 pb-2 space-y-1 border-t border-[var(--border-subtle)] pt-2">
+          {Object.keys(fields).map((key) => {
+            const oldVal = oldFields[key];
+            const newVal = fields[key];
+            const hasChanged = oldVal !== undefined && String(oldVal) !== String(newVal);
+
+            return (
+              <div key={key} className="flex items-start gap-2 text-[10px]">
+                <span className="text-[var(--text-dim)] w-20 shrink-0 font-mono">{key}</span>
+                {hasChanged && (
+                  <span className="text-[var(--danger)] line-through">{String(oldVal)}</span>
+                )}
+                {hasChanged && (
+                  <ArrowRight className="h-2.5 w-2.5 text-[var(--text-dim)] shrink-0 mt-0.5" />
+                )}
+                <span className={hasChanged ? "text-[var(--success)]" : "text-[var(--text-muted)]"}>
+                  {String(newVal)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface PlanReviewPanelProps {
   teamId: string;
@@ -137,12 +205,10 @@ export function PlanReviewPanel({ teamId, projectId, onResolved }: PlanReviewPan
       ))}
 
       {selected && (
-        <div className="border border-[var(--accent-subtle)] rounded-xl p-4 bg-[var(--bg-900)] space-y-2 max-h-64 overflow-y-auto">
+        <div className="border border-[var(--accent-subtle)] rounded-xl p-4 bg-[var(--bg-900)] space-y-2 max-h-96 overflow-y-auto">
           <p className="text-xs font-black uppercase text-[var(--text-dim)]">Proposed mutations</p>
           {(selected.pending_mutations || selected.mutations || []).map((m, i) => (
-            <pre key={i} className="text-[10px] text-[var(--text-muted)] whitespace-pre-wrap">
-              {JSON.stringify(m, null, 2)}
-            </pre>
+            <MutationDiff key={i} mutation={m as Record<string, unknown>} />
           ))}
         </div>
       )}

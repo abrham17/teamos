@@ -52,12 +52,22 @@ export function useMultiplayer(
         } else if (data.type === "node_move") {
           if (data.userId === user?.id) return; // ignore our own
           onNodeMove?.(data.nodeId, data.position);
-        } else if (data.type === "state_change") {
+        } else if (data.type === "state_change" || data.type === "plan_update") {
           onStateChange?.();
         }
       } catch {
         // ignore malformed
       }
+    };
+
+    ws.onclose = () => {
+      // Auto-reconnect after 3 seconds
+      setTimeout(() => {
+        if (teamId && projectId) {
+          // Trigger re-render to recreate WebSocket
+          setCursors({});
+        }
+      }, 3000);
     };
 
     // Cleanup stale cursors

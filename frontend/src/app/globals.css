@@ -869,3 +869,25 @@
   border-radius: 3px 3px 3px 0;
   white-space: nowrap;
 }
+
+/* Citation heading highlight animation */
+.citation-highlight {
+  animation: citation-glow 3s ease-out;
+  border-radius: 0.25rem;
+}
+
+@keyframes citation-glow {
+  0% { background-color: rgba(var(--accent-rgb), 0.3); box-shadow: 0 0 0 4px rgba(var(--accent-rgb), 0.15); }
+  100% { background-color: transparent; box-shadow: 0 0 0 0 transparent; }
+}
+
+/* Citation snippet highlight in wiki editor */
+.citation-snippet-highlight {
+  background-color: rgba(var(--accent-rgb), 0.25);
+  border-radius: 0.2rem;
+  transition: background-color 2s ease-out;
+}
+
+.citation-snippet-highlight.citation-snippet-fade {
+  background-color: transparent;
+}

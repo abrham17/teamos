@@ -88,6 +88,7 @@ export function BoardPanel({ tasks, onUpdateTask, onAddTask }: BoardPanelProps) 
                 return (
                   <motion.div
                     key={task.id}
+                    id={`plan-entity-${task.id}`}
                     layoutId={task.id}
                     drag
                     dragSnapToOrigin

@@ -43,6 +43,33 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function scrollToHeading(headingText: string) {
+  const id = slugify(headingText);
+  const el = document.getElementById(id);
+  if (el) {
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    el.classList.add("citation-highlight");
+    setTimeout(() => el.classList.remove("citation-highlight"), 3000);
+    return true;
+  }
+  // Fallback: try browser find
+  try {
+    const finder = (window as Window & { find?: (query: string) => boolean }).find;
+    return finder?.(headingText) ?? false;
+  } catch {
+    return false;
+  }
+}
+
 /** Prefer live editor markdown, then React state, then last saved page body. */
 function resolveBodyMarkdown(
   editorRef: RefObject<GoogleDocsEditorHandle | null>,
@@ -154,6 +181,42 @@ export function MarkdownWorkspace() {
       /* ignore */
     }
   }, [currentTeamId]);
+
+  // Scroll to heading referenced by citation anchor_hint after page loads
+  useEffect(() => {
+    if (loading || !citationAnchorHint) return;
+    const timer = setTimeout(() => {
+      scrollToHeading(citationAnchorHint);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [loading, citationAnchorHint]);
+
+  // Highlight citation snippet text in the editor DOM after content loads
+  useEffect(() => {
+    if (loading || !citationSnippet) return;
+    const timer = setTimeout(() => {
+      const prose = document.querySelector(".tiptap");
+      if (!prose) return;
+      const walker = document.createTreeWalker(prose, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (node.textContent?.includes(citationSnippet)) {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const start = node.textContent.indexOf(citationSnippet);
+          range.setStart(node, start);
+          range.setEnd(node, start + citationSnippet.length);
+          const mark = document.createElement("mark");
+          mark.className = "citation-snippet-highlight";
+          range.surroundContents(mark);
+          mark.scrollIntoView({ behavior: "smooth", block: "center" });
+          setTimeout(() => mark.classList.add("citation-snippet-fade"), 100);
+          break;
+        }
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [loading, citationSnippet]);
 
   const persistWikiAutoApprove = (next: boolean) => {
     setAutoApproveWiki(next);
@@ -302,11 +365,19 @@ export function MarkdownWorkspace() {
 
   const handleFindCitationSnippet = () => {
     if (!citationSnippet) return;
-    try {
-      const finder = (window as Window & { find?: (query: string) => boolean }).find;
-      finder?.(citationSnippet);
-    } catch {
-      // no-op: browser support can vary
+    if (citationAnchorHint) {
+      scrollToHeading(citationAnchorHint);
+      return;
+    }
+    // Use anchor-based scroll first, fall back to browser find
+    const scrolled = scrollToHeading(citationSnippet);
+    if (!scrolled) {
+      try {
+        const finder = (window as Window & { find?: (query: string) => boolean }).find;
+        finder?.(citationSnippet);
+      } catch {
+        // no-op
+      }
     }
   };
 
@@ -503,11 +574,7 @@ export function MarkdownWorkspace() {
                       heading.level === 2 ? "pl-3 text-[var(--text-muted)]" :
                       "pl-6 text-[var(--text-dim)]"
                     }`}
-                    onClick={() => {
-                      // simple scroll to implementation could go here
-                      // since TipTap doesn't give easy ID mapping without custom nodes, 
-                      // we can rely on standard browser find for now or expand this later.
-                    }}
+                    onClick={() => scrollToHeading(heading.text)}
                   >
                     {heading.text}
                   </div>

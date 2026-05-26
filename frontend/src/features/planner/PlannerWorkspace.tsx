@@ -29,6 +29,9 @@ export function PlannerWorkspace() {
   const { currentTeamId } = useWikiStore();
   const searchParams = useSearchParams();
   const preferredProjectId = searchParams.get("project");
+  const preferredSourceKind = searchParams.get("source_kind");
+  const preferredSourceRefId = searchParams.get("source_ref_id");
+  const citationSource = searchParams.get("source");
 
   const [query, setQuery] = useState("");
   const [isAIOverlayOpen, setIsAIOverlayOpen] = useState(false);
@@ -84,6 +87,21 @@ export function PlannerWorkspace() {
       });
     }
   }, [activeView, currentTeamId]);
+
+  // Auto-navigate to entity referenced by citation params
+  useEffect(() => {
+    if (citationSource !== "chat" || !activeProject || !preferredSourceKind || !preferredSourceRefId) return;
+    if (preferredSourceKind === "task" || preferredSourceKind === "milestone") {
+      setActiveView("board");
+    }
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`plan-entity-${preferredSourceRefId}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      el?.classList.add("citation-highlight");
+      setTimeout(() => el?.classList.remove("citation-highlight"), 3000);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [citationSource, activeProject, preferredSourceKind, preferredSourceRefId]);
 
 
   const handlePlanGenerated = async () => {

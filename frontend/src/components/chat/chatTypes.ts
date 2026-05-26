@@ -8,6 +8,7 @@ export type Citation = {
   project_id?: string;
   project_name?: string;
   source_kind?: string;
+  source_ref_id?: string;
   confidence?: number;
   anchor_hint?: string;
   chunk_id?: string;
@@ -71,4 +72,24 @@ export type ChatCapabilities = {
   can_ingest: boolean;
   agent_mode_available: boolean;
   plan_mode_available: boolean;
+};
+
+export type ReviewMutation = {
+  id?: string;
+  op: "create" | "update" | "delete" | "set_dependencies" | "update_project";
+  entity_type?: "task" | "milestone" | "project";
+  entity_id?: string;
+  semantic_key?: string;
+  fields?: Record<string, unknown>;
+  old_fields?: Record<string, unknown>;
+  depends_on?: string[];
+  title?: string;
+  reason?: string;
+};
+
+export type ReviewPlanPreview = {
+  projectName: string;
+  description: string;
+  tasks: unknown[];
+  milestones: unknown[];
 };

@@ -3,23 +3,19 @@
 import Link from "next/link";
 import { FileText, Layers } from "lucide-react";
 import { buildChatCitationHref } from "@/lib/chatCitationLink";
+import type { Citation } from "@/components/chat/chatTypes";
 
-export type ChatCitation = {
-  source?: "wiki" | "plan" | string;
-  title?: string;
-  page_slug?: string;
-  page_title?: string;
-  project_id?: string;
-  project_name?: string;
-  source_kind?: string;
-  confidence?: number;
-  anchor_hint?: string;
-  chunk_id?: string;
-  snippet?: string;
-};
-
-function CitationLink({ c }: { c: ChatCitation }) {
-  const href = buildChatCitationHref(c);
+function CitationLink({ c }: { c: Citation }) {
+  const href = buildChatCitationHref({
+    source: c.source,
+    page_slug: c.page_slug,
+    project_id: c.project_id,
+    chunk_id: c.chunk_id,
+    anchor_hint: c.anchor_hint,
+    snippet: c.snippet,
+    source_kind: c.source_kind,
+    source_ref_id: c.source_ref_id,
+  });
   const isPlan = (c.source || "").toLowerCase() === "plan";
   const displayTitle = c.title ?? c.page_title ?? c.project_name ?? c.page_slug ?? "Source";
   
@@ -45,7 +41,7 @@ function CitationLink({ c }: { c: ChatCitation }) {
   );
 }
 
-export function ChatCitationList({ citations }: { citations: ChatCitation[] }) {
+export function ChatCitationList({ citations }: { citations: Citation[] }) {
   if (!citations.length) return null;
 
   return (

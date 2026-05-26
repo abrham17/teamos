@@ -7,41 +7,9 @@ import {
   Plus, Pencil, Trash2, Link2, Sparkles, ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { ReviewMutation, ReviewPlanPreview } from "./chatTypes";
 
-export interface ReviewMutation {
-  id?: string;
-  op: "create" | "update" | "delete" | "set_dependencies" | "update_project";
-  entity_type?: "task" | "milestone" | "project";
-  fields?: Record<string, unknown>;
-  old_fields?: Record<string, unknown>;
-  depends_on?: string[];
-  title?: string;
-  reason?: string;
-  semantic_key?: string;
-}
-
-export interface ReviewPlanPreview {
-  projectName: string;
-  description: string;
-  tasks: Array<{
-    id: string;
-    title: string;
-    description: string;
-    status: string;
-    priority: string;
-    startDate?: string;
-    endDate?: string;
-    assignee_id?: string;
-    reasoning?: string;
-  }>;
-  milestones: Array<{
-    id: string;
-    title: string;
-    date: string;
-    description: string;
-    status: string;
-  }>;
-}
+export type { ReviewMutation, ReviewPlanPreview } from "./chatTypes";
 
 interface PlanReviewPanelProps {
   isOpen: boolean;

@@ -18,6 +18,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ICONSCOUT } from "@/lib/iconscoutAssets";
 import { PlanReviewPanel, type ReviewMutation, type ReviewPlanPreview } from "@/components/chat/PlanReviewPanel";
 import { QuestionCard } from "@/components/chat/QuestionCard";
+import { ChatModeSegmentedControl, type ChatMode } from "@/components/chat/ChatModeSegmentedControl";
+import { ProactiveSuggestions } from "@/components/chat/ProactiveSuggestions";
 
 type SessionDetailResponse = { messages?: ChatMessage[] };
 
@@ -61,6 +63,13 @@ export function ChatInterface() {
   const [strategy, setStrategy] = useState<AgentStrategy | null>(null);
   const [agentThoughts, setAgentThoughts] = useState<AgentThinking[]>([]);
   const [agentReflections, setAgentReflections] = useState<AgentReflection[]>([]);
+  const [mode, setMode] = useState<ChatMode>("ask");
+  const [capabilities, setCapabilities] = useState<{
+    can_edit_wiki: boolean;
+    can_edit_plans: boolean;
+    agent_mode_available: boolean;
+    plan_mode_available: boolean;
+  } | null>(null);
 
   // Review states
   const [isReviewOpen, setIsReviewOpen] = useState(false);
@@ -261,6 +270,13 @@ export function ChatInterface() {
     return () => { cancelled = true; };
   }, [currentTeamId, toastError]);
 
+  // Fetch chat capabilities for mode gating
+  useEffect(() => {
+    if (!currentTeamId) return;
+    api.get(`/chat/${currentTeamId}/capabilities/`)
+      .then((data: unknown) => setCapabilities(data as { can_edit_wiki: boolean; can_edit_plans: boolean; agent_mode_available: boolean; plan_mode_available: boolean } | null))
+      .catch(console.error);
+  }, [currentTeamId]);
 
 
   useEffect(() => {
@@ -329,7 +345,7 @@ export function ChatInterface() {
             method: "POST",
             headers: { "Content-Type": "application/json", ...auth },
             credentials: "include",
-            body: JSON.stringify({ message: trimmed }),
+            body: JSON.stringify({ message: trimmed, mode }),
             signal: abortControllerRef.current.signal,
           },
         );
@@ -524,7 +540,7 @@ export function ChatInterface() {
         toastError("Failed to connect to AI server.");
       }
     },
-    [activeSessionId, currentTeamId, isStreaming, toastError],
+    [activeSessionId, currentTeamId, isStreaming, toastError, mode],
   );
 
   const handleNewChat = async () => {
@@ -865,6 +881,24 @@ export function ChatInterface() {
                     className="py-4"
                   />
                 </motion.div>
+              )}
+
+              {/* Mode Selector */}
+              {sessionReady && currentTeamId && (
+                <div className="w-full max-w-3xl mb-3">
+                  <ChatModeSegmentedControl
+                    value={mode}
+                    onChange={setMode}
+                    capabilities={capabilities}
+                  />
+                </div>
+              )}
+
+              {/* Proactive Suggestions */}
+              {sessionReady && currentTeamId && (
+                <div className="w-full max-w-3xl mb-3">
+                  <ProactiveSuggestions teamId={currentTeamId} />
+                </div>
               )}
 
               {/* Textarea Input Card */}

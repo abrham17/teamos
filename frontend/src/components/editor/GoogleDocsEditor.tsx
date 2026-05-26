@@ -39,6 +39,7 @@ import { ImageUpload } from "./extensions/ImageUpload";
 import { MermaidBlock } from "./extensions/MermaidBlock";
 import { GraphEmbed } from "./extensions/GraphEmbed";
 import { AIAutocomplete } from "./extensions/AIAutocomplete";
+import { HeadingAnchor } from "./extensions/HeadingAnchor";
 import EditorToolbar from "./EditorToolbar";
 import { FloatingBubbleMenu } from "./FloatingBubbleMenu";
 
@@ -84,7 +85,9 @@ export const GoogleDocsEditor = forwardRef<GoogleDocsEditorHandle, Props>(functi
         listItem: false,
         blockquote: false,
         codeBlock: false,
+        heading: false,
       }),
+      HeadingAnchor,
       Underline,
       TextAlign.configure({
         types: ["heading", "paragraph"],
