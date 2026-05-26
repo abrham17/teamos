@@ -2,18 +2,22 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { 
-  X, Check, RefreshCw, 
-  MessageSquare, Layers, Flag, CheckSquare, Sparkles 
+import {
+  Check, X, RefreshCw, ChevronDown, ChevronRight,
+  Plus, Pencil, Trash2, Link2, Sparkles, ArrowRight,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface ReviewMutation {
   id?: string;
-  op: "create" | "update" | "delete" | "set_dependencies";
-  entity_type: "task" | "milestone" | "project";
+  op: "create" | "update" | "delete" | "set_dependencies" | "update_project";
+  entity_type?: "task" | "milestone" | "project";
   fields?: Record<string, unknown>;
+  old_fields?: Record<string, unknown>;
   depends_on?: string[];
   title?: string;
+  reason?: string;
+  semantic_key?: string;
 }
 
 export interface ReviewPlanPreview {
@@ -50,6 +54,165 @@ interface PlanReviewPanelProps {
   isProcessing?: boolean;
 }
 
+const OP_CONFIG = {
+  create: { icon: Plus, color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20", label: "Create" },
+  update: { icon: Pencil, color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20", label: "Update" },
+  delete: { icon: Trash2, color: "text-rose-400", bg: "bg-rose-500/10 border-rose-500/20", label: "Delete" },
+  set_dependencies: { icon: Link2, color: "text-sky-400", bg: "bg-sky-500/10 border-sky-500/20", label: "Link" },
+  update_project: { icon: Pencil, color: "text-violet-400", bg: "bg-violet-500/10 border-violet-500/20", label: "Project" },
+};
+
+function FieldDiff({
+  field,
+  oldVal,
+  newVal,
+}: {
+  field: string;
+  oldVal?: unknown;
+  newVal: unknown;
+}) {
+  const fmt = (v: unknown) =>
+    v == null ? <span className="opacity-40 italic">none</span> : <span>{String(v)}</span>;
+
+  const hasOld = oldVal !== undefined && oldVal !== null && oldVal !== newVal;
+
+  return (
+    <div className="flex flex-col gap-0.5 py-1 border-b border-[var(--border-subtle)]/40 last:border-0">
+      <span className="text-[9px] font-black uppercase tracking-wider text-[var(--text-dim)]">
+        {field.replace(/_/g, " ")}
+      </span>
+      {hasOld ? (
+        <div className="flex items-start gap-1.5">
+          <span className="text-[11px] text-rose-400/80 line-through truncate max-w-[140px]">
+            {fmt(oldVal)}
+          </span>
+          <ArrowRight className="w-2.5 h-2.5 text-[var(--text-dim)] shrink-0 mt-0.5" />
+          <span className="text-[11px] text-emerald-400 truncate max-w-[140px]">
+            {fmt(newVal)}
+          </span>
+        </div>
+      ) : (
+        <span className="text-[11px] text-[var(--text-secondary)] truncate max-w-[260px]">
+          {fmt(newVal)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function MutationCard({
+  mutation,
+  index,
+  excluded,
+  onToggle,
+}: {
+  mutation: ReviewMutation;
+  index: number;
+  excluded: boolean;
+  onToggle: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const cfg = OP_CONFIG[mutation.op] ?? OP_CONFIG.update;
+  const Icon = cfg.icon;
+
+  const title =
+    String(
+      mutation.title ||
+        mutation.fields?.title ||
+        mutation.fields?.name ||
+        (mutation.op === "update_project" ? "Project" : `Item #${index + 1}`)
+    );
+
+  const diffableFields = mutation.fields
+    ? Object.entries(mutation.fields).filter(
+        ([k]) => !["id", "title", "name"].includes(k)
+      )
+    : [];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.04 }}
+      className={cn(
+        "rounded-2xl border transition-all",
+        excluded
+          ? "opacity-40 bg-[var(--surface-1)]/30 border-[var(--border-subtle)]"
+          : "bg-[var(--surface-1)] border-[var(--border-subtle)] hover:border-[var(--border-strong)]"
+      )}
+    >
+      {/* Card header */}
+      <div className="flex items-center gap-2.5 px-4 pt-3 pb-2">
+        <span className={cn("inline-flex items-center gap-1 text-[9px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0", cfg.bg, cfg.color)}>
+          <Icon className="w-2.5 h-2.5" />
+          {cfg.label} {mutation.entity_type || ""}
+        </span>
+
+        <span className={cn("flex-1 text-[12px] font-semibold truncate", excluded && "line-through text-[var(--text-dim)]")}>
+          {title}
+        </span>
+
+        {/* Expand/collapse diff */}
+        {diffableFields.length > 0 && (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="text-[var(--text-dim)] hover:text-[var(--text-muted)] transition-colors"
+          >
+            {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          </button>
+        )}
+
+        {/* Exclude toggle */}
+        <button
+          onClick={onToggle}
+          className={cn(
+            "shrink-0 text-[9px] font-bold uppercase px-2 py-1 rounded-lg border transition-all",
+            excluded
+              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+              : "bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20"
+          )}
+        >
+          {excluded ? "Include" : "Exclude"}
+        </button>
+      </div>
+
+      {/* Delete reason */}
+      {mutation.op === "delete" && mutation.reason && (
+        <p className="px-4 pb-2 text-[11px] text-[var(--text-dim)] italic">
+          Reason: {mutation.reason}
+        </p>
+      )}
+
+      {/* Field-level diff */}
+      <AnimatePresence>
+        {expanded && diffableFields.length > 0 && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="mx-4 mb-3 mt-1 rounded-xl bg-[var(--bg-900)] border border-[var(--border-subtle)] px-3 py-2 space-y-0">
+              {diffableFields.map(([key, val]) => (
+                <FieldDiff
+                  key={key}
+                  field={key}
+                  oldVal={mutation.old_fields?.[key]}
+                  newVal={val}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+/**
+ * Inline chat review panel — rendered as a message bubble inside the chat,
+ * NOT as a slideout sidebar. Shows field-level diffs with before/after values.
+ */
 export function PlanReviewPanel({
   isOpen,
   onClose,
@@ -58,312 +221,152 @@ export function PlanReviewPanel({
   onApprove,
   onReject,
   onRevise,
-  isProcessing = false
+  isProcessing = false,
 }: PlanReviewPanelProps) {
-  const [activeTab, setActiveTab] = useState<"changes" | "preview">("changes");
   const [feedback, setFeedback] = useState("");
-  const [rejectedMutations, setRejectedMutations] = useState<Set<string>>(new Set());
+  const [excluded, setExcluded] = useState<Set<number>>(new Set());
+  const [showRevise, setShowRevise] = useState(false);
 
-  const toggleMutationSelect = (mutId: string) => {
-    setRejectedMutations(prev => {
+  if (!isOpen) return null;
+
+  const toggleExclude = (idx: number) => {
+    setExcluded((prev) => {
       const next = new Set(prev);
-      if (next.has(mutId)) {
-        next.delete(mutId);
-      } else {
-        next.add(mutId);
-      }
+      next.has(idx) ? next.delete(idx) : next.add(idx);
       return next;
     });
   };
 
   const handleApprove = () => {
-    // Pass indices or IDs of approved mutations
-    const approved = mutations
-      .map((m, idx) => ({ ...m, origIndex: idx }))
-      .filter((_, idx) => !rejectedMutations.has(String(idx)));
-    
-    onApprove(approved.map(m => String(m.origIndex)));
+    const approvedIds = mutations
+      .map((_, i) => i)
+      .filter((i) => !excluded.has(i))
+      .map(String);
+    onApprove(approvedIds);
   };
 
-  const handleReviseSubmit = (e: React.FormEvent) => {
+  const handleRevise = (e: React.FormEvent) => {
     e.preventDefault();
     if (!feedback.trim()) return;
     onRevise(feedback);
     setFeedback("");
+    setShowRevise(false);
   };
 
+  const includedCount = mutations.length - excluded.size;
+
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 0.4 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 bg-black/60 z-[110] backdrop-blur-sm"
-          />
+    <motion.div
+      initial={{ opacity: 0, scale: 0.97, y: 8 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.97, y: 4 }}
+      transition={{ duration: 0.2 }}
+      className="w-full rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-950)] overflow-hidden shadow-xl"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-subtle)] bg-[var(--surface-1)]">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-[var(--accent-subtle)] flex items-center justify-center">
+            <Sparkles className="w-4 h-4 text-[var(--accent)]" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-[var(--text-primary)]">
+              {planPreview?.projectName ? `Review: ${planPreview.projectName}` : "Review Plan Changes"}
+            </h3>
+            <p className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider mt-0.5">
+              {mutations.length} proposed changes &middot; {includedCount} included
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-dim)] transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
 
-          {/* Panel */}
+      {/* Mutations list */}
+      <div className="p-4 space-y-2.5 max-h-[400px] overflow-y-auto custom-scrollbar">
+        {mutations.length === 0 ? (
+          <div className="text-center py-8 text-[var(--text-dim)] text-sm">
+            No changes proposed
+          </div>
+        ) : (
+          mutations.map((mut, idx) => (
+            <MutationCard
+              key={idx}
+              mutation={mut}
+              index={idx}
+              excluded={excluded.has(idx)}
+              onToggle={() => toggleExclude(idx)}
+            />
+          ))
+        )}
+      </div>
+
+      {/* Revise form */}
+      <AnimatePresence>
+        {showRevise && (
           <motion.div
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed top-0 right-0 h-full w-[520px] max-w-full bg-[var(--bg-950)] border-l border-[var(--border-subtle)] shadow-2xl z-[120] flex flex-col overflow-hidden"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden border-t border-[var(--border-subtle)]"
           >
-            {/* Header */}
-            <header className="p-6 border-b border-[var(--border-subtle)] bg-[var(--surface-1)] shrink-0 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[var(--accent-subtle)] flex items-center justify-center text-[var(--accent)]">
-                  <Sparkles className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-[var(--text-primary)] text-base">Review Strategic Plan</h3>
-                  <p className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-widest mt-0.5">
-                    {mutations.length} proposed adjustments
-                  </p>
-                </div>
-              </div>
+            <form onSubmit={handleRevise} className="p-4 flex gap-2">
+              <input
+                autoFocus
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                placeholder="Describe changes (e.g. 'Make the QA task high priority')..."
+                className="flex-1 h-9 px-3 bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-dim)]"
+                disabled={isProcessing}
+              />
               <button
-                onClick={onClose}
-                className="p-2 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-muted)] transition-colors"
+                type="submit"
+                disabled={isProcessing || !feedback.trim()}
+                className="px-3 h-9 bg-[var(--accent)] text-white rounded-xl text-xs font-bold hover:opacity-90 transition-opacity disabled:opacity-40"
               >
-                <X className="w-5 h-5" />
+                Send
               </button>
-            </header>
-
-            {/* Navigation Tabs */}
-            <div className="flex bg-[var(--bg-900)] p-1.5 border-b border-[var(--border-subtle)] shrink-0">
-              <button
-                onClick={() => setActiveTab("changes")}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
-                  activeTab === "changes"
-                    ? "bg-[var(--accent-subtle)] text-[var(--accent)]"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                }`}
-              >
-                <Layers className="w-4 h-4" />
-                Proposed Changes
-              </button>
-              {planPreview && (
-                <button
-                  onClick={() => setActiveTab("preview")}
-                  className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
-                    activeTab === "preview"
-                      ? "bg-[var(--accent-subtle)] text-[var(--accent)]"
-                      : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                  }`}
-                >
-                  <CheckSquare className="w-4 h-4" />
-                  Full Plan Preview
-                </button>
-              )}
-            </div>
-
-            {/* Content Area */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
-              {activeTab === "changes" ? (
-                <div className="space-y-4">
-                  {mutations.length === 0 ? (
-                    <div className="text-center py-12">
-                      <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-[var(--surface-1)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-dim)]">
-                        <Check className="w-6 h-6" />
-                      </div>
-                      <p className="text-sm text-[var(--text-muted)]">No proposed changes to review</p>
-                    </div>
-                  ) : (
-                    mutations.map((mut, idx) => {
-                      const mutId = String(idx);
-                      const isRejected = rejectedMutations.has(mutId);
-                      const title = String(mut.title || mut.fields?.title || mut.fields?.name || `Mutation #${idx + 1}`);
-                      
-                      return (
-                        <div
-                          key={idx}
-                          className={`border rounded-2xl p-4 transition-all relative ${
-                            isRejected
-                              ? "bg-rose-500/5 border-rose-500/20 opacity-60"
-                              : "bg-[var(--surface-1)] border-[var(--border-subtle)] hover:border-[var(--accent-subtle)]"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-2.5">
-                              <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                                mut.op === "create"
-                                  ? "bg-emerald-500/10 text-emerald-500"
-                                  : mut.op === "update"
-                                  ? "bg-amber-500/10 text-amber-500"
-                                  : "bg-rose-500/10 text-rose-500"
-                              }`}>
-                                {mut.op} {mut.entity_type}
-                              </span>
-                            </div>
-
-                            <button
-                              onClick={() => toggleMutationSelect(mutId)}
-                              className={`text-[10px] font-bold uppercase px-2 py-1 rounded-lg border transition-all ${
-                                isRejected
-                                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                                  : "bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20"
-                              }`}
-                            >
-                              {isRejected ? "Enable" : "Exclude"}
-                            </button>
-                          </div>
-
-                          <h4 className={`text-sm font-bold mt-2.5 ${isRejected ? "line-through" : "text-[var(--text-primary)]"}`}>
-                            {title}
-                          </h4>
-
-                          {typeof mut.fields?.description === "string" && (
-                            <p className="text-xs text-[var(--text-muted)] mt-1 leading-relaxed">
-                              {mut.fields.description}
-                            </p>
-                          )}
-
-                          {/* Field Changes Table */}
-                          {mut.op === "update" && mut.fields && (
-                            <div className="mt-3 space-y-1 bg-[var(--bg-900)] p-2.5 rounded-xl border border-[var(--border-subtle)] text-[10px]">
-                              {Object.entries(mut.fields).map(([key, val]) => {
-                                if (key === "id" || key === "title") return null;
-                                return (
-                                  <div key={key} className="flex justify-between py-0.5 border-b border-[var(--border-subtle)]/35 last:border-0">
-                                    <span className="font-bold text-[var(--text-dim)] uppercase">{key.replace("_", " ")}</span>
-                                    <span className="font-semibold text-[var(--text-secondary)] truncate max-w-[200px]">{String(val)}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              ) : (
-                /* Plan Preview Mode */
-                !planPreview ? (
-                  <div className="text-center py-12">
-                    <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-[var(--surface-1)] border border-[var(--border-subtle)] flex items-center justify-center text-[var(--text-dim)]">
-                      <CheckSquare className="w-6 h-6" />
-                    </div>
-                    <p className="text-sm text-[var(--text-muted)]">Plan preview not available</p>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {/* Project Header Card */}
-                    <div className="p-5 bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-2xl">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-[var(--accent)]">Project Scope</span>
-                      <h4 className="text-lg font-black text-[var(--text-primary)] mt-1">{planPreview.projectName}</h4>
-                      <p className="text-xs text-[var(--text-muted)] mt-1.5 leading-relaxed">{planPreview.description}</p>
-                    </div>
-
-                    {/* Tasks List */}
-                    <div className="space-y-3">
-                      <h5 className="text-xs font-black uppercase tracking-widest text-[var(--text-dim)] flex items-center gap-1.5">
-                        <CheckSquare className="w-3.5 h-3.5 text-[var(--accent)]" />
-                        Tasks ({planPreview.tasks.length})
-                      </h5>
-                      {planPreview.tasks.map((t, i) => (
-                        <div key={i} className="p-4 bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-xl space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-[var(--text-primary)]">{t.title}</span>
-                            <span className={`text-[8px] uppercase font-black px-1.5 rounded ${
-                              t.priority === "high"
-                                ? "bg-rose-500/10 text-rose-400"
-                                : t.priority === "medium"
-                                ? "bg-amber-500/10 text-amber-400"
-                                : "bg-emerald-500/10 text-emerald-400"
-                            }`}>
-                              {t.priority}
-                            </span>
-                          </div>
-                          {t.description && <p className="text-[11px] text-[var(--text-muted)] leading-normal">{t.description}</p>}
-                          {t.reasoning && <p className="text-[9px] text-[var(--accent)] italic font-semibold mt-1">Reason: {t.reasoning}</p>}
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Milestones List */}
-                    {planPreview.milestones.length > 0 && (
-                      <div className="space-y-3">
-                        <h5 className="text-xs font-black uppercase tracking-widest text-[var(--text-dim)] flex items-center gap-1.5">
-                          <Flag className="w-3.5 h-3.5 text-[var(--accent)]" />
-                          Milestones ({planPreview.milestones.length})
-                        </h5>
-                        {planPreview.milestones.map((m, i) => (
-                          <div key={i} className="p-4 bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-xl flex justify-between items-start gap-3">
-                            <div>
-                              <span className="text-xs font-bold text-[var(--text-primary)]">{m.title}</span>
-                              {m.description && <p className="text-[11px] text-[var(--text-muted)] mt-1">{m.description}</p>}
-                            </div>
-                            <span className="text-[10px] font-bold text-[var(--accent)] bg-[var(--accent-subtle)] px-2 py-0.5 rounded-lg whitespace-nowrap">
-                              {m.date}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )
-              )}
-            </div>
-
-            {/* Iterative Revision Form */}
-            <div className="p-6 border-t border-[var(--border-subtle)] bg-[var(--bg-900)] shrink-0">
-              <form onSubmit={handleReviseSubmit} className="space-y-4">
-                <div className="flex gap-2">
-                  <input
-                    value={feedback}
-                    onChange={(e) => setFeedback(e.target.value)}
-                    placeholder="Suggest changes (e.g., 'Make task B high priority', 'Add a QA milestone')..."
-                    className="flex-1 h-10 px-4 bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-xl text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] transition-colors placeholder:text-[var(--text-dim)]"
-                    disabled={isProcessing}
-                  />
-                  <button
-                    type="submit"
-                    disabled={isProcessing || !feedback.trim()}
-                    className="px-4 bg-[var(--surface-2)] text-[var(--text-primary)] hover:bg-[var(--surface-3)] transition-all rounded-xl text-xs font-bold border border-[var(--border-subtle)] flex items-center justify-center gap-2"
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                    Revise
-                  </button>
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={onReject}
-                    disabled={isProcessing}
-                    className="flex-1 h-11 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 rounded-xl text-xs font-black uppercase tracking-wider transition-all"
-                  >
-                    Reject Plan
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleApprove}
-                    disabled={isProcessing}
-                    className="flex-[2] h-11 bg-[var(--accent)] text-white hover:opacity-90 shadow-lg shadow-[var(--accent-glow)] rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2"
-                  >
-                    {isProcessing ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Check className="w-4 h-4" />
-                    )}
-                    Approve & Execute
-                  </button>
-                </div>
-              </form>
-            </div>
+            </form>
           </motion.div>
-        </>
-      )}
-    </AnimatePresence>
-  );
-}
+        )}
+      </AnimatePresence>
 
-function Loader2({ className }: { className?: string }) {
-  return <RefreshCw className={`${className} animate-spin`} />;
+      {/* Action footer */}
+      <div className="px-4 py-3 border-t border-[var(--border-subtle)] bg-[var(--bg-900)] flex items-center gap-2">
+        <button
+          onClick={onReject}
+          disabled={isProcessing}
+          className="h-9 px-4 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 rounded-xl text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-40"
+        >
+          Reject
+        </button>
+
+        <button
+          onClick={() => setShowRevise((v) => !v)}
+          disabled={isProcessing}
+          className="h-9 px-4 bg-[var(--surface-2)] text-[var(--text-secondary)] hover:bg-[var(--surface-3)] border border-[var(--border-subtle)] rounded-xl text-xs font-bold uppercase tracking-wider transition-all disabled:opacity-40 flex items-center gap-1.5"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          Revise
+        </button>
+
+        <button
+          onClick={handleApprove}
+          disabled={isProcessing || includedCount === 0}
+          className="flex-1 h-9 bg-[var(--accent)] text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:opacity-90 transition-all disabled:opacity-40 flex items-center justify-center gap-2 shadow-lg shadow-[var(--accent-glow)]"
+        >
+          {isProcessing ? (
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Check className="w-3.5 h-3.5" />
+          )}
+          Approve {includedCount > 0 ? `(${includedCount})` : ""}
+        </button>
+      </div>
+    </motion.div>
+  );
 }

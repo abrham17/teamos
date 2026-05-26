@@ -26,6 +26,7 @@ import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { CollapsibleThoughtBlock } from "@/components/chat/CollapsibleThoughtBlock";
 import { cn } from "@/lib/utils";
 import { PlanReviewPanel, type ReviewMutation, type ReviewPlanPreview } from "@/components/chat/PlanReviewPanel";
+import { QuestionCard } from "@/components/chat/QuestionCard";
 
 interface AIPlannerOverlayProps {
   teamId: string;
@@ -611,6 +612,17 @@ export function AIPlannerOverlay({
         streamBody.project_id = projectId;
       }
 
+      // Pass conversation history so the AI never asks repeated questions
+      const history = messages
+        .filter((m) => !m.isStreaming && (m.text || "").trim())
+        .map((m) => ({
+          role: m.sender === "user" ? "user" : "assistant",
+          content: m.text || "",
+        }));
+      if (history.length > 0) {
+        streamBody.history = history;
+      }
+
       const response = await fetch(`${API_BASE}/planning/${teamId}/assist/stream/`, {
         method: "POST",
         headers,
@@ -880,31 +892,40 @@ export function AIPlannerOverlay({
                             />
                           )}
 
-                          {/* AI Question Card — Phase 2.5 */}
+                          {/* Inline clarification question — uses shared QuestionCard */}
                           {msg.question && (
-                            <div className="mt-3 p-4 bg-[var(--accent-subtle)] border border-[var(--accent)]/20 rounded-2xl space-y-3">
-                              <p className="text-sm font-semibold text-[var(--text-primary)] leading-snug">
-                                {msg.question.question}
-                              </p>
-                              {msg.question.options && msg.question.options.length > 0 ? (
-                                <div className="flex flex-wrap gap-2">
-                                  {msg.question.options.map((opt, oi) => (
-                                    <button
-                                      key={oi}
-                                      onClick={() => void handleSend(opt)}
-                                      disabled={loading}
-                                      className="px-3 py-1.5 bg-[var(--surface-2)] hover:bg-[var(--accent)] hover:text-white text-[var(--text-secondary)] text-[11px] font-bold rounded-lg border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-all disabled:opacity-50"
-                                    >
-                                      {opt}
-                                    </button>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-[11px] text-[var(--text-muted)]">Type your answer below ↓</p>
-                              )}
-                            </div>
+                            <QuestionCard
+                              question={msg.question.question}
+                              options={msg.question.options}
+                              isProcessing={loading}
+                              onSelect={(answer) => {
+                                // Clear question state then submit answer as next message
+                                setMessages((prev) =>
+                                  prev.map((m) =>
+                                    m.id === msg.id ? { ...m, question: undefined } : m
+                                  )
+                                );
+                                void handleSend(answer);
+                              }}
+                            />
                           )}
                         </div>
+
+                        {/* Inline Review Panel — rendered as chat bubble, not sidebar */}
+                        {msg.id === messages[messages.length - 1]?.id && isReviewOpen && (
+                          <div className="mt-3 max-w-full">
+                            <PlanReviewPanel
+                              isOpen={isReviewOpen}
+                              onClose={() => setIsReviewOpen(false)}
+                              mutations={reviewMutations}
+                              planPreview={reviewPlanPreview}
+                              onApprove={handleApproveReview}
+                              onReject={handleRejectReview}
+                              onRevise={handleReviseReview}
+                              isProcessing={loading}
+                            />
+                          </div>
+                        )}
                       </div>
                     ))}
                     <div ref={chatEndRef} />
@@ -1037,16 +1058,6 @@ export function AIPlannerOverlay({
         </div>
       </motion.div>
 
-      <PlanReviewPanel
-        isOpen={isReviewOpen}
-        onClose={() => setIsReviewOpen(false)}
-        mutations={reviewMutations}
-        planPreview={reviewPlanPreview}
-        onApprove={handleApproveReview}
-        onReject={handleRejectReview}
-        onRevise={handleReviseReview}
-        isProcessing={loading}
-      />
     </motion.div>
   );
 }

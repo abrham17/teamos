@@ -58,6 +58,11 @@ export type ChatMessage = {
   strategy?: AgentStrategy;
   reasoning?: string;
   isStreaming?: boolean;
+  /** Inline clarification question emitted by the planning agent */
+  question?: {
+    question: string;
+    options?: string[];
+  };
 };
 
 export type ChatCapabilities = {

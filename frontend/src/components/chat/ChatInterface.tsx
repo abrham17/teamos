@@ -17,6 +17,7 @@ import { CollapsibleThoughtBlock } from "@/components/chat/CollapsibleThoughtBlo
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ICONSCOUT } from "@/lib/iconscoutAssets";
 import { PlanReviewPanel, type ReviewMutation, type ReviewPlanPreview } from "@/components/chat/PlanReviewPanel";
+import { QuestionCard } from "@/components/chat/QuestionCard";
 
 type SessionDetailResponse = { messages?: ChatMessage[] };
 
@@ -468,6 +469,23 @@ export function ChatInterface() {
                   if (reflection && !reflection.success) {
                     setAgentReflections((prev) => [...prev, reflection]);
                   }
+                } else if (currentEvent === "ask_user") {
+                  // Planning agent needs one clarifying answer before proceeding
+                  const q = data as { question?: string; options?: string[] };
+                  working = {
+                    ...working,
+                    isStreaming: false,
+                    question: {
+                      question: q.question || "Could you share more details?",
+                      options: Array.isArray(q.options) ? q.options : undefined,
+                    },
+                  };
+                  setIsStreaming(false);
+                  setMessages((prev) => {
+                    const next = [...prev];
+                    next[next.length - 1] = { ...working };
+                    return next;
+                  });
                 } else if (currentEvent === "replan") {
                   setStatus("Replanning approach...");
                 } else if (currentEvent === "done") {
@@ -754,6 +772,40 @@ export function ChatInterface() {
                         )}
                       </div>
                       {m.citations && m.citations.length > 0 && <div className="mt-1 w-full"><ChatCitationList citations={m.citations} /></div>}
+
+                      {/* Inline QuestionCard — rendered when the planning agent asks a clarifying question */}
+                      {m.question && (
+                        <QuestionCard
+                          question={m.question.question}
+                          options={m.question.options}
+                          isProcessing={isStreaming}
+                          onSelect={(answer) => {
+                            // Clear question from message then send the answer as next user message
+                            setMessages((prev) =>
+                              prev.map((msg) =>
+                                msg.id === m.id ? { ...msg, question: undefined } : msg
+                              )
+                            );
+                            handleSend(answer);
+                          }}
+                        />
+                      )}
+
+                      {/* Inline Review Panel — rendered inside the chat flow if it's open */}
+                      {i === messages.length - 1 && isReviewOpen && (
+                        <div className="mt-3 w-full max-w-full">
+                          <PlanReviewPanel
+                            isOpen={isReviewOpen}
+                            onClose={() => setIsReviewOpen(false)}
+                            mutations={reviewMutations}
+                            planPreview={reviewPlanPreview}
+                            onApprove={handleApproveReview}
+                            onReject={handleRejectReview}
+                            onRevise={handleReviseReview}
+                            isProcessing={isStreaming}
+                          />
+                        </div>
+                      )}
                     </div>
                     {isUser && (
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--bg-700)] border border-[var(--border-strong)] mt-0.5">
@@ -947,17 +999,6 @@ export function ChatInterface() {
           </div>
         )}
       </div>
-
-      <PlanReviewPanel
-        isOpen={isReviewOpen}
-        onClose={() => setIsReviewOpen(false)}
-        mutations={reviewMutations}
-        planPreview={reviewPlanPreview}
-        onApprove={handleApproveReview}
-        onReject={handleRejectReview}
-        onRevise={handleReviseReview}
-        isProcessing={isStreaming}
-      />
     </div>
   );
 }
