@@ -332,7 +332,7 @@ function renderChanges(data: ExportData): string {
 }
 
 export function exportToHtml(data: ExportData, _options: ExportOptions): string {
-  const toc = options.includeToc ? renderToc(data) : "";
+  const toc = _options.includeToc ? renderToc(data) : "";
   const overview = `
     <h1 id="overview">${escapeHtml(data.project.name)}</h1>
     <div class="meta">
