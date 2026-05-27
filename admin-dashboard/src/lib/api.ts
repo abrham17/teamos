@@ -27,21 +27,21 @@ async function request<T>(
 import type { OverviewStats, TrendPoint, Team, UserCost, TrialsResponse, ForecastStats, DelinquentTeam, OperationCost, HealthMetrics, AlertItem } from "@/types";
 
 export const api = {
-  getOverview:    (token?: string | null) => request<OverviewStats>("/stats/", { token }),
-  getTrend:       (token?: string | null) => request<TrendPoint[]>("/overview/trend/", { token }),
-  getTeams:       (token?: string | null) => request<Team[]>("/teams-usage/", { token }),
-  getTeam:        (id: string, token?: string | null) => request<Team>(`/teams/${id}/`, { token }),
-  getTopSpenders: (token?: string | null) => request<UserCost[]>("/users/top-spenders/", { token }),
-  getTrials:      (token?: string | null) => request<TrialsResponse>("/trials/", { token }),
+  getOverview:    (token?: string | null) => request<OverviewStats>("/stats", { token }),
+  getTrend:       (token?: string | null) => request<TrendPoint[]>("/overview/trend", { token }),
+  getTeams:       (token?: string | null) => request<Team[]>("/teams-usage", { token }),
+  getTeam:        (id: string, token?: string | null) => request<Team>(`/teams/${id}`, { token }),
+  getTopSpenders: (token?: string | null) => request<UserCost[]>("/users/top-spenders", { token }),
+  getTrials:      (token?: string | null) => request<TrialsResponse>("/trials", { token }),
   extendTrial:    (teamId: string, days: number, token?: string | null) =>
-    request<{ success: boolean }>(`/trials/${teamId}/extend/`, { method: "POST", body: JSON.stringify({ days }), token }),
+    request<{ success: boolean }>(`/trials/${teamId}/extend`, { method: "POST", body: JSON.stringify({ days }), token }),
   expireTrial:    (teamId: string, token?: string | null) =>
-    request<{ success: boolean }>(`/trials/${teamId}/expire/`, { method: "POST", token }),
-  getForecast:    (token?: string | null) => request<ForecastStats>("/forecast/", { token }),
-  getOperations:  (token?: string | null) => request<OperationCost[]>("/operations/", { token }),
-  getHealth:      (token?: string | null) => request<HealthMetrics>("/health/", { token }),
-  getAlerts:      (token?: string | null) => request<{ alerts: AlertItem[] }>("/alerts/", { token }),
-  getDelinquent:  (token?: string | null) => request<DelinquentTeam[]>("/subscriptions/delinquent/", { token }),
+    request<{ success: boolean }>(`/trials/${teamId}/expire`, { method: "POST", token }),
+  getForecast:    (token?: string | null) => request<ForecastStats>("/forecast", { token }),
+  getOperations:  (token?: string | null) => request<OperationCost[]>("/operations", { token }),
+  getHealth:      (token?: string | null) => request<HealthMetrics>("/health", { token }),
+  getAlerts:      (token?: string | null) => request<{ alerts: AlertItem[] }>("/alerts", { token }),
+  getDelinquent:  (token?: string | null) => request<DelinquentTeam[]>("/subscriptions/delinquent", { token }),
   patchTeam:      (id: string, data: Record<string, unknown>, token?: string | null) =>
     request<Team>(`/teams/${id}/`, { method: "PATCH", body: JSON.stringify(data), token }),
 };
