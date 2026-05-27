@@ -10,13 +10,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/shared/StatCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { api } from "@/lib/api";
+import type { ForecastPoint } from "@/types";
 import { formatUSD, formatNumber } from "@/lib/formatters";
 import { toast } from "sonner";
 
 export default function ForecastPage() {
   const { getToken } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [data, setData] = useState<ForecastPoint[] | null>(null);
 
   const fetchData = async () => {
     setLoading(true);

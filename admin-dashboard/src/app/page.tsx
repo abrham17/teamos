@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { DollarSign, Activity, TrendingUp, Building2, RefreshCw, Loader2 } from "lucide-react";
-import { OverviewStats, TrendPoint, ModelUsage, AlertItem } from "@/types";
+import { OverviewStats, TrendPoint, AlertItem } from "@/types";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
