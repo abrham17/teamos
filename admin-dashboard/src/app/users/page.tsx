@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { Search, Loader2, RefreshCw } from "lucide-react";
+import { UserCost } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -19,7 +20,7 @@ import { toast } from "sonner";
 export default function UsersPage() {
   const { getToken } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<UserCost[]>([]);
   const [search, setSearch] = useState("");
 
   const fetchUsers = async () => {
@@ -28,23 +29,23 @@ export default function UsersPage() {
       const token = await getToken();
       const data = await api.getTopSpenders(token);
       setUsers(data || []);
-    } catch (e: any) {
+    } catch {
       toast.error("Failed to load users");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchUsers(); }, []);
+  useEffect(() => { fetchUsers(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = users.filter((u) =>
-    (u.user_name || "").toLowerCase().includes(search.toLowerCase()) ||
-    (u.user_email || "").toLowerCase().includes(search.toLowerCase()) ||
-    (u.team_name || "").toLowerCase().includes(search.toLowerCase())
+    u.name.toLowerCase().includes(search.toLowerCase()) ||
+    u.email.toLowerCase().includes(search.toLowerCase()) ||
+    u.team.toLowerCase().includes(search.toLowerCase())
   );
 
-  const totalSpend = users.reduce((s, u) => s + (u.total_cost || 0), 0);
-  const topSpenderCost = users[0]?.total_cost || 0;
+  const totalSpend = users.reduce((s, u) => s + u.cost_mtd, 0);
+  const topSpenderCost = users[0]?.cost_mtd ?? 0;
   const avgCost = users.length ? totalSpend / users.length : 0;
 
   if (loading) {

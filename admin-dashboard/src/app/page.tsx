@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { DollarSign, Activity, TrendingUp, Building2, RefreshCw, Loader2 } from "lucide-react";
+import { OverviewStats, TrendPoint, ModelUsage, AlertItem } from "@/types";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -26,7 +27,7 @@ const chartConfig = {
 export default function OverviewPage() {
   const { getToken } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<{ stats: OverviewStats; trend: TrendPoint[]; alerts: AlertItem[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = async () => {
@@ -36,19 +37,19 @@ export default function OverviewPage() {
       const token = await getToken();
       const [stats, trend, alerts] = await Promise.all([
         api.getOverview(token),
-        api.getTrend(token).catch(() => []),
-        api.getAlerts(token).catch(() => ({ alerts: [] })),
+        api.getTrend(token).catch(() => [] as TrendPoint[]),
+        api.getAlerts(token).catch(() => ({ alerts: [] as AlertItem[] })),
       ]);
-      setData({ stats, trend, alerts: alerts.alerts || [] });
-    } catch (e: any) {
-      setError(e.message || "Failed to load data");
+      setData({ stats, trend, alerts: alerts.alerts });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load data");
       toast.error("Failed to load overview data");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error && !data) {
     return (
@@ -72,12 +73,12 @@ export default function OverviewPage() {
   }
 
   const { stats } = data;
-  const usageByModel = (stats.usage_by_model || []).map((m: any) => ({
-    name: m.model_used || "Unknown",
-    calls: m.total_calls || 0,
+  const usageByModel = (stats.usage_by_model ?? []).map((m) => ({
+    name: m.model_used ?? "Unknown",
+    calls: m.total_calls ?? 0,
     fill: CHART_COLORS[0],
   }));
-  const mrr = stats.total_revenue || stats.mrr || 0;
+  const mrr = stats.total_revenue ?? 0;
 
   return (
     <div className="space-y-8 p-6">
@@ -128,7 +129,7 @@ export default function OverviewPage() {
             <ChartContainer config={{}} className="h-80 w-full">
               <PieChart>
                 <Pie data={usageByModel} dataKey="calls" nameKey="name" cx="50%" cy="50%" outerRadius={100} innerRadius={55} paddingAngle={2}>
-                  {usageByModel.map((_: any, i: number) => (
+                  {usageByModel.map((entry, i: number) => (
                     <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                   ))}
                 </Pie>
@@ -152,7 +153,7 @@ export default function OverviewPage() {
           <CardContent className="space-y-3">
             {[
               { label: "Plan Distribution", value: "" },
-              ...Object.entries(stats.plan_distribution || {}).map(([k, v]) => ({
+              ...Object.entries(stats.plan_distribution ?? {}).map(([k, v]) => ({
                 label: k,
                 value: `${v} teams`,
               })),

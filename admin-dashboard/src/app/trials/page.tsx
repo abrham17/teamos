@@ -18,7 +18,7 @@ import { toast } from "sonner";
 export default function TrialsPage() {
   const { getToken } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<Record<string, unknown> | null>(null);
 
   const fetchTrials = async () => {
     setLoading(true);
@@ -33,7 +33,7 @@ export default function TrialsPage() {
     }
   };
 
-  useEffect(() => { fetchTrials(); }, []);
+  useEffect(() => { fetchTrials(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleExtend = async (teamId: string, days: number) => {
     try {
@@ -112,7 +112,7 @@ export default function TrialsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(trials || []).map((trial: any) => (
+              {(trials || []).map((trial: Record<string, unknown>) => (
                 <TableRow key={trial.id}>
                   <TableCell className="font-medium">{trial.team_name}</TableCell>
                   <TableCell>{trial.owner_name}</TableCell>

@@ -36,6 +36,7 @@ export interface OverviewStats {
   usage_by_model: ModelUsage[];
   trend_data: TrendPoint[];
   alerts: AlertItem[];
+  plan_distribution?: Record<string, number>;
 }
 
 // ─── Teams ───────────────────────────────────────────────────────────────────
@@ -101,10 +102,14 @@ export interface TrialStats {
 
 export interface DelinquentTeam {
   id: string;
+  team_id: string;
   team_name: string;
+  owner_name: string;
   plan: string;
-  status: "grace_period" | "blocked";
+  status: "grace_period" | "blocked" | "past_due" | "unpaid";
   revenue: number;
+  member_count: number;
+  subscription_since?: string;
   grace_expires_at?: string;
   days_in_grace?: number;
   blocked_at?: string;
@@ -152,4 +157,10 @@ export interface HealthService {
   detail?: string;
   checked_at: string;
   uptime_pct?: number;
+}
+
+export interface HealthMetrics {
+  status: HealthStatus;
+  services: HealthService[];
+  timestamp: string;
 }

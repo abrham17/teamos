@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/shared/StatCard";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { DelinquentTeam } from "@/types";
 import { api } from "@/lib/api";
 import { formatNumber } from "@/lib/formatters";
 import { toast } from "sonner";
@@ -17,7 +18,7 @@ import { toast } from "sonner";
 export default function DelinquentPage() {
   const { getToken } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [accounts, setAccounts] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<DelinquentTeam[]>([]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -32,7 +33,7 @@ export default function DelinquentPage() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAction = async (teamId: string, patch: Record<string, unknown>) => {
     try {
@@ -89,7 +90,7 @@ export default function DelinquentPage() {
         <StatCard title="Past Due" value={formatNumber(pastDue.length)} trend="" trendUp icon={<AlertTriangle size={18} />} accent="warning" />
         <StatCard title="Blocked" value={formatNumber(blocked.length)} trend="" trendUp icon={<Ban size={18} />} accent="danger" />
         <StatCard title="Unpaid" value={formatNumber(unpaid.length)} trend="" trendUp icon={<DollarSign size={18} />} accent="danger" />
-        <StatCard title="Total Members Affected" value={formatNumber(accounts.reduce((s, a) => s + (a.member_count || 0), 0))} trend="" trendUp icon={<Users size={18} />} accent="warning" />
+        <StatCard title="Total Members Affected" value={formatNumber(accounts.reduce((s, a) => s + ((a.member_count as number) || 0), 0))} trend="" trendUp icon={<Users size={18} />} accent="warning" />
       </div>
 
       <Card className="border-border/40 bg-card/30 backdrop-blur-sm">
@@ -109,21 +110,21 @@ export default function DelinquentPage() {
             </TableHeader>
             <TableBody>
               {accounts.map((a) => (
-                <TableRow key={a.id}>
-                  <TableCell className="font-medium">{a.team_name}</TableCell>
-                  <TableCell>{a.owner_name}</TableCell>
-                  <TableCell><Badge variant="outline">{a.plan}</Badge></TableCell>
+                <TableRow key={String(a.id)}>
+                  <TableCell className="font-medium">{String(a.team_name)}</TableCell>
+                  <TableCell>{String(a.owner_name)}</TableCell>
+                  <TableCell><Badge variant="outline">{String(a.plan)}</Badge></TableCell>
                   <TableCell>
-                    <Badge variant={a.status === "blocked" ? "destructive" : "default"}>{a.status}</Badge>
+                    <Badge variant={a.status === "blocked" ? "destructive" : "default"}>{String(a.status)}</Badge>
                   </TableCell>
-                  <TableCell>{a.member_count}</TableCell>
+                  <TableCell>{String(a.member_count)}</TableCell>
                   <TableCell className="text-muted-foreground">
-                    {a.subscription_since ? new Date(a.subscription_since).toLocaleDateString() : ""}
+                    {a.subscription_since ? new Date(a.subscription_since as string).toLocaleDateString() : ""}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button size="sm" variant="outline" onClick={() => handleAction(a.team_id, { status: "active" })}>Restore</Button>
-                      <Button size="sm" variant="destructive" onClick={() => handleAction(a.team_id, { status: "blocked" })}>Block</Button>
+                      <Button size="sm" variant="outline" onClick={() => handleAction(String(a.team_id), { status: "active" })}>Restore</Button>
+                      <Button size="sm" variant="destructive" onClick={() => handleAction(String(a.team_id), { status: "blocked" })}>Block</Button>
                     </div>
                   </TableCell>
                 </TableRow>

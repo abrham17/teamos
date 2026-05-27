@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { Loader2, RefreshCw, Zap, DollarSign, Gauge } from "lucide-react";
+import { OperationCost } from "@/types";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,14 +19,14 @@ import { toast } from "sonner";
 export default function OperationsPage() {
   const { getToken } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [ops, setOps] = useState<any[]>([]);
+  const [ops, setOps] = useState<OperationCost[]>([]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const token = await getToken();
       const data = await api.getOperations(token);
-      setOps(data || []);
+      setOps(data);
     } catch {
       toast.error("Failed to load operations");
     } finally {
@@ -33,7 +34,7 @@ export default function OperationsPage() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalCost = ops.reduce((s, o) => s + (o.total_cost || 0), 0);
   const totalCalls = ops.reduce((s, o) => s + (o.total_calls || 0), 0);

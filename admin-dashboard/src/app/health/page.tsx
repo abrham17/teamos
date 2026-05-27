@@ -12,6 +12,13 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { HealthBadge } from "@/components/shared/HealthBadge";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+import { HealthStatus, HealthService } from "@/types";
+
+interface HealthData {
+  overall: HealthStatus;
+  checked_at: string;
+  services: HealthService[];
+}
 
 const SERVICE_ICONS: Record<string, React.ReactNode> = {
   PostgreSQL: <Database size={18} />,
@@ -32,7 +39,7 @@ function getStatusIcon(status: string) {
 export default function HealthPage() {
   const { getToken } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<HealthData | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchHealth = async () => {
@@ -51,7 +58,7 @@ export default function HealthPage() {
     fetchHealth();
     intervalRef.current = setInterval(fetchHealth, 30000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading || !data) {
     return (
@@ -99,14 +106,14 @@ export default function HealthPage() {
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {(data.services || []).map((svc: any) => (
+        {(data.services || []).map((svc: HealthService) => (
           <Card key={svc.name} className="border-border/40 bg-card/30 backdrop-blur-sm">
             <CardContent className="flex flex-col items-center text-center pt-6 pb-6 gap-3">
               <div className="flex items-center gap-2">
                 {SERVICE_ICONS[svc.name] || <Server size={18} />}
                 <span className="font-medium text-sm">{svc.name}</span>
               </div>
-              <HealthBadge status={svc.status} />
+              <HealthBadge status={svc.status as HealthStatus} />
               <div className="w-full space-y-1">
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Latency</span>
@@ -136,7 +143,7 @@ export default function HealthPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {(data.services || []).map((svc: any) => (
+            {(data.services || []).map((svc: HealthService) => (
               <div key={svc.name} className="flex items-center gap-4 py-2 border-b border-border/20 last:border-0">
                 <div className="w-32 text-sm font-medium">{svc.name}</div>
                 <Progress value={svc.uptime || 0} className="flex-1 h-2" />

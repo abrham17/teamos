@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { Search, Loader2, RefreshCw, MoreHorizontal } from "lucide-react";
+import { Team } from "@/types";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -22,24 +23,24 @@ import { toast } from "sonner";
 export default function TeamsPage() {
   const { getToken } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [teams, setTeams] = useState<any[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [search, setSearch] = useState("");
-  const [selectedTeam, setSelectedTeam] = useState<any>(null);
+  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
 
   const fetchTeams = async () => {
     setLoading(true);
     try {
       const token = await getToken();
       const data = await api.getTeams(token);
-      setTeams(data || []);
-    } catch (e: any) {
+      setTeams(data);
+    } catch {
       toast.error("Failed to load teams");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchTeams(); }, []);
+  useEffect(() => { fetchTeams(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePatch = async (teamId: string, patch: Record<string, unknown>) => {
     try {
@@ -53,7 +54,7 @@ export default function TeamsPage() {
   };
 
   const filtered = teams.filter((t) => t.name?.toLowerCase().includes(search.toLowerCase()));
-  const totalRevenue = teams.reduce((s, t) => s + (t.revenue_mtd || 0), 0);
+  const totalRevenue = teams.reduce((s, t) => s + (t.revenue ?? 0), 0);
 
   if (loading) {
     return (
@@ -85,7 +86,7 @@ export default function TeamsPage() {
         <StatCard title="Total Teams" value={formatNumber(teams.length)} trend="" trendUp icon={null} accent="info" />
         <StatCard title="Platform MRR" value={formatUSD(totalRevenue, true)} trend="" trendUp icon={null} accent="success" />
         <StatCard title="Avg Cost/Team" value={formatUSD(teams.length ? totalRevenue / teams.length : 0, true)} trend="" trendUp icon={null} accent="warning" />
-        <StatCard title="Top Team Cost" value={formatUSD(teams[0]?.cost || 0, true)} trend="" trendUp icon={null} accent="danger" />
+        <StatCard title="Top Team Cost" value={formatUSD(teams[0]?.cost_mtd ?? 0, true)} trend="" trendUp icon={null} accent="danger" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -117,7 +118,7 @@ export default function TeamsPage() {
                   <p className="text-sm font-medium">{t.name}</p>
                   <p className="text-xs text-muted-foreground">{t.plan}</p>
                 </div>
-                <span className="text-sm font-mono">{formatUSD(t.cost, true)}</span>
+                <span className="text-sm font-mono">{formatUSD(t.cost_mtd, true)}</span>
               </div>
             ))}
           </CardContent>
@@ -156,10 +157,10 @@ export default function TeamsPage() {
                   <TableCell>
                     <Badge variant={team.status === "active" ? "default" : "destructive"}>{team.status}</Badge>
                   </TableCell>
-                  <TableCell className="font-mono">{formatUSD(team.cost, true)}</TableCell>
+                  <TableCell className="font-mono">{formatUSD(team.cost_mtd, true)}</TableCell>
                   <TableCell>{team.member_count}</TableCell>
                   <TableCell>
-                    <Progress value={team.budget_usage || 0} className="h-2 w-24" />
+                    <Progress value={team.budget_used_pct} className="h-2 w-24" />
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -198,11 +199,11 @@ export default function TeamsPage() {
           <div className="mt-6 space-y-4">
             <div>
               <p className="text-sm font-medium">Cost MTD</p>
-              <p className="text-2xl font-bold font-mono">{formatUSD(selectedTeam?.cost || 0, true)}</p>
+              <p className="text-2xl font-bold font-mono">{formatUSD(selectedTeam?.cost_mtd ?? 0, true)}</p>
             </div>
             <div>
               <p className="text-sm font-medium">API Calls</p>
-              <p className="text-lg font-mono">{formatNumber(selectedTeam?.calls || 0)}</p>
+              <p className="text-lg font-mono">{formatNumber(selectedTeam?.calls ?? 0)}</p>
             </div>
             <div>
               <p className="text-sm font-medium">Members</p>
@@ -210,8 +211,8 @@ export default function TeamsPage() {
             </div>
             <div>
               <p className="text-sm font-medium">Budget Utilization</p>
-              <Progress value={selectedTeam?.budget_usage || 0} className="h-3 mt-1" />
-              <p className="text-xs text-muted-foreground mt-1">{selectedTeam?.budget_usage || 0}%</p>
+              <Progress value={selectedTeam?.budget_used_pct ?? 0} className="h-3 mt-1" />
+              <p className="text-xs text-muted-foreground mt-1">{selectedTeam?.budget_used_pct ?? 0}%</p>
             </div>
           </div>
         </SheetContent>

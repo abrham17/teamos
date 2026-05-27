@@ -16,7 +16,7 @@ import { toast } from "sonner";
 export default function ForecastPage() {
   const { getToken } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<Record<string, unknown> | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -31,7 +31,7 @@ export default function ForecastPage() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading || !data) {
     return (
@@ -60,9 +60,9 @@ export default function ForecastPage() {
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard title="Projected Month-End" value={formatUSD(data.projected_month_end, true)} trend="" trendUp icon={<TrendingUp size={18} />} accent="warning" />
-        <StatCard title="Budget Ceiling" value={formatUSD(data.budget_ceiling, true)} trend="" trendUp icon={<DollarSign size={18} />} accent="info" />
-        <StatCard title="Daily Burn Rate" value={formatUSD(data.daily_burn, true)} trend="" trendUp icon={<Zap size={18} />} accent="danger" />
+        <StatCard title="Projected Month-End" value={formatUSD(data.projected_month_end as number, true)} trend="" trendUp icon={<TrendingUp size={18} />} accent="warning" />
+        <StatCard title="Budget Ceiling" value={formatUSD(data.budget_ceiling as number, true)} trend="" trendUp icon={<DollarSign size={18} />} accent="info" />
+        <StatCard title="Daily Burn Rate" value={formatUSD(data.daily_burn as number, true)} trend="" trendUp icon={<Zap size={18} />} accent="danger" />
         <StatCard title={`Days Left (${data.days_remaining})`} value={""} trend="" trendUp icon={<Clock size={18} />} accent="info" />
       </div>
 
@@ -75,21 +75,21 @@ export default function ForecastPage() {
           <CardContent className="space-y-6">
             <div>
               <div className="flex justify-between text-sm mb-2">
-                <span>Current Spend (Day {data.days_elapsed})</span>
-                <span>{formatUSD(data.today_spend, true)} / {formatUSD(data.budget_ceiling, true)}</span>
+                <span>Current Spend (Day {data.days_elapsed as number})</span>
+                <span>{formatUSD(data.today_spend as number, true)} / {formatUSD(data.budget_ceiling as number, true)}</span>
               </div>
               <Progress
-                value={data.budget_ceiling ? (data.today_spend / data.budget_ceiling) * 100 : 0}
+                value={data.budget_ceiling ? ((data.today_spend as number) / (data.budget_ceiling as number)) * 100 : 0}
                 className="h-3"
               />
             </div>
             <div>
               <div className="flex justify-between text-sm mb-2">
                 <span>Projected Month-End</span>
-                <span>{formatUSD(data.projected_month_end, true)} / {formatUSD(data.budget_ceiling, true)}</span>
+                <span>{formatUSD(data.projected_month_end as number, true)} / {formatUSD(data.budget_ceiling as number, true)}</span>
               </div>
               <Progress
-                value={data.budget_ceiling ? (data.projected_month_end / data.budget_ceiling) * 100 : 0}
+                value={data.budget_ceiling ? ((data.projected_month_end as number) / (data.budget_ceiling as number)) * 100 : 0}
                 className="h-3"
               />
             </div>
@@ -102,10 +102,10 @@ export default function ForecastPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {[
-              { label: "Daily burn", value: formatUSD(data.daily_burn, true) },
-              { label: "Today's spend", value: formatUSD(data.today_spend, true) },
-              { label: "Days elapsed", value: formatNumber(data.days_elapsed) },
-              { label: "Days remaining", value: formatNumber(data.days_remaining) },
+              { label: "Daily burn", value: formatUSD(data.daily_burn as number, true) },
+              { label: "Today's spend", value: formatUSD(data.today_spend as number, true) },
+              { label: "Days elapsed", value: formatNumber(data.days_elapsed as number) },
+              { label: "Days remaining", value: formatNumber(data.days_remaining as number) },
               { label: "Budget utilization", value: `${data.budget_utilization}%` },
             ].map((item, i) => (
               <div key={i} className="flex justify-between items-center py-2 border-b border-border/20 last:border-0">

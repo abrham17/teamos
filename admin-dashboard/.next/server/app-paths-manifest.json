@@ -2,10 +2,10 @@
   "/_not-found/page": "app/_not-found/page.js",
   "/delinquent/page": "app/delinquent/page.js",
   "/forecast/page": "app/forecast/page.js",
-  "/health/page": "app/health/page.js",
   "/operations/page": "app/operations/page.js",
   "/page": "app/page.js",
-  "/trials/page": "app/trials/page.js",
+  "/teams/page": "app/teams/page.js",
+  "/health/page": "app/health/page.js",
   "/users/page": "app/users/page.js",
-  "/teams/page": "app/teams/page.js"
+  "/trials/page": "app/trials/page.js"
 }
