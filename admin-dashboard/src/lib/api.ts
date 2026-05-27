@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://api.team-os.tech";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://api.team-os.tech/admin";
 
 interface ApiResponse<T = unknown> {
   data?: T;
