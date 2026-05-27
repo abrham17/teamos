@@ -12,13 +12,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/shared/StatCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { api } from "@/lib/api";
+import type { Trial, TrialStats } from "@/types";
 import { formatNumber } from "@/lib/formatters";
 import { toast } from "sonner";
 
 export default function TrialsPage() {
   const { getToken } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [data, setData] = useState<{ stats: TrialStats; trials: Trial[] } | null>(null);
 
   const fetchTrials = async () => {
     setLoading(true);
@@ -112,7 +113,7 @@ export default function TrialsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(trials || []).map((trial: Record<string, unknown>) => (
+              {(trials || []).map((trial) => (
                 <TableRow key={trial.id}>
                   <TableCell className="font-medium">{trial.team_name}</TableCell>
                   <TableCell>{trial.owner_name}</TableCell>

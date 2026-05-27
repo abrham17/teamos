@@ -66,9 +66,13 @@ export interface TeamDetail extends Team {
 // ─── Users ───────────────────────────────────────────────────────────────────
 
 export interface UserCost {
+  user_id: string;
   id: string;
+  user_name: string;
   name: string;
+  user_email: string;
   email: string;
+  team_name: string;
   team: string;
   cost_mtd: number;
   calls: number;
@@ -83,19 +87,26 @@ export interface Trial {
   team_id: string;
   team_name: string;
   owner_email: string;
+  owner_name: string;
   started_at: string;
   expires_at: string;
+  trial_end: string;
   days_left: number;
   status: "active" | "expiring" | "expired" | "converted";
   member_count: number;
 }
 
 export interface TrialStats {
-  active: number;
+  active_trials: number;
   expiring_soon: number;
-  expired: number;
-  converted: number;
+  expired_held: number;
+  total_trials: number;
   conversion_rate: number;
+}
+
+export interface TrialsResponse {
+  stats: TrialStats;
+  trials: Trial[];
 }
 
 // ─── Delinquent ──────────────────────────────────────────────────────────────
@@ -127,12 +138,16 @@ export interface ForecastPoint {
 }
 
 export interface ForecastStats {
+  month: string;
   projected_month_end: number;
   budget_ceiling: number;
-  burn_rate_daily: number;
+  daily_burn: number;
   burn_trend: number;
-  days_until_exhaustion: number;
+  days_remaining: number;
+  days_elapsed: number;
+  today_spend: number;
   current_spend: number;
+  budget_utilization: number;
   chart_data: ForecastPoint[];
 }
 
@@ -160,7 +175,7 @@ export interface HealthService {
 }
 
 export interface HealthMetrics {
-  status: HealthStatus;
+  overall: HealthStatus;
   services: HealthService[];
-  timestamp: string;
+  checked_at: string;
 }

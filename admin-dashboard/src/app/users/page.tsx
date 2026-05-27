@@ -114,15 +114,15 @@ export default function UsersPage() {
                   </TableCell>
                   <TableCell>{user.team_name}</TableCell>
                   <TableCell>
-                    <Badge variant="outline">{user.model_used}</Badge>
+                    <Badge variant="outline">{user.top_model}</Badge>
                   </TableCell>
-                  <TableCell className="text-right font-mono">{formatNumber(user.total_calls)}</TableCell>
-                  <TableCell className="text-right font-mono font-medium">{formatUSD(user.total_cost, true)}</TableCell>
+                  <TableCell className="text-right font-mono">{formatNumber(user.calls)}</TableCell>
+                  <TableCell className="text-right font-mono font-medium">{formatUSD(user.cost_mtd, true)}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <Progress value={totalSpend ? ((user.total_cost || 0) / totalSpend) * 100 : 0} className="h-2 w-16" />
+                      <Progress value={totalSpend ? ((user.cost_mtd || 0) / totalSpend) * 100 : 0} className="h-2 w-16" />
                       <span className="text-xs text-muted-foreground w-12 text-right">
-                        {totalSpend ? formatNumber(Math.round(((user.total_cost || 0) / totalSpend) * 100)) : 0}%
+                        {totalSpend ? formatNumber(Math.round(((user.cost_mtd || 0) / totalSpend) * 100)) : 0}%
                       </span>
                     </div>
                   </TableCell>

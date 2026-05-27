@@ -122,13 +122,13 @@ export default function HealthPage() {
                 <Progress
                   value={Math.min(100, (svc.latency_ms || 0) / 2)}
                   className={`h-1.5 ${
-                    svc.latency_ms > 100 ? "[&>div]:bg-destructive" :
-                    svc.latency_ms > 50 ? "[&>div]:bg-warning" : "[&>div]:bg-success"
+                    (svc.latency_ms ?? 0) > 100 ? "[&>div]:bg-destructive" :
+                    (svc.latency_ms ?? 0) > 50 ? "[&>div]:bg-warning" : "[&>div]:bg-success"
                   }`}
                 />
               </div>
               <div className="text-xs text-muted-foreground">
-                <span>Uptime: {svc.uptime}%</span>
+                <span>Uptime: {svc.uptime_pct}%</span>
               </div>
               {svc.detail && <p className="text-xs text-muted-foreground">{svc.detail}</p>}
             </CardContent>
@@ -146,8 +146,8 @@ export default function HealthPage() {
             {(data.services || []).map((svc: HealthService) => (
               <div key={svc.name} className="flex items-center gap-4 py-2 border-b border-border/20 last:border-0">
                 <div className="w-32 text-sm font-medium">{svc.name}</div>
-                <Progress value={svc.uptime || 0} className="flex-1 h-2" />
-                <div className="w-16 text-right text-sm font-mono">{svc.uptime}%</div>
+                <Progress value={svc.uptime_pct || 0} className="flex-1 h-2" />
+                <div className="w-16 text-right text-sm font-mono">{svc.uptime_pct}%</div>
               </div>
             ))}
           </div>

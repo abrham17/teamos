@@ -24,7 +24,7 @@ async function request<T>(
   return (json.data ?? json) as T;
 }
 
-import type { OverviewStats, TrendPoint, Team, UserCost, TrialStats, ForecastPoint, DelinquentTeam, OperationCost, HealthMetrics, AlertItem } from "@/types";
+import type { OverviewStats, TrendPoint, Team, UserCost, TrialsResponse, ForecastStats, DelinquentTeam, OperationCost, HealthMetrics, AlertItem } from "@/types";
 
 export const api = {
   getOverview:    (token?: string | null) => request<OverviewStats>("/stats/", { token }),
@@ -32,12 +32,12 @@ export const api = {
   getTeams:       (token?: string | null) => request<Team[]>("/teams-usage/", { token }),
   getTeam:        (id: string, token?: string | null) => request<Team>(`/teams/${id}/`, { token }),
   getTopSpenders: (token?: string | null) => request<UserCost[]>("/users/top-spenders/", { token }),
-  getTrials:      (token?: string | null) => request<TrialStats>("/trials/", { token }),
+  getTrials:      (token?: string | null) => request<TrialsResponse>("/trials/", { token }),
   extendTrial:    (teamId: string, days: number, token?: string | null) =>
     request<{ success: boolean }>(`/trials/${teamId}/extend/`, { method: "POST", body: JSON.stringify({ days }), token }),
   expireTrial:    (teamId: string, token?: string | null) =>
     request<{ success: boolean }>(`/trials/${teamId}/expire/`, { method: "POST", token }),
-  getForecast:    (token?: string | null) => request<ForecastPoint[]>("/forecast/", { token }),
+  getForecast:    (token?: string | null) => request<ForecastStats>("/forecast/", { token }),
   getOperations:  (token?: string | null) => request<OperationCost[]>("/operations/", { token }),
   getHealth:      (token?: string | null) => request<HealthMetrics>("/health/", { token }),
   getAlerts:      (token?: string | null) => request<{ alerts: AlertItem[] }>("/alerts/", { token }),
