@@ -1,30 +1,17 @@
-import {
-  DollarSign,
-  Activity,
-  TrendingUp,
-  Building2,
-  RefreshCw,
-} from "lucide-react";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
+import { useState, useEffect } from "react";
+import { useAuth } from "@clerk/clerk-react";
+import { DollarSign, Activity, TrendingUp, Building2, RefreshCw, Loader2 } from "lucide-react";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ChartContainer, ChartTooltipContent, ChartTooltip } from "@/components/ui/chart";
-import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/shared/StatCard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { AlertFeed } from "@/components/shared/AlertFeed";
-import { mockOverview } from "@/lib/mock-data";
+import { api } from "@/lib/api";
 import { formatUSD, formatPct, formatNumber } from "@/lib/formatters";
+import { toast } from "sonner";
 
 const CHART_COLORS = ["#388bfd", "#79c0ff", "#1f6feb", "#0d419d"];
 
@@ -34,217 +21,147 @@ const chartConfig = {
   margin: { label: "Margin %", color: "#3fb950" },
 };
 
-const pieConfig = {
-  calls: { label: "API Calls" },
-};
-
 export function OverviewPage() {
-  const d = mockOverview;
+  const { getToken } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = await getToken({ template: "backend" });
+      const [stats, trend, alerts] = await Promise.all([
+        api.getOverview(token),
+        api.getTrend(token).catch(() => []),
+        api.getAlerts(token).catch(() => ({ alerts: [] })),
+      ]);
+      setData({ stats, trend, alerts: alerts.alerts || [] });
+    } catch (e: any) {
+      setError(e.message || "Failed to load data");
+      toast.error("Failed to load overview data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  if (error && !data) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 gap-4">
+        <p className="text-destructive">{error}</p>
+        <Button onClick={fetchData}>Retry</Button>
+      </div>
+    );
+  }
+
+  if (loading || !data) {
+    return (
+      <div className="space-y-8 p-6">
+        <div className="space-y-2"><Skeleton className="h-8 w-64" /><Skeleton className="h-4 w-48" /></div>
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+        </div>
+        <Skeleton className="h-80 rounded-xl" />
+      </div>
+    );
+  }
+
+  const { stats } = data;
+  const usageByModel = (stats.usage_by_model || []).map((m: any) => ({
+    name: m.model_used || "Unknown",
+    calls: m.total_calls || 0,
+    fill: CHART_COLORS[0],
+  }));
+  const mrr = stats.total_revenue || stats.mrr || 0;
 
   return (
     <div className="space-y-8 p-6">
       <PageHeader
         eyebrow="Platform Control"
         title="Operational Overview"
-        description={`Billing cycle: ${d.billing_month}`}
+        description={`Billing cycle: ${stats.billing_month}`}
         action={
-          <Button variant="outline" size="sm" className="gap-2">
-            <RefreshCw size={14} />
+          <Button variant="outline" size="sm" onClick={fetchData} disabled={loading} className="gap-2">
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
             Refresh
           </Button>
         }
       />
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard
-          title="Monthly Revenue"
-          value={formatUSD(d.total_revenue, true)}
-          trend={`+${d.revenue_trend}%`}
-          trendUp
-          icon={<DollarSign size={18} />}
-          accent="success"
-        />
-        <StatCard
-          title="Infra Burn (LLM)"
-          value={formatUSD(d.total_spend, true)}
-          trend={`${d.cost_trend}%`}
-          trendUp={d.cost_trend > 0}
-          icon={<Activity size={18} />}
-          accent={d.cost_trend > 0 ? "danger" : "success"}
-        />
-        <StatCard
-          title="Gross Margin"
-          value={formatPct(d.margin_pct)}
-          trend={`+${d.margin_trend}%`}
-          trendUp
-          trendLabel="vs last month"
-          icon={<TrendingUp size={18} />}
-          accent={d.margin_pct >= 70 ? "success" : d.margin_pct >= 50 ? "warning" : "danger"}
-        />
-        <StatCard
-          title="Active Teams"
-          value={formatNumber(d.active_subscriptions)}
-          trend={`+${d.teams_trend} new`}
-          trendUp
-          icon={<Building2 size={18} />}
-          accent="info"
-        />
+        <StatCard title="Monthly Revenue" value={formatUSD(mrr, true)} trend="" trendUp icon={<DollarSign size={18} />} accent="success" />
+        <StatCard title="Infra Burn (LLM)" value={formatUSD(stats.total_spend, true)} trend="" trendUp={false} icon={<Activity size={18} />} accent="danger" />
+        <StatCard title="Gross Margin" value={formatPct(stats.margin_pct)} trend="" trendUp icon={<TrendingUp size={18} />} accent="success" />
+        <StatCard title="Active Teams" value={formatNumber(stats.active_subscriptions)} trend="" trendUp icon={<Building2 size={18} />} accent="info" />
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Trend Chart */}
-        <Card className="lg:col-span-2 border-border/40 bg-card/50">
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2 border-border/40 bg-card/30 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="section-title">Revenue vs Cost Trend</CardTitle>
-            <CardDescription>30-day revenue and API spend comparison</CardDescription>
+            <CardTitle>Revenue vs API Cost</CardTitle>
+            <CardDescription>30-day rolling trend</CardDescription>
           </CardHeader>
           <CardContent>
-            <ChartContainer config={chartConfig} className="h-[260px] w-full">
-              <AreaChart data={d.trend_data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gradRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#388bfd" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#388bfd" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gradCost" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f85149" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#f85149" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="currentColor"
-                  strokeOpacity={0.08}
-                />
-                <XAxis
-                  dataKey="date"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: "currentColor", opacity: 0.5 }}
-                  interval={2}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: "currentColor", opacity: 0.5 }}
-                  tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`}
-                  width={52}
-                />
-              <ChartTooltip
-                  content={<ChartTooltipContent formatter={(v: unknown) => formatUSD(Number(v))} />}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke="#388bfd"
-                  strokeWidth={2}
-                  fill="url(#gradRevenue)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="cost"
-                  stroke="#f85149"
-                  strokeWidth={2}
-                  fill="url(#gradCost)"
-                />
+            <ChartContainer config={chartConfig} className="h-80 w-full">
+              <AreaChart data={data.trend || []} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                <XAxis dataKey="created_at__date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+                <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Area type="monotone" dataKey="cost" stroke={chartConfig.cost.color} fill={chartConfig.cost.color} fillOpacity={0.12} strokeWidth={2} />
               </AreaChart>
             </ChartContainer>
           </CardContent>
         </Card>
 
-        {/* Model Split */}
-        <Card className="border-border/40 bg-card/50">
+        <Card className="border-border/40 bg-card/30 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="section-title">Model Traffic Split</CardTitle>
-            <CardDescription>API calls by model</CardDescription>
+            <CardTitle>Model Traffic</CardTitle>
+            <CardDescription>{usageByModel.length} active models</CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col items-center">
-            <ChartContainer config={pieConfig} className="h-[180px] w-full">
+          <CardContent>
+            <ChartContainer config={{}} className="h-80 w-full">
               <PieChart>
-                <Pie
-                  data={d.usage_by_model}
-                  dataKey="total_calls"
-                  nameKey="model_used"
-                  innerRadius={52}
-                  outerRadius={76}
-                  paddingAngle={5}
-                  strokeWidth={0}
-                >
-                  {d.usage_by_model.map((_, i) => (
+                <Pie data={usageByModel} dataKey="calls" nameKey="name" cx="50%" cy="50%" outerRadius={100} innerRadius={55} paddingAngle={2}>
+                  {usageByModel.map((_: any, i: number) => (
                     <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "var(--card)",
-                    borderColor: "var(--border)",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                  }}
-                  formatter={(v) => [formatNumber(Number(v)), "Calls"]}
-                />
+                <ChartTooltip content={<ChartTooltipContent />} />
               </PieChart>
             </ChartContainer>
-
-            <Separator className="my-3" />
-
-            <ul className="w-full space-y-2">
-              {d.usage_by_model.map((m, i) => (
-                <li key={m.model_used} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="h-2 w-2 rounded-full"
-                      style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
-                    />
-                    <span className="text-muted-foreground">{m.model_used}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="mono-value text-xs">{formatUSD(m.total_cost)}</span>
-                    <span className="text-xs text-muted-foreground w-10 text-right">{m.pct}%</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
           </CardContent>
         </Card>
       </div>
 
-      {/* Alerts */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card className="border-border/40 bg-card/50">
-          <CardHeader>
-            <CardTitle className="section-title">Active Alerts</CardTitle>
-            <CardDescription>Top 5 platform warnings and notifications</CardDescription>
-          </CardHeader>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="border-border/40 bg-card/30 backdrop-blur-sm">
+          <CardHeader><CardTitle>Active Alerts</CardTitle></CardHeader>
           <CardContent>
-            <AlertFeed alerts={d.alerts} />
+            <AlertFeed alerts={data.alerts} />
           </CardContent>
         </Card>
 
-        {/* Quick Stats */}
-        <Card className="border-border/40 bg-card/50">
-          <CardHeader>
-            <CardTitle className="section-title">Platform Snapshot</CardTitle>
-            <CardDescription>Key operational metrics this cycle</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <dl className="space-y-3">
-              {[
-                { label: "Total API Calls (MTD)", value: formatNumber(d.usage_by_model.reduce((s, m) => s + m.total_calls, 0)) },
-                { label: "Gross Profit", value: formatUSD(d.gross_margin) },
-                { label: "Avg Cost / Team", value: formatUSD(d.total_spend / d.active_subscriptions) },
-                { label: "Avg Revenue / Team", value: formatUSD(d.total_revenue / d.active_subscriptions) },
-                { label: "Most Used Model", value: d.usage_by_model[0]?.model_used ?? "—" },
-              ].map(({ label, value }) => (
-                <div key={label} className="flex items-center justify-between text-sm">
-                  <dt className="text-muted-foreground">{label}</dt>
-                  <dd className="mono-value">{value}</dd>
-                </div>
-              ))}
-            </dl>
+        <Card className="border-border/40 bg-card/30 backdrop-blur-sm">
+          <CardHeader><CardTitle>Platform Snapshot</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {[
+              { label: "Plan Distribution", value: "" },
+              ...Object.entries(stats.plan_distribution || {}).map(([k, v]) => ({
+                label: k,
+                value: `${v} teams`,
+              })),
+              { label: "Active Subscriptions", value: formatNumber(stats.active_subscriptions) },
+              { label: "MRR", value: formatUSD(mrr, true) },
+            ].map((item, i) => (
+              <div key={i} className="flex justify-between items-center py-2 border-b border-border/20 last:border-0">
+                <span className="text-sm text-muted-foreground">{item.label}</span>
+                <span className="text-sm font-medium">{item.value}</span>
+              </div>
+            ))}
           </CardContent>
         </Card>
       </div>

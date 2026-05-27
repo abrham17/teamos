@@ -17,9 +17,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://api.team-os.tech',
+        target: 'http://localhost:8000',
         changeOrigin: true,
-        secure: true,
+        secure: false,
       }
     }
   }

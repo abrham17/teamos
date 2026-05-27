@@ -1,214 +1,217 @@
-import { useState } from "react";
-import { Search, Filter, AlertTriangle, ChevronRight, X } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-} from "recharts";
-import { Input } from "@/components/ui/input";
+import { useState, useEffect } from "react";
+import { useAuth } from "@clerk/clerk-react";
+import { Search, Loader2, RefreshCw, MoreHorizontal } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatCard } from "@/components/shared/StatCard";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { mockTeams } from "@/lib/mock-data";
-import { formatUSD, formatPct } from "@/lib/formatters";
-import type { Team } from "@/types";
-import { cn } from "@/lib/utils";
-
-const planVariant: Record<Team["plan"], "default" | "secondary" | "outline"> = {
-  enterprise: "default",
-  growth: "secondary",
-  starter: "secondary",
-  free: "outline",
-};
-
-const statusColor: Record<Team["status"], string> = {
-  active: "text-success border-success/30 bg-success/10",
-  trial: "text-info border-info/30 bg-info/10",
-  grace_period: "text-warning border-warning/30 bg-warning/10",
-  blocked: "text-danger border-danger/30 bg-danger/10",
-};
-
-const chartConfig = {
-  cost_mtd: { label: "Cost MTD", color: "#388bfd" },
-  revenue: { label: "Revenue", color: "#3fb950" },
-};
+import { api } from "@/lib/api";
+import { formatUSD, formatNumber } from "@/lib/formatters";
+import { toast } from "sonner";
 
 export function TeamsPage() {
+  const { getToken } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [teams, setTeams] = useState<any[]>([]);
   const [search, setSearch] = useState("");
-  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
+  const [selectedTeam, setSelectedTeam] = useState<any>(null);
 
-  const filtered = mockTeams.filter((t) =>
-    t.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const fetchTeams = async () => {
+    setLoading(true);
+    try {
+      const token = await getToken({ template: "backend" });
+      const data = await api.getTeams(token);
+      setTeams(data || []);
+    } catch (e: any) {
+      toast.error("Failed to load teams");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchTeams(); }, []);
+
+  const handlePatch = async (teamId: string, patch: Record<string, unknown>) => {
+    try {
+      const token = await getToken({ template: "backend" });
+      await api.patchTeam(teamId, patch, token);
+      toast.success("Team updated");
+      fetchTeams();
+    } catch {
+      toast.error("Failed to update team");
+    }
+  };
+
+  const filtered = teams.filter((t) => t.name?.toLowerCase().includes(search.toLowerCase()));
+  const totalRevenue = teams.reduce((s, t) => s + (t.revenue_mtd || 0), 0);
+
+  if (loading) {
+    return (
+      <div className="space-y-8 p-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+        </div>
+        <Skeleton className="h-96 rounded-xl" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-8 p-6">
       <PageHeader
-        eyebrow="Platform"
+        eyebrow="Teams"
         title="Team Economics"
-        description="Per-team revenue, cost, and margin analysis"
+        description={`${teams.length} teams`}
+        action={
+          <Button variant="outline" size="sm" onClick={fetchTeams} disabled={loading} className="gap-2">
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            Refresh
+          </Button>
+        }
       />
 
-      {/* Chart */}
-      <Card className="border-border/40 bg-card/50">
-        <CardHeader>
-          <CardTitle className="section-title">Cost vs Revenue by Team</CardTitle>
-          <CardDescription>Top 8 teams by monthly API spend</CardDescription>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard title="Total Teams" value={formatNumber(teams.length)} trend="" trendUp icon={null} accent="info" />
+        <StatCard title="Platform MRR" value={formatUSD(totalRevenue, true)} trend="" trendUp icon={null} accent="success" />
+        <StatCard title="Avg Cost/Team" value={formatUSD(teams.length ? totalRevenue / teams.length : 0, true)} trend="" trendUp icon={null} accent="warning" />
+        <StatCard title="Top Team Cost" value={formatUSD(teams[0]?.cost || 0, true)} trend="" trendUp icon={null} accent="danger" />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2 border-border/40 bg-card/30 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle>Cost vs Revenue by Team</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={filtered.slice(0, 8)} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" angle={-30} textAnchor="end" />
+                <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+                <Tooltip />
+                <Bar dataKey="cost" fill="#f85149" name="Cost" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/40 bg-card/30 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle>Top Teams</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {filtered.slice(0, 5).map((t) => (
+              <div key={t.id} className="flex justify-between items-center py-2 border-b border-border/20 last:border-0">
+                <div>
+                  <p className="text-sm font-medium">{t.name}</p>
+                  <p className="text-xs text-muted-foreground">{t.plan}</p>
+                </div>
+                <span className="text-sm font-mono">{formatUSD(t.cost, true)}</span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border-border/40 bg-card/30 backdrop-blur-sm">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Team Forensics</CardTitle>
+            <CardDescription>Detailed cost breakdown per team</CardDescription>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search teams..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-64" />
+          </div>
         </CardHeader>
         <CardContent>
-          <ChartContainer config={chartConfig} className="h-[220px] w-full">
-            <BarChart
-              data={mockTeams.slice(0, 8).map((t) => ({ name: t.name.split(" ")[0], cost_mtd: t.cost_mtd, revenue: t.revenue }))}
-              margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" strokeOpacity={0.08} />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "currentColor", opacity: 0.5 }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "currentColor", opacity: 0.5 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`} width={48} />
-              <ChartTooltip content={<ChartTooltipContent formatter={(v: unknown) => formatUSD(Number(v))} />} />
-              <Bar dataKey="revenue" fill="#3fb950" radius={[3, 3, 0, 0]} opacity={0.7} />
-              <Bar dataKey="cost_mtd" fill="#388bfd" radius={[3, 3, 0, 0]} />
-            </BarChart>
-          </ChartContainer>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Team</TableHead>
+                <TableHead>Plan</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Cost MTD</TableHead>
+                <TableHead>Members</TableHead>
+                <TableHead>Budget</TableHead>
+                <TableHead className="w-10" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((team) => (
+                <TableRow key={team.id} className="cursor-pointer hover:bg-muted/30" onClick={() => setSelectedTeam(team)}>
+                  <TableCell className="font-medium">{team.name}</TableCell>
+                  <TableCell><Badge variant="outline">{team.plan}</Badge></TableCell>
+                  <TableCell>
+                    <Badge variant={team.status === "active" ? "default" : "destructive"}>{team.status}</Badge>
+                  </TableCell>
+                  <TableCell className="font-mono">{formatUSD(team.cost, true)}</TableCell>
+                  <TableCell>{team.member_count}</TableCell>
+                  <TableCell>
+                    <Progress value={team.budget_usage || 0} className="h-2 w-24" />
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => e.stopPropagation()}>
+                          <MoreHorizontal size={14} />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handlePatch(team.id, { status: "suspended" }); }}>
+                          Suspend
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handlePatch(team.id, { status: "active" }); }}>
+                          Reactivate
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setSelectedTeam(team); }}>
+                          View Details
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 
-      {/* Table */}
-      <Card className="border-border/40 bg-card/50 overflow-hidden">
-        <div className="flex items-center justify-between gap-4 px-4 py-3 border-b border-border/40">
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search teams..."
-              className="pl-9 h-8 text-sm bg-muted/30 border-border/40"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <Button variant="outline" size="sm" className="gap-2 h-8">
-            <Filter size={13} /> Filter
-          </Button>
-        </div>
-
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent border-border/40">
-              <TableHead className="w-[200px]">Team</TableHead>
-              <TableHead>Plan</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Revenue</TableHead>
-              <TableHead className="text-right">Cost MTD</TableHead>
-              <TableHead className="text-right">Margin</TableHead>
-              <TableHead>Budget</TableHead>
-              <TableHead className="text-right">Members</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((team) => (
-              <TableRow
-                key={team.id}
-                className="cursor-pointer border-border/40 hover:bg-muted/20 transition-colors"
-                onClick={() => setSelectedTeam(team)}
-              >
-                <TableCell className="font-semibold py-3">
-                  <div className="flex items-center gap-2">
-                    {team.alert && <AlertTriangle size={13} className="text-warning shrink-0" />}
-                    {team.name}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={planVariant[team.plan]} className="capitalize text-xs">
-                    {team.plan}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold capitalize", statusColor[team.status])}>
-                    {team.status.replace("_", " ")}
-                  </span>
-                </TableCell>
-                <TableCell className="text-right mono-value">{formatUSD(team.revenue)}</TableCell>
-                <TableCell className="text-right mono-value text-danger/80">{formatUSD(team.cost_mtd)}</TableCell>
-                <TableCell className="text-right">
-                  <span className={cn("font-semibold text-sm", team.margin_pct >= 60 ? "text-success" : team.margin_pct >= 40 ? "text-warning" : "text-danger")}>
-                    {team.revenue === 0 ? "—" : formatPct(team.margin_pct)}
-                  </span>
-                </TableCell>
-                <TableCell className="min-w-[100px]">
-                  <div className="space-y-1">
-                    <Progress
-                      value={team.budget_used_pct}
-                      className={cn("h-1.5", team.budget_used_pct > 85 ? "[&>*]:bg-danger" : team.budget_used_pct > 65 ? "[&>*]:bg-warning" : "[&>*]:bg-success")}
-                    />
-                    <p className="text-xs text-muted-foreground">{team.budget_used_pct}%</p>
-                  </div>
-                </TableCell>
-                <TableCell className="text-right text-muted-foreground text-sm">{team.member_count}</TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10">
-                    <ChevronRight size={14} />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
-
-      {/* Team Detail Sheet */}
       <Sheet open={!!selectedTeam} onOpenChange={() => setSelectedTeam(null)}>
-        <SheetContent className="w-[480px] sm:max-w-[480px] overflow-y-auto">
+        <SheetContent className="sm:max-w-md">
           <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              {selectedTeam?.alert && <AlertTriangle size={16} className="text-warning" />}
-              {selectedTeam?.name}
-            </SheetTitle>
+            <SheetTitle>{selectedTeam?.name}</SheetTitle>
+            <SheetDescription>{selectedTeam?.plan} · {selectedTeam?.status}</SheetDescription>
           </SheetHeader>
-          {selectedTeam && (
-            <div className="mt-6 space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { label: "Plan", value: selectedTeam.plan },
-                  { label: "Status", value: selectedTeam.status.replace("_", " ") },
-                  { label: "Revenue", value: formatUSD(selectedTeam.revenue) },
-                  { label: "Cost MTD", value: formatUSD(selectedTeam.cost_mtd) },
-                  { label: "Margin", value: selectedTeam.revenue === 0 ? "—" : formatPct(selectedTeam.margin_pct) },
-                  { label: "Members", value: String(selectedTeam.member_count) },
-                  { label: "API Calls", value: selectedTeam.calls.toLocaleString() },
-                  { label: "Budget Used", value: `${selectedTeam.budget_used_pct}%` },
-                ].map(({ label, value }) => (
-                  <div key={label} className="rounded-lg bg-muted/30 p-3">
-                    <p className="stat-label mb-0.5">{label}</p>
-                    <p className="font-semibold">{value}</p>
-                  </div>
-                ))}
-              </div>
-              <div>
-                <p className="section-title mb-1">Budget Utilization</p>
-                <Progress value={selectedTeam.budget_used_pct} className="h-3" />
-                <p className="mt-1 text-xs text-muted-foreground">{selectedTeam.budget_used_pct}% of monthly budget used</p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1">View Full Details</Button>
-                <Button variant="outline" size="sm" onClick={() => setSelectedTeam(null)}>
-                  <X size={14} />
-                </Button>
-              </div>
+          <div className="mt-6 space-y-4">
+            <div>
+              <p className="text-sm font-medium">Cost MTD</p>
+              <p className="text-2xl font-bold font-mono">{formatUSD(selectedTeam?.cost || 0, true)}</p>
             </div>
-          )}
+            <div>
+              <p className="text-sm font-medium">API Calls</p>
+              <p className="text-lg font-mono">{formatNumber(selectedTeam?.calls || 0)}</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Members</p>
+              <p className="text-lg">{selectedTeam?.member_count}</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Budget Utilization</p>
+              <Progress value={selectedTeam?.budget_usage || 0} className="h-3 mt-1" />
+              <p className="text-xs text-muted-foreground mt-1">{selectedTeam?.budget_usage || 0}%</p>
+            </div>
+          </div>
         </SheetContent>
       </Sheet>
     </div>

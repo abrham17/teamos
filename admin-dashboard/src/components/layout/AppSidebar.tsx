@@ -1,3 +1,4 @@
+import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard,
   Users,
@@ -8,7 +9,6 @@ import {
   Activity,
   AlertTriangle,
   ShieldAlert,
-  ChevronRight,
 } from "lucide-react";
 import {
   Sidebar,
@@ -24,32 +24,23 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 
-export type PageId =
-  | "overview"
-  | "teams"
-  | "users"
-  | "trials"
-  | "delinquent"
-  | "forecast"
-  | "operations"
-  | "health";
-
 interface NavItem {
-  id: PageId;
+  id: string;
+  path: string;
   label: string;
   icon: React.ReactNode;
   group: "platform" | "finance" | "system";
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: "overview", label: "Overview", icon: <LayoutDashboard size={16} />, group: "platform" },
-  { id: "teams", label: "Teams", icon: <Building2 size={16} />, group: "platform" },
-  { id: "users", label: "Top Spenders", icon: <Users size={16} />, group: "platform" },
-  { id: "trials", label: "Trial Management", icon: <CreditCard size={16} />, group: "finance" },
-  { id: "delinquent", label: "Delinquent", icon: <AlertTriangle size={16} />, group: "finance" },
-  { id: "forecast", label: "Forecast", icon: <TrendingUp size={16} />, group: "finance" },
-  { id: "operations", label: "Operations", icon: <Zap size={16} />, group: "system" },
-  { id: "health", label: "System Health", icon: <Activity size={16} />, group: "system" },
+  { id: "overview", path: "/", label: "Overview", icon: <LayoutDashboard size={16} />, group: "platform" },
+  { id: "teams", path: "/teams", label: "Teams", icon: <Building2 size={16} />, group: "platform" },
+  { id: "users", path: "/users", label: "Top Spenders", icon: <Users size={16} />, group: "platform" },
+  { id: "trials", path: "/trials", label: "Trial Management", icon: <CreditCard size={16} />, group: "finance" },
+  { id: "delinquent", path: "/delinquent", label: "Delinquent", icon: <AlertTriangle size={16} />, group: "finance" },
+  { id: "forecast", path: "/forecast", label: "Forecast", icon: <TrendingUp size={16} />, group: "finance" },
+  { id: "operations", path: "/operations", label: "Operations", icon: <Zap size={16} />, group: "system" },
+  { id: "health", path: "/health", label: "System Health", icon: <Activity size={16} />, group: "system" },
 ];
 
 const GROUPS: { id: NavItem["group"]; label: string }[] = [
@@ -58,16 +49,11 @@ const GROUPS: { id: NavItem["group"]; label: string }[] = [
   { id: "system", label: "System" },
 ];
 
-interface AppSidebarProps {
-  activePage: PageId;
-  onNavigate: (page: PageId) => void;
-}
-
-export function AppSidebar({ activePage, onNavigate }: AppSidebarProps) {
+export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" variant="sidebar">
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
-        <div className="flex items-center gap-3">
+        <NavLink to="/" className="flex items-center gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground shadow-lg">
             <ShieldAlert size={16} />
           </div>
@@ -77,7 +63,7 @@ export function AppSidebar({ activePage, onNavigate }: AppSidebarProps) {
               ops.team-os.tech
             </p>
           </div>
-        </div>
+        </NavLink>
       </SidebarHeader>
 
       <SidebarContent>
@@ -90,17 +76,15 @@ export function AppSidebar({ activePage, onNavigate }: AppSidebarProps) {
                 <SidebarMenu>
                   {items.map((item) => (
                     <SidebarMenuItem key={item.id}>
-                      <SidebarMenuButton
-                        isActive={activePage === item.id}
-                        tooltip={item.label}
-                        onClick={() => onNavigate(item.id)}
-                        className="cursor-pointer"
-                      >
-                        {item.icon}
-                        <span>{item.label}</span>
-                        {activePage === item.id && (
-                          <ChevronRight size={12} className="ml-auto opacity-60" />
-                        )}
+                      <SidebarMenuButton tooltip={item.label} isActive={false}>
+                        <NavLink
+                          to={item.path}
+                          end={item.path === "/"}
+                          className="flex items-center gap-2"
+                        >
+                          {item.icon}
+                          <span>{item.label}</span>
+                        </NavLink>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}

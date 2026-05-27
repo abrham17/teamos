@@ -1,181 +1,116 @@
-import { TrendingUp, TrendingDown, Calendar, Flame } from "lucide-react";
-import {
-  ComposedChart,
-  Area,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  ReferenceLine,
-} from "recharts";
+import { useState, useEffect } from "react";
+import { useAuth } from "@clerk/clerk-react";
+import { Loader2, RefreshCw, TrendingUp, DollarSign, Zap, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
-import { PageHeader } from "@/components/shared/PageHeader";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/shared/StatCard";
-import { mockForecast } from "@/lib/mock-data";
-import { formatUSD, formatPct } from "@/lib/formatters";
-import { cn } from "@/lib/utils";
-
-const chartConfig = {
-  actual: { label: "Actual Spend", color: "#388bfd" },
-  projected: { label: "Projected", color: "#79c0ff" },
-  upper: { label: "Upper Bound", color: "#d29922" },
-  lower: { label: "Lower Bound", color: "#d29922" },
-};
+import { PageHeader } from "@/components/shared/PageHeader";
+import { api } from "@/lib/api";
+import { formatUSD, formatNumber } from "@/lib/formatters";
+import { toast } from "sonner";
 
 export function ForecastPage() {
-  const f = mockForecast;
-  const budgetUsedPct = (f.current_spend / f.budget_ceiling) * 100;
-  const projectedPct = (f.projected_month_end / f.budget_ceiling) * 100;
-  const isOverBudget = f.projected_month_end > f.budget_ceiling;
+  const { getToken } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any>(null);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const token = await getToken({ template: "backend" });
+      const result = await api.getForecast(token);
+      setData(result);
+    } catch {
+      toast.error("Failed to load forecast");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  if (loading || !data) {
+    return (
+      <div className="space-y-8 p-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+        </div>
+        <Skeleton className="h-80 rounded-xl" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-8 p-6">
       <PageHeader
         eyebrow="Finance"
         title="Spend Forecast"
-        description="Projected month-end API cost with confidence intervals"
+        description={`${data.month} projection`}
+        action={
+          <Button variant="outline" size="sm" onClick={fetchData} disabled={loading} className="gap-2">
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            Refresh
+          </Button>
+        }
       />
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard
-          title="Projected Month-End"
-          value={formatUSD(f.projected_month_end, true)}
-          trend={isOverBudget ? "Over budget!" : `${formatPct(100 - projectedPct)} headroom`}
-          trendUp={!isOverBudget}
-          accent={isOverBudget ? "danger" : "success"}
-          icon={<TrendingUp size={18} />}
-        />
-        <StatCard
-          title="Budget Ceiling"
-          value={formatUSD(f.budget_ceiling, true)}
-          accent="default"
-          icon={<Calendar size={18} />}
-        />
-        <StatCard
-          title="Daily Burn Rate"
-          value={formatUSD(f.burn_rate_daily)}
-          trend={`+${f.burn_trend}%`}
-          trendUp={false}
-          accent="warning"
-          icon={<Flame size={18} />}
-        />
-        <StatCard
-          title="Days Until Exhaustion"
-          value={`${f.days_until_exhaustion}d`}
-          accent={f.days_until_exhaustion < 10 ? "danger" : "info"}
-          icon={<TrendingDown size={18} />}
-        />
+        <StatCard title="Projected Month-End" value={formatUSD(data.projected_month_end, true)} trend="" trendUp icon={<TrendingUp size={18} />} accent="warning" />
+        <StatCard title="Budget Ceiling" value={formatUSD(data.budget_ceiling, true)} trend="" trendUp icon={<DollarSign size={18} />} accent="info" />
+        <StatCard title="Daily Burn Rate" value={formatUSD(data.daily_burn, true)} trend="" trendUp icon={<Zap size={18} />} accent="danger" />
+        <StatCard title={`Days Left (${data.days_remaining})`} value={""} trend="" trendUp icon={<Clock size={18} />} accent="info" />
       </div>
 
-      {/* Main Chart */}
-      <Card className="border-border/40 bg-card/50">
-        <CardHeader>
-          <CardTitle className="section-title">Actual vs Projected Spend</CardTitle>
-          <CardDescription>Shaded band represents 90% confidence interval</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ChartContainer config={chartConfig} className="h-[320px] w-full">
-            <ComposedChart data={f.chart_data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="gradActual" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#388bfd" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#388bfd" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="gradBand" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#d29922" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#d29922" stopOpacity={0.05} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="currentColor" strokeOpacity={0.08} />
-              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "currentColor", opacity: 0.5 }} interval={2} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "currentColor", opacity: 0.5 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`} width={52} />
-              <ChartTooltip content={<ChartTooltipContent formatter={(v: unknown) => v !== undefined ? formatUSD(Number(v)) : "—"} />} />
-              {/* Budget ceiling reference line */}
-              <ReferenceLine
-                y={f.budget_ceiling}
-                stroke="#f85149"
-                strokeDasharray="5 5"
-                strokeWidth={1.5}
-                label={{ value: "Budget Ceiling", position: "insideTopRight", fill: "#f85149", fontSize: 11 }}
-              />
-              {/* Today divider */}
-              <ReferenceLine x="May 7" stroke="currentColor" strokeOpacity={0.3} strokeDasharray="3 3" />
-              {/* Confidence band */}
-              <Area type="monotone" dataKey="upper" stroke="transparent" fill="url(#gradBand)" connectNulls />
-              <Area type="monotone" dataKey="lower" stroke="transparent" fill="white" fillOpacity={0.01} connectNulls />
-              {/* Actual line */}
-              <Area type="monotone" dataKey="actual" stroke="#388bfd" strokeWidth={2.5} fill="url(#gradActual)" connectNulls dot={{ fill: "#388bfd", r: 3 }} />
-              {/* Projected line */}
-              <Line type="monotone" dataKey="projected" stroke="#79c0ff" strokeWidth={2} strokeDasharray="6 3" dot={false} connectNulls />
-            </ComposedChart>
-          </ChartContainer>
-        </CardContent>
-      </Card>
-
-      {/* Budget progress */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card className="border-border/40 bg-card/50">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="border-border/40 bg-card/30 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="section-title">Budget Utilization</CardTitle>
+            <CardTitle>Budget Utilization</CardTitle>
+            <CardDescription>Spend-to-date vs budget ceiling</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-5">
+          <CardContent className="space-y-6">
             <div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-muted-foreground">Current spend</span>
-                <span className="mono-value">{formatUSD(f.current_spend)} / {formatUSD(f.budget_ceiling)}</span>
+                <span>Current Spend (Day {data.days_elapsed})</span>
+                <span>{formatUSD(data.today_spend, true)} / {formatUSD(data.budget_ceiling, true)}</span>
               </div>
               <Progress
-                value={budgetUsedPct}
-                className={cn("h-3", budgetUsedPct > 85 ? "[&>*]:bg-danger" : budgetUsedPct > 65 ? "[&>*]:bg-warning" : "[&>*]:bg-success")}
+                value={data.budget_ceiling ? (data.today_spend / data.budget_ceiling) * 100 : 0}
+                className="h-3"
               />
-              <p className="text-xs text-muted-foreground mt-1">{budgetUsedPct.toFixed(1)}% of budget used (May 7)</p>
             </div>
-
-            <Separator />
-
             <div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-muted-foreground">Projected month-end</span>
-                <span className={cn("mono-value font-bold", isOverBudget ? "text-danger" : "text-success")}>
-                  {formatUSD(f.projected_month_end)} / {formatUSD(f.budget_ceiling)}
-                </span>
+                <span>Projected Month-End</span>
+                <span>{formatUSD(data.projected_month_end, true)} / {formatUSD(data.budget_ceiling, true)}</span>
               </div>
               <Progress
-                value={Math.min(projectedPct, 100)}
-                className={cn("h-3", projectedPct > 100 ? "[&>*]:bg-danger" : projectedPct > 80 ? "[&>*]:bg-warning" : "[&>*]:bg-info")}
+                value={data.budget_ceiling ? (data.projected_month_end / data.budget_ceiling) * 100 : 0}
+                className="h-3"
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                {isOverBudget
-                  ? `⚠ Projected to exceed budget by ${formatUSD(f.projected_month_end - f.budget_ceiling)}`
-                  : `${formatPct(100 - projectedPct)} headroom remaining`}
-              </p>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-border/40 bg-card/50">
+        <Card className="border-border/40 bg-card/30 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="section-title">Burn Rate Analysis</CardTitle>
+            <CardTitle>Burn Rate Analysis</CardTitle>
           </CardHeader>
-          <CardContent>
-            <dl className="space-y-4">
-              {[
-                { label: "Current daily burn", value: formatUSD(f.burn_rate_daily) },
-                { label: "Burn rate trend", value: `+${f.burn_trend}%/day`, danger: true },
-                { label: "Days until budget exhausted", value: `${f.days_until_exhaustion} days` },
-                { label: "Spend so far (May)", value: formatUSD(f.current_spend) },
-                { label: "Remaining budget", value: formatUSD(f.budget_ceiling - f.current_spend) },
-              ].map(({ label, value, danger }) => (
-                <div key={label} className="flex items-center justify-between text-sm">
-                  <dt className="text-muted-foreground">{label}</dt>
-                  <dd className={cn("mono-value", danger && "text-danger")}>{value}</dd>
-                </div>
-              ))}
-            </dl>
+          <CardContent className="space-y-4">
+            {[
+              { label: "Daily burn", value: formatUSD(data.daily_burn, true) },
+              { label: "Today's spend", value: formatUSD(data.today_spend, true) },
+              { label: "Days elapsed", value: formatNumber(data.days_elapsed) },
+              { label: "Days remaining", value: formatNumber(data.days_remaining) },
+              { label: "Budget utilization", value: `${data.budget_utilization}%` },
+            ].map((item, i) => (
+              <div key={i} className="flex justify-between items-center py-2 border-b border-border/20 last:border-0">
+                <span className="text-sm text-muted-foreground">{item.label}</span>
+                <span className="text-sm font-medium font-mono">{item.value}</span>
+              </div>
+            ))}
           </CardContent>
         </Card>
       </div>

@@ -1,210 +1,144 @@
-import { useState, useEffect } from "react";
-import { RefreshCw, Database, Cpu, Cloud, Activity, Server } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { useAuth } from "@clerk/clerk-react";
+import { Loader2, RefreshCw, CheckCircle2, AlertTriangle, XCircle, Activity, Database, Brain, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { HealthBadge } from "@/components/shared/HealthBadge";
-import { mockHealth } from "@/lib/mock-data";
-import { formatRelativeTime } from "@/lib/formatters";
-import type { HealthService } from "@/types";
-import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
 
 const SERVICE_ICONS: Record<string, React.ReactNode> = {
-  PostgreSQL: <Database size={20} />,
-  Redis: <Server size={20} />,
-  Qdrant: <Cpu size={20} />,
-  "OpenAI API": <Cloud size={20} />,
-  "Celery Workers": <Activity size={20} />,
+  PostgreSQL: <Database size={18} />,
+  Redis: <Server size={18} />,
+  Qdrant: <Brain size={18} />,
+  "Celery Workers": <Activity size={18} />,
 };
 
-const LATENCY_THRESHOLDS: Record<string, { warn: number; danger: number }> = {
-  PostgreSQL: { warn: 20, danger: 100 },
-  Redis: { warn: 10, danger: 50 },
-  Qdrant: { warn: 200, danger: 600 },
-  "OpenAI API": { warn: 500, danger: 1500 },
-};
-
-function latencyColor(service: HealthService) {
-  const thresh = LATENCY_THRESHOLDS[service.name];
-  if (!thresh || service.latency_ms === undefined) return "text-foreground";
-  if (service.latency_ms > thresh.danger) return "text-danger";
-  if (service.latency_ms > thresh.warn) return "text-warning";
-  return "text-success";
+function getStatusIcon(status: string) {
+  switch (status) {
+    case "healthy": return <CheckCircle2 className="h-5 w-5 text-success" />;
+    case "degraded": return <AlertTriangle className="h-5 w-5 text-warning" />;
+    case "down": return <XCircle className="h-5 w-5 text-destructive" />;
+    default: return <AlertTriangle className="h-5 w-5 text-muted-foreground" />;
+  }
 }
 
 export function HealthPage() {
-  const [services, setServices] = useState(mockHealth);
-  const [lastRefreshed, setLastRefreshed] = useState(new Date());
-  const [refreshing, setRefreshing] = useState(false);
+  const { getToken } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const allHealthy = services.every((s) => s.status === "healthy");
-  const anyDown = services.some((s) => s.status === "down");
+  const fetchHealth = async () => {
+    try {
+      const token = await getToken({ template: "backend" });
+      const result = await api.getHealth(token);
+      setData(result);
+    } catch {
+      toast.error("Health check failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  function refresh() {
-    setRefreshing(true);
-    setTimeout(() => {
-      setServices([...mockHealth]);
-      setLastRefreshed(new Date());
-      setRefreshing(false);
-    }, 800);
-  }
-
-  // Auto-refresh every 15 seconds
   useEffect(() => {
-    const id = setInterval(refresh, 15_000);
-    return () => clearInterval(id);
+    fetchHealth();
+    intervalRef.current = setInterval(fetchHealth, 30000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
-  const overallStatus = anyDown ? "down" : allHealthy ? "healthy" : "degraded";
+  if (loading || !data) {
+    return (
+      <div className="space-y-8 p-6">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-20 rounded-xl" />
+        <div className="grid grid-cols-2 gap-4">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
+        </div>
+      </div>
+    );
+  }
+
+  const overallLabel = data.overall === "healthy" ? "All Systems Operational" : data.overall === "degraded" ? "System Degraded" : "System Down";
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-8 p-6">
       <PageHeader
-        eyebrow="System"
+        eyebrow="Infrastructure"
         title="System Health"
-        description={`Last refreshed: ${lastRefreshed.toLocaleTimeString()} · Auto-refreshes every 15s`}
+        description={overallLabel}
         action={
-          <Button variant="outline" size="sm" className="gap-2" onClick={refresh} disabled={refreshing}>
-            <RefreshCw size={14} className={cn(refreshing && "animate-spin")} />
-            Refresh
+          <Button variant="outline" size="sm" onClick={fetchHealth} disabled={loading} className="gap-2">
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            Check Now
           </Button>
         }
       />
 
-      {/* Overall Status Banner */}
-      <div
-        className={cn(
-          "flex items-center justify-between rounded-xl border px-5 py-4",
-          overallStatus === "healthy" && "border-success/30 bg-success/10",
-          overallStatus === "degraded" && "border-warning/30 bg-warning/10",
-          overallStatus === "down" && "border-danger/30 bg-danger/10"
-        )}
-      >
-        <div className="flex items-center gap-3">
-          <HealthBadge status={overallStatus} size="md" />
+      <Card className={`border-2 ${
+        data.overall === "healthy" ? "border-success/30 bg-success/5" :
+        data.overall === "degraded" ? "border-warning/30 bg-warning/5" :
+        "border-destructive/30 bg-destructive/5"
+      }`}>
+        <CardContent className="flex items-center gap-4 py-4">
+          {getStatusIcon(data.overall)}
           <div>
-            <p className="font-semibold">
-              {overallStatus === "healthy" && "All Systems Operational"}
-              {overallStatus === "degraded" && "Degraded Performance Detected"}
-              {overallStatus === "down" && "Critical — Service Outage"}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {services.filter((s) => s.status === "healthy").length}/{services.length} services healthy
-            </p>
+            <p className="font-medium">{overallLabel}</p>
+            <p className="text-sm text-muted-foreground">Last checked: {new Date(data.checked_at).toLocaleTimeString()}</p>
           </div>
-        </div>
-        <p className="text-xs text-muted-foreground">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</p>
-      </div>
+          <Badge variant={data.overall === "healthy" ? "default" : "destructive"} className="ml-auto">
+            {data.overall}
+          </Badge>
+        </CardContent>
+      </Card>
 
-      {/* Service Cards */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {services.map((service) => (
-          <Card
-            key={service.name}
-            className={cn(
-              "border-border/40 bg-card/50 transition-all hover:shadow-md",
-              service.status === "down" && "border-danger/30",
-              service.status === "degraded" && "border-warning/30"
-            )}
-          >
-            <CardHeader className="flex flex-row items-start justify-between pb-2">
-              <div className="flex items-center gap-3">
-                <div className={cn(
-                  "flex h-9 w-9 items-center justify-center rounded-lg",
-                  service.status === "healthy" && "bg-success/15 text-success",
-                  service.status === "degraded" && "bg-warning/15 text-warning",
-                  service.status === "down" && "bg-danger/15 text-danger"
-                )}>
-                  {SERVICE_ICONS[service.name] ?? <Server size={20} />}
-                </div>
-                <CardTitle className="text-base font-bold">{service.name}</CardTitle>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {(data.services || []).map((svc: any) => (
+          <Card key={svc.name} className="border-border/40 bg-card/30 backdrop-blur-sm">
+            <CardContent className="flex flex-col items-center text-center pt-6 pb-6 gap-3">
+              <div className="flex items-center gap-2">
+                {SERVICE_ICONS[svc.name] || <Server size={18} />}
+                <span className="font-medium text-sm">{svc.name}</span>
               </div>
-              <HealthBadge status={service.status} showLabel={false} />
-            </CardHeader>
-
-            <CardContent className="space-y-3">
-              {service.latency_ms !== undefined && (
-                <div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Latency (p95)</span>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <span className={cn("mono-value font-bold", latencyColor(service))}>
-                          {service.latency_ms}ms
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Response time percentile 95</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  <Progress
-                    value={Math.min((service.latency_ms / 1000) * 100, 100)}
-                    className={cn(
-                      "h-1.5 mt-1.5",
-                      service.latency_ms > (LATENCY_THRESHOLDS[service.name]?.danger ?? 9999)
-                        ? "[&>*]:bg-danger"
-                        : service.latency_ms > (LATENCY_THRESHOLDS[service.name]?.warn ?? 9999)
-                        ? "[&>*]:bg-warning"
-                        : "[&>*]:bg-success"
-                    )}
-                  />
+              <HealthBadge status={svc.status} />
+              <div className="w-full space-y-1">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Latency</span>
+                  <span>{svc.latency_ms}ms</span>
                 </div>
-              )}
-
-              <Separator />
-
-              <p className="text-xs text-muted-foreground leading-relaxed">{service.detail}</p>
-
-              {service.uptime_pct !== undefined && (
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">30-day uptime</span>
-                  <span className={cn("mono-value font-semibold", service.uptime_pct >= 99.9 ? "text-success" : service.uptime_pct >= 99 ? "text-warning" : "text-danger")}>
-                    {service.uptime_pct}%
-                  </span>
-                </div>
-              )}
-
-              <p className="text-[11px] text-muted-foreground/60">
-                Checked {formatRelativeTime(service.checked_at)}
-              </p>
+                <Progress
+                  value={Math.min(100, (svc.latency_ms || 0) / 2)}
+                  className={`h-1.5 ${
+                    svc.latency_ms > 100 ? "[&>div]:bg-destructive" :
+                    svc.latency_ms > 50 ? "[&>div]:bg-warning" : "[&>div]:bg-success"
+                  }`}
+                />
+              </div>
+              <div className="text-xs text-muted-foreground">
+                <span>Uptime: {svc.uptime}%</span>
+              </div>
+              {svc.detail && <p className="text-xs text-muted-foreground">{svc.detail}</p>}
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Uptime summary */}
-      <Card className="border-border/40 bg-card/50">
+      <Card className="border-border/40 bg-card/30 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle className="section-title">30-Day Uptime Summary</CardTitle>
+          <CardTitle>Uptime Summary</CardTitle>
+          <CardDescription>30-day rolling average</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {services.map((service) => (
-              <div key={service.name} className="flex items-center gap-4 text-sm">
-                <span className="w-36 text-muted-foreground shrink-0">{service.name}</span>
-                <Progress
-                  value={service.uptime_pct ?? 100}
-                  className={cn(
-                    "flex-1 h-2",
-                    (service.uptime_pct ?? 100) >= 99.9 ? "[&>*]:bg-success"
-                    : (service.uptime_pct ?? 100) >= 99 ? "[&>*]:bg-warning"
-                    : "[&>*]:bg-danger"
-                  )}
-                />
-                <span className={cn(
-                  "mono-value text-xs w-14 text-right",
-                  (service.uptime_pct ?? 100) >= 99.9 ? "text-success" : (service.uptime_pct ?? 100) >= 99 ? "text-warning" : "text-danger"
-                )}>
-                  {service.uptime_pct ?? 100}%
-                </span>
+            {(data.services || []).map((svc: any) => (
+              <div key={svc.name} className="flex items-center gap-4 py-2 border-b border-border/20 last:border-0">
+                <div className="w-32 text-sm font-medium">{svc.name}</div>
+                <Progress value={svc.uptime || 0} className="flex-1 h-2" />
+                <div className="w-16 text-right text-sm font-mono">{svc.uptime}%</div>
               </div>
             ))}
           </div>

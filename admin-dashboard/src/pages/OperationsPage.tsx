@@ -1,169 +1,143 @@
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Cell,
-} from "recharts";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { useState, useEffect } from "react";
+import { useAuth } from "@clerk/clerk-react";
+import { Loader2, RefreshCw, Zap, DollarSign, Gauge } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { PageHeader } from "@/components/shared/PageHeader";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/shared/StatCard";
-import { mockOperations } from "@/lib/mock-data";
-import { formatUSD, formatNumber, formatPct } from "@/lib/formatters";
-
-const OP_COLORS = ["#388bfd", "#3fb950", "#d29922", "#f85149", "#a371f7", "#79c0ff"];
-
-const chartConfig = {
-  total_cost: { label: "Total Cost", color: "#388bfd" },
-};
+import { PageHeader } from "@/components/shared/PageHeader";
+import { api } from "@/lib/api";
+import { formatUSD, formatNumber } from "@/lib/formatters";
+import { toast } from "sonner";
 
 export function OperationsPage() {
-  const totalCost = mockOperations.reduce((s, o) => s + o.total_cost, 0);
-  const totalCalls = mockOperations.reduce((s, o) => s + o.total_calls, 0);
-  const mostExpensive = [...mockOperations].sort((a, b) => b.avg_cost_per_call - a.avg_cost_per_call)[0];
-  const highestVolume = [...mockOperations].sort((a, b) => b.total_calls - a.total_calls)[0];
+  const { getToken } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [ops, setOps] = useState<any[]>([]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const token = await getToken({ template: "backend" });
+      const data = await api.getOperations(token);
+      setOps(data || []);
+    } catch {
+      toast.error("Failed to load operations");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  const totalCost = ops.reduce((s, o) => s + (o.total_cost || 0), 0);
+  const totalCalls = ops.reduce((s, o) => s + (o.total_calls || 0), 0);
+
+  if (loading) {
+    return (
+      <div className="space-y-8 p-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+        </div>
+        <Skeleton className="h-96 rounded-xl" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-8 p-6">
       <PageHeader
         eyebrow="System"
-        title="Operations Cost Breakdown"
-        description="Per-operation API cost and call volume analysis"
+        title="Operations Cost"
+        description={`${ops.length} operations tracked`}
+        action={
+          <Button variant="outline" size="sm" onClick={fetchData} disabled={loading} className="gap-2">
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            Refresh
+          </Button>
+        }
       />
 
-      {/* KPIs */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard title="Total Op Cost (MTD)" value={formatUSD(totalCost, true)} accent="info" />
-        <StatCard title="Total API Calls" value={formatNumber(totalCalls)} accent="default" />
-        <StatCard title="Costliest Op/Call" value={mostExpensive.operation.split(" ")[0]} accent="warning" />
-        <StatCard title="Highest Volume" value={highestVolume.operation.split(" ")[0]} accent="success" />
+        <StatCard title="Total Op Cost" value={formatUSD(totalCost, true)} trend="" trendUp icon={<DollarSign size={18} />} accent="danger" />
+        <StatCard title="Total API Calls" value={formatNumber(totalCalls)} trend="" trendUp icon={<Zap size={18} />} accent="info" />
+        <StatCard title="Avg Cost/Call" value={formatUSD(totalCalls ? totalCost / totalCalls : 0, true)} trend="" trendUp icon={<Gauge size={18} />} accent="warning" />
+        <StatCard title="Operations" value={formatNumber(ops.length)} trend="" trendUp icon={<Zap size={18} />} accent="info" />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Horizontal bar chart */}
-        <Card className="border-border/40 bg-card/50">
-          <CardHeader>
-            <CardTitle className="section-title">Cost by Operation</CardTitle>
-            <CardDescription>Total API spend per operation type</CardDescription>
-          </CardHeader>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="border-border/40 bg-card/30 backdrop-blur-sm">
+          <CardHeader><CardTitle>Cost by Operation</CardTitle></CardHeader>
           <CardContent>
-            <ChartContainer config={chartConfig} className="h-[260px] w-full">
-              <BarChart
-                layout="vertical"
-                data={[...mockOperations].sort((a, b) => b.total_cost - a.total_cost)}
-                margin={{ top: 4, right: 12, left: 0, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="currentColor" strokeOpacity={0.08} />
-                <XAxis
-                  type="number"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: "currentColor", opacity: 0.5 }}
-                  tickFormatter={(v) => `$${v}`}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="operation"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: "currentColor", opacity: 0.7 }}
-                  width={120}
-                />
-                <ChartTooltip content={<ChartTooltipContent formatter={(v: unknown) => formatUSD(Number(v))} />} />
-                <Bar dataKey="total_cost" radius={[0, 4, 4, 0]}>
-                  {mockOperations.map((_, i) => (
-                    <Cell key={i} fill={OP_COLORS[i % OP_COLORS.length]} />
-                  ))}
-                </Bar>
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={ops.slice(0, 10)} layout="vertical" margin={{ top: 5, right: 10, left: 80, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
+                <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+                <YAxis type="category" dataKey="operation" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={80} />
+                <Tooltip />
+                <Bar dataKey="total_cost" fill="#388bfd" radius={[0, 4, 4, 0]} />
               </BarChart>
-            </ChartContainer>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        {/* Percentage breakdown */}
-        <Card className="border-border/40 bg-card/50">
-          <CardHeader>
-            <CardTitle className="section-title">Cost Distribution</CardTitle>
-            <CardDescription>Share of total spend per operation</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {[...mockOperations]
-              .sort((a, b) => b.pct_of_total - a.pct_of_total)
-              .map((op, i) => (
-                <div key={op.operation} className="space-y-1.5">
-                  <div className="flex justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: OP_COLORS[i % OP_COLORS.length] }} />
-                      <span className="font-medium">{op.operation}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="mono-value text-xs">{formatUSD(op.total_cost)}</span>
-                      <span className="text-muted-foreground text-xs w-10 text-right">{op.pct_of_total}%</span>
-                    </div>
-                  </div>
-                  <Progress
-                    value={op.pct_of_total}
-                    className="h-1.5"
-                    style={{ ["--progress-color" as string]: OP_COLORS[i % OP_COLORS.length] }}
-                  />
+        <Card className="border-border/40 bg-card/30 backdrop-blur-sm">
+          <CardHeader><CardTitle>Cost Distribution</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {ops.slice(0, 8).map((op) => (
+              <div key={op.operation}>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>{op.operation}</span>
+                  <span className="font-mono text-muted-foreground">{formatUSD(op.total_cost, true)}</span>
                 </div>
-              ))}
+                <Progress value={totalCost ? ((op.total_cost || 0) / totalCost) * 100 : 0} className="h-2" />
+              </div>
+            ))}
           </CardContent>
         </Card>
       </div>
 
-      {/* Detailed Table */}
-      <Card className="border-border/40 bg-card/50 overflow-hidden">
-        <div className="px-4 py-3 border-b border-border/40">
-          <p className="section-title">Operation Details</p>
-        </div>
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent border-border/40">
-              <TableHead>Operation</TableHead>
-              <TableHead className="text-right">Total Cost</TableHead>
-              <TableHead className="text-right">Total Calls</TableHead>
-              <TableHead className="text-right">Avg Cost / Call</TableHead>
-              <TableHead className="text-right">% of Total</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {mockOperations.map((op, i) => (
-              <TableRow key={op.operation} className="border-border/40 hover:bg-muted/20 transition-colors">
-                <TableCell>
-                  <div className="flex items-center gap-2 font-medium text-sm">
-                    <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: OP_COLORS[i % OP_COLORS.length] }} />
-                    {op.operation}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right mono-value">{formatUSD(op.total_cost)}</TableCell>
-                <TableCell className="text-right mono-value">{formatNumber(op.total_calls)}</TableCell>
-                <TableCell className="text-right mono-value">${op.avg_cost_per_call.toFixed(4)}</TableCell>
-                <TableCell className="text-right">
-                  <span className="mono-value text-muted-foreground">{formatPct(op.pct_of_total)}</span>
-                </TableCell>
+      <Card className="border-border/40 bg-card/30 backdrop-blur-sm">
+        <CardHeader><CardTitle>All Operations</CardTitle></CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Operation</TableHead>
+                <TableHead className="text-right">Total Cost</TableHead>
+                <TableHead className="text-right">Total Calls</TableHead>
+                <TableHead className="text-right">Avg Cost/Call</TableHead>
+                <TableHead className="text-right">% of Total</TableHead>
               </TableRow>
-            ))}
-            <TableRow className="border-border/40 bg-muted/20 font-bold">
-              <TableCell className="text-sm">Total</TableCell>
-              <TableCell className="text-right mono-value">{formatUSD(totalCost)}</TableCell>
-              <TableCell className="text-right mono-value">{formatNumber(totalCalls)}</TableCell>
-              <TableCell className="text-right mono-value text-muted-foreground">—</TableCell>
-              <TableCell className="text-right mono-value">100%</TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {ops.map((op) => (
+                <TableRow key={op.operation}>
+                  <TableCell className="font-medium">{op.operation}</TableCell>
+                  <TableCell className="text-right font-mono">{formatUSD(op.total_cost, true)}</TableCell>
+                  <TableCell className="text-right font-mono">{formatNumber(op.total_calls)}</TableCell>
+                  <TableCell className="text-right font-mono">
+                    {formatUSD(op.total_calls ? (op.total_cost || 0) / op.total_calls : 0, true)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <span className="font-medium">{totalCost ? formatNumber(Math.round(((op.total_cost || 0) / totalCost) * 100)) : 0}%</span>
+                  </TableCell>
+                </TableRow>
+              ))}
+              <TableRow className="bg-muted/30 font-medium">
+                <TableCell>Total</TableCell>
+                <TableCell className="text-right font-mono">{formatUSD(totalCost, true)}</TableCell>
+                <TableCell className="text-right font-mono">{formatNumber(totalCalls)}</TableCell>
+                <TableCell className="text-right font-mono">{formatUSD(totalCalls ? totalCost / totalCalls : 0, true)}</TableCell>
+                <TableCell className="text-right">100%</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </CardContent>
       </Card>
     </div>
   );

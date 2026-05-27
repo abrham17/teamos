@@ -1,146 +1,132 @@
-import { AlertTriangle, Search } from "lucide-react";
-import { useState } from "react";
-import { Input } from "@/components/ui/input";
+import { useState, useEffect } from "react";
+import { useAuth } from "@clerk/clerk-react";
+import { Search, Loader2, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { PageHeader } from "@/components/shared/PageHeader";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/shared/StatCard";
-import { mockUsers } from "@/lib/mock-data";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { api } from "@/lib/api";
 import { formatUSD, formatNumber } from "@/lib/formatters";
-
-const MODEL_COLORS: Record<string, string> = {
-  "GPT-4o": "bg-info text-white",
-  "GPT-4o mini": "bg-primary/80 text-primary-foreground",
-  "GPT-4o nano": "bg-secondary text-secondary-foreground",
-  "o3": "bg-warning/80 text-white",
-};
+import { toast } from "sonner";
 
 export function UsersPage() {
+  const { getToken } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState("");
-  const filtered = mockUsers.filter(
-    (u) =>
-      u.name.toLowerCase().includes(search.toLowerCase()) ||
-      u.email.toLowerCase().includes(search.toLowerCase()) ||
-      u.team.toLowerCase().includes(search.toLowerCase())
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+      const token = await getToken({ template: "backend" });
+      const data = await api.getTopSpenders(token);
+      setUsers(data || []);
+    } catch (e: any) {
+      toast.error("Failed to load users");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchUsers(); }, []);
+
+  const filtered = users.filter((u) =>
+    (u.user_name || "").toLowerCase().includes(search.toLowerCase()) ||
+    (u.user_email || "").toLowerCase().includes(search.toLowerCase()) ||
+    (u.team_name || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const totalCost = mockUsers.reduce((s, u) => s + u.cost_mtd, 0);
-  const anomalyCount = mockUsers.filter((u) => u.anomaly).length;
-  const topUser = mockUsers[0];
-  const avgCost = totalCost / mockUsers.length;
+  const totalSpend = users.reduce((s, u) => s + (u.total_cost || 0), 0);
+  const topSpenderCost = users[0]?.total_cost || 0;
+  const avgCost = users.length ? totalSpend / users.length : 0;
+
+  if (loading) {
+    return (
+      <div className="space-y-8 p-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+        </div>
+        <Skeleton className="h-96 rounded-xl" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-8 p-6">
       <PageHeader
-        eyebrow="Platform"
+        eyebrow="Users"
         title="Top Spenders"
-        description="Users with highest API cost attribution this billing cycle"
+        description={`${users.length} users tracked`}
+        action={
+          <Button variant="outline" size="sm" onClick={fetchUsers} disabled={loading} className="gap-2">
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            Refresh
+          </Button>
+        }
       />
 
-      {/* KPI row */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard title="Total User Spend" value={formatUSD(totalCost)} accent="info" />
-        <StatCard title="Top Spender Cost" value={formatUSD(topUser.cost_mtd)} accent="warning" />
-        <StatCard title="Avg Cost / User" value={formatUSD(avgCost)} accent="default" />
-        <StatCard title="Anomaly Alerts" value={String(anomalyCount)} accent="danger" />
+        <StatCard title="Total User Spend" value={formatUSD(totalSpend, true)} trend="" trendUp icon={null} accent="info" />
+        <StatCard title="Top Spender" value={formatUSD(topSpenderCost, true)} trend="" trendUp icon={null} accent="warning" />
+        <StatCard title="Avg Cost/User" value={formatUSD(avgCost, true)} trend="" trendUp icon={null} accent="success" />
+        <StatCard title="Users" value={formatNumber(users.length)} trend="" trendUp icon={null} accent="info" />
       </div>
 
-      <Card className="border-border/40 bg-card/50 overflow-hidden">
-        <div className="flex items-center gap-4 px-4 py-3 border-b border-border/40">
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search users..."
-              className="pl-9 h-8 text-sm bg-muted/30 border-border/40"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+      <Card className="border-border/40 bg-card/30 backdrop-blur-sm">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>User Leaderboard</CardTitle>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search users..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 w-64" />
           </div>
-        </div>
-
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent border-border/40">
-              <TableHead className="w-8">#</TableHead>
-              <TableHead>User</TableHead>
-              <TableHead>Team</TableHead>
-              <TableHead>Top Model</TableHead>
-              <TableHead className="text-right">API Calls</TableHead>
-              <TableHead className="text-right">Cost MTD</TableHead>
-              <TableHead>Share</TableHead>
-              <TableHead className="text-center">Anomaly</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((user, idx) => (
-              <TableRow key={user.id} className="border-border/40 hover:bg-muted/20 transition-colors">
-                <TableCell className="text-muted-foreground text-sm">{idx + 1}</TableCell>
-                <TableCell>
-                  <div>
-                    <p className="font-semibold text-sm">{user.name}</p>
-                    <p className="text-xs text-muted-foreground">{user.email}</p>
-                  </div>
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">{user.team}</TableCell>
-                <TableCell>
-                  <Badge
-                    className={`text-xs ${MODEL_COLORS[user.top_model] ?? "bg-secondary text-secondary-foreground"}`}
-                  >
-                    {user.top_model}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right mono-value">{formatNumber(user.calls)}</TableCell>
-                <TableCell className="text-right mono-value text-foreground font-bold">
-                  {formatUSD(user.cost_mtd)}
-                </TableCell>
-                <TableCell className="min-w-[120px]">
-                  <div className="space-y-1">
-                    <Progress
-                      value={(user.cost_mtd / mockUsers[0].cost_mtd) * 100}
-                      className="h-1.5"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {((user.cost_mtd / totalCost) * 100).toFixed(1)}% of total
-                    </p>
-                  </div>
-                </TableCell>
-                <TableCell className="text-center">
-                  {user.anomaly ? (
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <AlertTriangle size={15} className="text-warning mx-auto" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Spend is &gt;3× team average</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    <span className="text-muted-foreground/30">—</span>
-                  )}
-                </TableCell>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>#</TableHead>
+                <TableHead>User</TableHead>
+                <TableHead>Team</TableHead>
+                <TableHead>Top Model</TableHead>
+                <TableHead className="text-right">API Calls</TableHead>
+                <TableHead className="text-right">Cost MTD</TableHead>
+                <TableHead className="text-right">Share</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-
-        <CardContent className="py-3 border-t border-border/40">
-          <CardDescription className="text-xs">
-            Showing {filtered.length} of {mockUsers.length} users · Sorted by cost (highest first)
-          </CardDescription>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((user, i) => (
+                <TableRow key={user.user_id || i}>
+                  <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                  <TableCell>
+                    <div>
+                      <p className="font-medium">{user.user_name}</p>
+                      <p className="text-xs text-muted-foreground">{user.user_email}</p>
+                    </div>
+                  </TableCell>
+                  <TableCell>{user.team_name}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{user.model_used}</Badge>
+                  </TableCell>
+                  <TableCell className="text-right font-mono">{formatNumber(user.total_calls)}</TableCell>
+                  <TableCell className="text-right font-mono font-medium">{formatUSD(user.total_cost, true)}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <Progress value={totalSpend ? ((user.total_cost || 0) / totalSpend) * 100 : 0} className="h-2 w-16" />
+                      <span className="text-xs text-muted-foreground w-12 text-right">
+                        {totalSpend ? formatNumber(Math.round(((user.total_cost || 0) / totalSpend) * 100)) : 0}%
+                      </span>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>

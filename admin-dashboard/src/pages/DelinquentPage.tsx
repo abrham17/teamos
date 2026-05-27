@@ -1,148 +1,133 @@
-import { AlertTriangle, ShieldOff, Clock } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { useState, useEffect } from "react";
+import { useAuth } from "@clerk/clerk-react";
+import { Loader2, RefreshCw, AlertTriangle, DollarSign, Ban, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { PageHeader } from "@/components/shared/PageHeader";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/shared/StatCard";
-import { mockDelinquent } from "@/lib/mock-data";
-import { formatUSD, formatDate } from "@/lib/formatters";
-import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { api } from "@/lib/api";
+import { formatNumber } from "@/lib/formatters";
+import { toast } from "sonner";
 
 export function DelinquentPage() {
-  const grace = mockDelinquent.filter((t) => t.status === "grace_period");
-  const blocked = mockDelinquent.filter((t) => t.status === "blocked");
-  const revenueAtRisk = grace.reduce((s, t) => s + t.revenue, 0);
-  const revenueBlocked = blocked.reduce((s, t) => s + t.revenue, 0);
+  const { getToken } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [accounts, setAccounts] = useState<any[]>([]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const token = await getToken({ template: "backend" });
+      const data = await api.getDelinquent(token);
+      setAccounts(data || []);
+    } catch {
+      toast.error("Failed to load delinquent accounts");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  const handleAction = async (teamId: string, patch: Record<string, unknown>) => {
+    try {
+      const token = await getToken({ template: "backend" });
+      await api.patchTeam(teamId, patch, token);
+      toast.success("Action applied");
+      fetchData();
+    } catch {
+      toast.error("Failed to apply action");
+    }
+  };
+
+  const pastDue = accounts.filter((a) => a.status === "past_due");
+  const blocked = accounts.filter((a) => a.status === "blocked");
+  const unpaid = accounts.filter((a) => a.status === "unpaid");
+
+  if (loading) {
+    return (
+      <div className="space-y-8 p-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+        </div>
+        <Skeleton className="h-96 rounded-xl" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-8 p-6">
       <PageHeader
         eyebrow="Finance"
-        title="Delinquent Subscriptions"
-        description="Teams in grace period or fully blocked due to payment failure"
+        title="Delinquent Accounts"
+        description={`${accounts.length} accounts requiring attention`}
+        action={
+          <Button variant="outline" size="sm" onClick={fetchData} disabled={loading} className="gap-2">
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            Refresh
+          </Button>
+        }
       />
 
-      {/* Alert Banner */}
-      <Alert variant="destructive" className="border-danger/30 bg-danger/10">
-        <AlertTriangle className="h-4 w-4 text-danger" />
-        <AlertTitle>Revenue at Risk</AlertTitle>
-        <AlertDescription>
-          {formatUSD(revenueAtRisk)} MRR is in grace period and will be lost if payment is not resolved.
-          {blocked.length > 0 && ` ${formatUSD(revenueBlocked)} is already blocked.`}
-        </AlertDescription>
-      </Alert>
-
-      {/* KPIs */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard title="Grace Period" value={String(grace.length)} icon={<Clock size={18} />} accent="warning" />
-        <StatCard title="Blocked" value={String(blocked.length)} icon={<ShieldOff size={18} />} accent="danger" />
-        <StatCard title="Revenue at Risk" value={formatUSD(revenueAtRisk, true)} accent="warning" />
-        <StatCard title="Revenue Blocked" value={formatUSD(revenueBlocked, true)} accent="danger" />
-      </div>
-
-      {/* Grace Period */}
-      <Card className="border-border/40 bg-card/50 overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
+      <Card className="border-danger/30 bg-danger/5 border">
+        <CardContent className="flex items-center gap-3 py-4">
+          <AlertTriangle className="text-danger h-5 w-5" />
           <div>
-            <p className="section-title">Grace Period</p>
-            <p className="text-xs text-muted-foreground mt-0.5">7-day window after payment failure</p>
+            <p className="font-medium text-danger">{accounts.length} accounts need attention</p>
+            <p className="text-sm text-muted-foreground">Revenue at risk from unpaid and blocked accounts</p>
           </div>
-          <Badge variant="outline" className="text-warning border-warning/30 bg-warning/10">
-            {grace.length} teams
-          </Badge>
-        </div>
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent border-border/40">
-              <TableHead>Team</TableHead>
-              <TableHead>Plan</TableHead>
-              <TableHead className="text-right">MRR</TableHead>
-              <TableHead>Days in Grace</TableHead>
-              <TableHead>Grace Expires</TableHead>
-              <TableHead>Failure Reason</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {grace.map((team) => (
-              <TableRow key={team.id} className="border-border/40 hover:bg-muted/20 transition-colors">
-                <TableCell className="font-semibold text-sm">{team.team_name}</TableCell>
-                <TableCell>
-                  <Badge variant="secondary" className="capitalize text-xs">{team.plan}</Badge>
-                </TableCell>
-                <TableCell className="text-right mono-value">{formatUSD(team.revenue)}</TableCell>
-                <TableCell>
-                  <span className={cn("font-semibold text-sm", (team.days_in_grace ?? 0) >= 5 ? "text-danger" : "text-warning")}>
-                    {team.days_in_grace}d
-                  </span>
-                </TableCell>
-                <TableCell className="text-sm">{team.grace_expires_at ? formatDate(team.grace_expires_at) : "—"}</TableCell>
-                <TableCell className="text-sm text-muted-foreground max-w-[180px] truncate">{team.failure_reason}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <Button variant="outline" size="sm" className="h-7 text-xs">Extend Grace</Button>
-                    <Button variant="outline" size="sm" className="h-7 text-xs text-danger border-danger/30 hover:bg-danger/10">Force Block</Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        </CardContent>
       </Card>
 
-      {/* Blocked */}
-      <Card className="border-border/40 bg-card/50 overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
-          <div>
-            <p className="section-title">Blocked Teams</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Access fully suspended</p>
-          </div>
-          <Badge variant="outline" className="text-danger border-danger/30 bg-danger/10">
-            {blocked.length} teams
-          </Badge>
-        </div>
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent border-border/40">
-              <TableHead>Team</TableHead>
-              <TableHead>Plan</TableHead>
-              <TableHead className="text-right">Lost MRR</TableHead>
-              <TableHead>Blocked Since</TableHead>
-              <TableHead>Reason</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {blocked.map((team) => (
-              <TableRow key={team.id} className="border-border/40 hover:bg-muted/20 transition-colors">
-                <TableCell className="font-semibold text-sm">{team.team_name}</TableCell>
-                <TableCell>
-                  <Badge variant="secondary" className="capitalize text-xs">{team.plan}</Badge>
-                </TableCell>
-                <TableCell className="text-right mono-value text-danger/80">{formatUSD(team.revenue)}</TableCell>
-                <TableCell className="text-sm">{team.blocked_at ? formatDate(team.blocked_at) : "—"}</TableCell>
-                <TableCell className="text-sm text-muted-foreground max-w-[180px] truncate">{team.failure_reason}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <Button variant="outline" size="sm" className="h-7 text-xs">Manual Override</Button>
-                    <Button variant="outline" size="sm" className="h-7 text-xs text-success border-success/30 hover:bg-success/10">Restore</Button>
-                  </div>
-                </TableCell>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard title="Past Due" value={formatNumber(pastDue.length)} trend="" trendUp icon={<AlertTriangle size={18} />} accent="warning" />
+        <StatCard title="Blocked" value={formatNumber(blocked.length)} trend="" trendUp icon={<Ban size={18} />} accent="danger" />
+        <StatCard title="Unpaid" value={formatNumber(unpaid.length)} trend="" trendUp icon={<DollarSign size={18} />} accent="danger" />
+        <StatCard title="Total Members Affected" value={formatNumber(accounts.reduce((s, a) => s + (a.member_count || 0), 0))} trend="" trendUp icon={<Users size={18} />} accent="warning" />
+      </div>
+
+      <Card className="border-border/40 bg-card/30 backdrop-blur-sm">
+        <CardHeader><CardTitle>Delinquent Accounts</CardTitle></CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Team</TableHead>
+                <TableHead>Owner</TableHead>
+                <TableHead>Plan</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Members</TableHead>
+                <TableHead>Since</TableHead>
+                <TableHead className="w-40">Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        <CardContent className="py-2 border-t border-border/40">
-          <CardDescription className="text-xs">Data is held for 30 days post-block before deletion.</CardDescription>
+            </TableHeader>
+            <TableBody>
+              {accounts.map((a) => (
+                <TableRow key={a.id}>
+                  <TableCell className="font-medium">{a.team_name}</TableCell>
+                  <TableCell>{a.owner_name}</TableCell>
+                  <TableCell><Badge variant="outline">{a.plan}</Badge></TableCell>
+                  <TableCell>
+                    <Badge variant={a.status === "blocked" ? "destructive" : "default"}>{a.status}</Badge>
+                  </TableCell>
+                  <TableCell>{a.member_count}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {a.subscription_since ? new Date(a.subscription_since).toLocaleDateString() : ""}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" onClick={() => handleAction(a.team_id, { status: "active" })}>Restore</Button>
+                      <Button size="sm" variant="destructive" onClick={() => handleAction(a.team_id, { status: "blocked" })}>Block</Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>
