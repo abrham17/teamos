@@ -13,8 +13,7 @@ async function request<T>(
   const headers = new Headers(rest.headers);
   headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
-
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${API_BASE}/api/admin${path}`, {
     credentials: "include",
     ...rest,
     headers,
