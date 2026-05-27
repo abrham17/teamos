@@ -1,5 +1,5 @@
-const API_BASE = (import.meta.env.DEV || typeof window === "undefined") 
-  ? "http://localhost:8000/api/admin" 
+const API_BASE = (import.meta.env.PROD || typeof window === "undefined") 
+  ? "https://api.team-os.tech" 
   : "/api/admin";
 
 async function request<T>(path: string, options?: RequestInit & { token?: string | null }): Promise<T> {
