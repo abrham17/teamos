@@ -1,0 +1,11 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/delinquent/page": "/delinquent",
+  "/forecast/page": "/forecast",
+  "/health/page": "/health",
+  "/operations/page": "/operations",
+  "/page": "/",
+  "/trials/page": "/trials",
+  "/users/page": "/users",
+  "/teams/page": "/teams"
+}
