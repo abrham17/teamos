@@ -166,15 +166,25 @@ def lock_fields_on_human_edit(entity: Task | Milestone, field_names: list[str]) 
 
 
 def get_plan_mutation_context(project: Project) -> dict:
-    """Structured project context for manage-mode delta planning."""
+    """Structured project context for manage-mode delta planning with context budgeting."""
     tasks = []
-    for t in project.tasks.prefetch_related("dependencies").order_by("order_index", "created_at"):
+    
+    # ── Context Budgeting (Phase 3) ──
+    # If a project has many tasks, keep descriptions concise to stay under 15k tokens
+    all_project_tasks = list(project.tasks.prefetch_related("dependencies").order_by("order_index", "created_at"))
+    compress_descriptions = len(all_project_tasks) > 30
+
+    for t in all_project_tasks:
+        desc = t.description or ""
+        if compress_descriptions and len(desc) > 120:
+            desc = desc[:117] + "..."
+
         tasks.append(
             {
                 "id": str(t.id),
                 "semantic_key": t.semantic_key,
                 "title": t.title,
-                "description": t.description,
+                "description": desc,
                 "status": t.status,
                 "priority": t.priority,
                 "start_date": t.start_date.isoformat() if t.start_date else None,
@@ -191,7 +201,7 @@ def get_plan_mutation_context(project: Project) -> dict:
             "id": str(m.id),
             "semantic_key": m.semantic_key,
             "title": m.title,
-            "description": m.description,
+            "description": m.description[:120] if m.description and compress_descriptions else m.description,
             "target_date": m.target_date.isoformat() if m.target_date else None,
             "status": m.status,
             "human_locked_fields": list((m.human_locked_fields or {}).keys()),
@@ -213,13 +223,44 @@ def get_plan_mutation_context(project: Project) -> dict:
     }
 
 
+def _sanitize_dependency_ids(deps: Any) -> list[str]:
+    """Ensure deps is a flat list of valid UUID strings."""
+    if not deps:
+        return []
+    import uuid
+    dep_list = []
+    if isinstance(deps, (list, tuple, set)):
+        dep_list = list(deps)
+    elif isinstance(deps, str):
+        if "," in deps:
+            dep_list = [item.strip() for item in deps.split(",")]
+        else:
+            dep_list = [deps.strip()]
+    else:
+        dep_list = [deps]
+        
+    valid_deps = []
+    for d in dep_list:
+        if not d and d != 0:
+            continue
+        try:
+            val = str(d).strip()
+            uuid.UUID(val)
+            valid_deps.append(val)
+        except (ValueError, TypeError):
+            pass
+    return valid_deps
+
+
 def create_task(*, project: Project, user: User, payload: dict) -> Task:
     deps = payload.pop("dependency_ids", None) or payload.pop("depends_on", None)
     if not payload.get("semantic_key"):
         payload["semantic_key"] = compute_semantic_key(title=payload.get("title", "Untitled Task"))
     task = Task.objects.create(project=project, created_by=user, **payload)
     if deps:
-        task.dependencies.set(deps)
+        valid_deps = _sanitize_dependency_ids(deps)
+        if valid_deps:
+            task.dependencies.set(valid_deps)
     _maybe_set_task_embedding(task)
     broadcast_project_update(project, "task_created")
     return task
@@ -261,7 +302,8 @@ def patch_task(
         setattr(task, field, value)
     task.save(update_fields=[*payload.keys(), "updated_at"])
     if deps is not None:
-        task.dependencies.set(deps)
+        valid_deps = _sanitize_dependency_ids(deps)
+        task.dependencies.set(valid_deps)
     broadcast_project_update(task.project, "task_updated")
     return task
 
@@ -276,7 +318,8 @@ def update_task(task: Task, payload: dict) -> Task:
         setattr(task, field, value)
     task.save(update_fields=[*payload.keys(), "updated_at"])
     if deps is not None:
-        task.dependencies.set(deps)
+        valid_deps = _sanitize_dependency_ids(deps)
+        task.dependencies.set(valid_deps)
     broadcast_project_update(task.project, "task_updated")
     return task
 
@@ -381,6 +424,7 @@ def calendar_feed(team_id: str, *, from_date: str | None = None, to_date: str | 
                 "description": task.description,
                 "priority": task.priority,
                 "assignee_email": task.assignee.email if task.assignee else None,
+                "parent_task_id": str(task.parent_task_id) if task.parent_task_id else None,
             }
         )
 

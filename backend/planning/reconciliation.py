@@ -146,6 +146,7 @@ def enrich_mutations_with_resolution(project: Project, mutations: list[dict[str,
         entity_type = str(op.get("entity_type") or "task").lower()
         operation = str(op.get("op") or "").lower()
 
+        # 1. Resolve ID if missing
         if operation in {"update", "delete"} and not op.get("id"):
             if entity_type == "milestone":
                 match = resolve_milestone(project, op, ms_by_id=ms_by_id, ms_by_semantic=ms_by_semantic, ms_by_title=ms_by_title)
@@ -159,6 +160,46 @@ def enrich_mutations_with_resolution(project: Project, mutations: list[dict[str,
                 op["_match_confidence"] = match.confidence
             elif operation == "update" and match.confidence < EMBEDDING_MATCH_THRESHOLD:
                 op["_ambiguous"] = True
+
+        # 2. Attach title/name and old_fields for display
+        op_id = op.get("id") or op.get("task_id") or op.get("milestone_id")
+        if op_id:
+            if entity_type == "milestone":
+                m_obj = ms_by_id.get(str(op_id))
+                if m_obj:
+                    if not op.get("title"):
+                        op["title"] = m_obj.title
+                    if operation == "update":
+                        old_f = {}
+                        for k in op.get("fields", {}).keys():
+                            if hasattr(m_obj, k):
+                                val = getattr(m_obj, k)
+                                old_f[k] = str(val) if val is not None else ""
+                        op["old_fields"] = old_f
+            else:
+                t_obj = tasks_by_id.get(str(op_id))
+                if t_obj:
+                    if not op.get("title"):
+                        op["title"] = t_obj.title
+                    if operation == "update":
+                        old_f = {}
+                        for k in op.get("fields", {}).keys():
+                            if hasattr(t_obj, k):
+                                val = getattr(t_obj, k)
+                                old_f[k] = str(val) if val is not None else ""
+                        op["old_fields"] = old_f
+        elif operation == "set_dependencies":
+            t_id = op.get("task_id")
+            t_obj = tasks_by_id.get(str(t_id))
+            if t_obj:
+                op["title"] = f"Update dependencies for: {t_obj.title}"
+            dep_names = []
+            for dep_id in op.get("depends_on", []):
+                dep_obj = tasks_by_id.get(str(dep_id))
+                if dep_obj:
+                    dep_names.append(dep_obj.title)
+            if dep_names:
+                op["dependency_titles"] = dep_names
 
         enriched.append(op)
     return enriched

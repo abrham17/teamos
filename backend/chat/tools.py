@@ -27,6 +27,17 @@ logger = logging.getLogger(__name__)
 CHAT_TOOL_CACHE_PREFIX = "chat_tool:idemp:"
 
 
+def _check_tool_idempotency(team_id: str, tool_name: str, idempotency_key: str) -> bool:
+    """Returns True if this key has already been processed (duplicate)."""
+    if not idempotency_key:
+        return False
+    cache_key = f"{CHAT_TOOL_CACHE_PREFIX}{team_id}:{tool_name}:{idempotency_key}"
+    from django.core.cache import cache
+    if not cache.add(cache_key, "1", timeout=300):
+        return True
+    return False
+
+
 @dataclass
 class ToolContext:
     user: User
@@ -288,6 +299,13 @@ _PLAN_MUTATE_NOTE = (
     "For vague requests, first resolve semantically with project_query/task_query/milestone_query."
 )
 
+_PLAN_IDEM_KEY = {
+    "idempotency_key": {
+        "type": "string",
+        "description": "Optional key to avoid duplicate mutations on retries.",
+    },
+}
+
 _PLAN_RISK_ACTION_SCHEMA = {
     "type": "array",
     "items": {
@@ -423,6 +441,7 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                         "name": {"type": "string"},
                         "description": {"type": "string"},
                         "status": {"type": "string", "enum": ["active", "on_hold", "completed", "archived"]},
+                        **_PLAN_IDEM_KEY,
                     },
                     "required": ["name"],
                 },
@@ -444,6 +463,7 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                         "prompt": {"type": "string", "description": "The mission or objective for the project."},
                         "mode": {"type": "string", "enum": ["create", "manage"], "default": "create"},
                         **_PLAN_PROJECT_LOCATOR,
+                        **_PLAN_IDEM_KEY,
                     },
                     "required": ["prompt"],
                 },
@@ -462,6 +482,7 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                     "properties": {
                         "project_id": {"type": "string", "description": "The UUID of the project containing the task."},
                         "task_id": {"type": "string", "description": "The UUID of the task to decompose daily."},
+                        **_PLAN_IDEM_KEY,
                     },
                     "required": ["project_id", "task_id"],
                 },
@@ -479,6 +500,7 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                         "name": {"type": "string"},
                         "description": {"type": "string"},
                         "status": {"type": "string"},
+                        **_PLAN_IDEM_KEY,
                     },
                 },
             },
@@ -506,6 +528,7 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                             "items": {"type": "string"},
                             "description": "List of task IDs this task depends on",
                         },
+                        **_PLAN_IDEM_KEY,
                     },
                     "required": ["title"],
                 },
@@ -538,6 +561,7 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                             "type": "array",
                             "items": {"type": "string"},
                         },
+                        **_PLAN_IDEM_KEY,
                     },
                 },
             },
@@ -557,6 +581,7 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                         "description": {"type": "string"},
                         "status": {"type": "string"},
                         "target_date": {"type": "string", "description": "YYYY-MM-DD"},
+                        **_PLAN_IDEM_KEY,
                     },
                     "required": ["title"],
                 },
@@ -579,6 +604,7 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                             "description": "pending | reached | missed; aliases: done, achieved",
                         },
                         "target_date": {"type": "string", "description": "YYYY-MM-DD"},
+                        **_PLAN_IDEM_KEY,
                     },
                 },
             },
@@ -590,7 +616,7 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                 "description": "Delete a task by task_id or task_query. " + _PLAN_MUTATE_NOTE,
                 "parameters": {
                     "type": "object",
-                    "properties": {**_PLAN_TASK_LOCATOR, **_PLAN_PROJECT_LOCATOR},
+                    "properties": {**_PLAN_TASK_LOCATOR, **_PLAN_PROJECT_LOCATOR, **_PLAN_IDEM_KEY},
                 },
             },
         },
@@ -601,7 +627,7 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                 "description": "Delete a project by project_id or project_query. " + _PLAN_MUTATE_NOTE,
                 "parameters": {
                     "type": "object",
-                    "properties": dict(_PLAN_PROJECT_LOCATOR),
+                    "properties": {**_PLAN_PROJECT_LOCATOR, **_PLAN_IDEM_KEY},
                 },
             },
         },
@@ -627,7 +653,7 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                 "description": "Sync a project to its wiki page (project_id or project_query).",
                 "parameters": {
                     "type": "object",
-                    "properties": dict(_PLAN_PROJECT_LOCATOR),
+                    "properties": {**_PLAN_PROJECT_LOCATOR, **_PLAN_IDEM_KEY},
                 },
             },
         },
@@ -684,6 +710,7 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                     "properties": {
                         **_PLAN_PROJECT_LOCATOR,
                         "actions": _PLAN_RISK_ACTION_SCHEMA,
+                        **_PLAN_IDEM_KEY,
                     },
                     "required": ["actions"],
                 },
@@ -700,7 +727,7 @@ def openai_plan_tool_schemas() -> list[dict[str, Any]]:
                 ),
                 "parameters": {
                     "type": "object",
-                    "properties": dict(_PLAN_PROJECT_LOCATOR),
+                    "properties": {**_PLAN_PROJECT_LOCATOR, **_PLAN_IDEM_KEY},
                 },
             },
         },
@@ -1460,6 +1487,9 @@ def _plan_read_entity(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 def _plan_create_project(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     from planning.services import create_project as srv_create_project
 
+    if _check_tool_idempotency(ctx.team_id, "plan_create_project", args.get("idempotency_key") or ""):
+        return {"ok": True, "deduplicated": True, "message": "Idempotent replay; no new project created."}
+
     name = (args.get("name") or "").strip()
     if not name:
         return {"ok": False, "error": "name_required"}
@@ -1480,6 +1510,9 @@ def _plan_create_project(ctx: ToolContext, args: dict[str, Any]) -> dict[str, An
 def _plan_update_project(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     from chat.plan_resolve import require_project
     from planning.services import update_project as srv_update_project
+
+    if _check_tool_idempotency(ctx.team_id, "plan_update_project", args.get("idempotency_key") or ""):
+        return {"ok": True, "deduplicated": True, "message": "Idempotent replay; no update applied."}
 
     project, err_resp = require_project(ctx, args)
     if err_resp:
@@ -1517,6 +1550,9 @@ def _resolve_assignee(team_id: str, assignee_id: Any) -> User | None:
 def _plan_create_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     from chat.plan_resolve import normalize_task_status, require_project
     from planning.services import create_task as srv_create_task
+
+    if _check_tool_idempotency(ctx.team_id, "plan_create_task", args.get("idempotency_key") or ""):
+        return {"ok": True, "deduplicated": True, "message": "Idempotent replay; no new task created."}
 
     title = (args.get("title") or "").strip()
     if not title:
@@ -1557,6 +1593,9 @@ def _plan_update_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     from chat.plan_resolve import apply_task_payload, require_task
     from planning.services import update_task as srv_update_task
 
+    if _check_tool_idempotency(ctx.team_id, "plan_update_task", args.get("idempotency_key") or ""):
+        return {"ok": True, "deduplicated": True, "message": "Idempotent replay; no update applied."}
+
     task, err_resp = require_task(ctx, args)
     if err_resp:
         return err_resp
@@ -1585,6 +1624,9 @@ def _plan_update_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 def _plan_create_milestone(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     from chat.plan_resolve import normalize_milestone_status, require_project
     from planning.services import create_milestone as srv_create_milestone
+
+    if _check_tool_idempotency(ctx.team_id, "plan_create_milestone", args.get("idempotency_key") or ""):
+        return {"ok": True, "deduplicated": True, "message": "Idempotent replay; no new milestone created."}
 
     title = (args.get("title") or "").strip()
     if not title:
@@ -1619,6 +1661,9 @@ def _plan_update_milestone(ctx: ToolContext, args: dict[str, Any]) -> dict[str, 
     from chat.plan_resolve import apply_milestone_payload, require_milestone
     from planning.services import update_milestone as srv_update_milestone
 
+    if _check_tool_idempotency(ctx.team_id, "plan_update_milestone", args.get("idempotency_key") or ""):
+        return {"ok": True, "deduplicated": True, "message": "Idempotent replay; no update applied."}
+
     milestone, err_resp = require_milestone(ctx, args)
     if err_resp:
         return err_resp
@@ -1642,6 +1687,9 @@ def _plan_delete_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     from chat.plan_resolve import require_task
     from planning.services import delete_task as srv_delete_task
 
+    if _check_tool_idempotency(ctx.team_id, "plan_delete_task", args.get("idempotency_key") or ""):
+        return {"ok": True, "deduplicated": True, "message": "Idempotent replay; no delete applied."}
+
     task, err_resp = require_task(ctx, args)
     if err_resp:
         return err_resp
@@ -1659,6 +1707,9 @@ def _plan_delete_task(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 def _plan_decompose_task_daily(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     from planning.day_decomposer import decompose_task_daily
     from planning.serializers import TaskSerializer
+
+    if _check_tool_idempotency(ctx.team_id, "plan_decompose_task_daily", args.get("idempotency_key") or ""):
+        return {"ok": True, "deduplicated": True, "message": "Idempotent replay; no new decomposition."}
 
     project_id = args.get("project_id")
     task_id = args.get("task_id")
@@ -1686,6 +1737,9 @@ def _plan_decompose_task_daily(ctx: ToolContext, args: dict[str, Any]) -> dict[s
 def _plan_delete_project(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     from chat.plan_resolve import require_project
     from planning.services import delete_project as srv_delete_project
+
+    if _check_tool_idempotency(ctx.team_id, "plan_delete_project", args.get("idempotency_key") or ""):
+        return {"ok": True, "deduplicated": True, "message": "Idempotent replay; no delete applied."}
 
     project, err_resp = require_project(ctx, args)
     if err_resp:
@@ -1715,6 +1769,9 @@ def _plan_generate_draft(ctx: ToolContext, args: dict) -> dict:
 
     Returns the created project details. No more N+1 tool calls.
     """
+    if _check_tool_idempotency(ctx.team_id, "plan_generate_draft", args.get("idempotency_key") or ""):
+        return {"ok": True, "deduplicated": True, "message": "Idempotent replay; draft generation skipped."}
+
     from chat.plan_resolve import require_project
     from planning.engine import PlanningEngine
     from planning.services import get_plan_mutation_context
@@ -1802,6 +1859,9 @@ def _plan_sync_wiki(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     from chat.plan_resolve import require_project
     from planning.agent_sync import sync_project_to_wiki
 
+    if _check_tool_idempotency(ctx.team_id, "plan_sync_wiki", args.get("idempotency_key") or ""):
+        return {"ok": True, "deduplicated": True, "message": "Idempotent replay; wiki sync skipped."}
+
     project, err_resp = require_project(ctx, args)
     if err_resp:
         return err_resp
@@ -1888,6 +1948,9 @@ def _plan_apply_risk_resolution(ctx: ToolContext, args: dict[str, Any]) -> dict[
     from planning.agent_sync import detect_date_conflicts
     from planning.remediation import apply_risk_actions, assess_project_risk
 
+    if _check_tool_idempotency(ctx.team_id, "plan_apply_risk_resolution", args.get("idempotency_key") or ""):
+        return {"ok": True, "deduplicated": True, "message": "Idempotent replay; risk actions skipped."}
+
     project, err_resp = require_project(ctx, args)
     if err_resp:
         return err_resp
@@ -1917,6 +1980,9 @@ def _plan_apply_risk_resolution(ctx: ToolContext, args: dict[str, Any]) -> dict[
 def _plan_resolve_risk(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     from chat.plan_resolve import require_project
     from planning.remediation import remediate_project
+
+    if _check_tool_idempotency(ctx.team_id, "plan_resolve_risk", args.get("idempotency_key") or ""):
+        return {"ok": True, "deduplicated": True, "message": "Idempotent replay; risk resolution skipped."}
 
     project, err_resp = require_project(ctx, args)
     if err_resp:

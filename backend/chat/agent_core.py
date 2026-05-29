@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 10
 MAX_TOOLS_PER_REQUEST = 30
-TOOL_TIMEOUT_SECONDS = 20.0
+TOOL_TIMEOUT_SECONDS = 60.0
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:
@@ -374,10 +374,20 @@ class AgentCore:
                     stream=True,
                 )
                 for chunk in stream_resp:
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        piece = chunk.choices[0].delta.content
-                        final_text += piece
-                        yield _sse("chunk", {"token": piece})
+                    if chunk.choices:
+                        delta = chunk.choices[0].delta
+                        
+                        # Capture live reasoning content (thought process) from DeepSeek Pro / OpenRouter
+                        reasoning_piece = getattr(delta, "reasoning_content", None) or (
+                            delta.model_extra.get("reasoning_content") if hasattr(delta, "model_extra") and delta.model_extra else None
+                        )
+                        if reasoning_piece:
+                            yield _sse("thinking", {"content": reasoning_piece})
+
+                        if delta.content:
+                            piece = delta.content
+                            final_text += piece
+                            yield _sse("chunk", {"token": piece})
 
             if not final_text.strip():
                 final_text = "_No summary was returned._"
@@ -385,7 +395,7 @@ class AgentCore:
 
             state["tool_trace"] = tool_trace
             state["full_text"] = final_text
-            state["model_used"] = getattr(self, "_last_model_used", "gpt-4o")
+            state["model_used"] = getattr(self, "_last_model_used", "deepseek/deepseek-v4-pro")
             state["ok"] = True
 
             # Store episodic memory

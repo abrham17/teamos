@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Iterator
 
@@ -98,26 +99,89 @@ class PlanningReasoningPipeline:
     understanding — no hardcoded domain list needed.
     """
 
-    def __init__(self, team: Team, user: User):
+    def __init__(self, team: Team, user: User, sse_queue: Optional[Any] = None):
         self.team = team
         self.user = user
         self.team_id = str(team.id)
         self.domain_ctx = None   # Set during Stage 2
+        self.sse_queue = sse_queue
 
     def run(
         self,
         prompt: str,
         mode: str = "create",
         project_context: dict | None = None,
+        chat_history: list[dict] | None = None,
     ) -> Iterator[str]:
+        import queue
+        import threading
+
+        q = self.sse_queue or queue.Queue()
+        self.sse_queue = q
+
+        def worker():
+            try:
+                self._run_internal(prompt, mode, project_context, chat_history, q)
+            except Exception as e:
+                logger.exception("Reasoning pipeline worker failed")
+                q.put(f"event: agent_error\ndata: {json.dumps({'detail': str(e)})}\n\n")
+            finally:
+                q.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            yield item
+
+    def _run_internal(
+        self,
+        prompt: str,
+        mode: str,
+        project_context: dict | None,
+        chat_history: list[dict] | None,
+        q: Any,
+    ) -> None:
+        reasoning_stages = []
 
         # ── Stage 1: Research (wiki-first) ────────────────────────
-        yield _sse("agent_status", {"status": "Searching wiki knowledge base..."})
-        yield _sse("agent_step", {"name": "reasoning_research", "arguments": json.dumps({"query": prompt[:80]})})
+        stage_start = time.time()
+        q.put(_sse("agent_status", {"status": "Searching wiki knowledge base..."}))
+        q.put(_sse("agent_activity", {
+            "id": "research-start",
+            "kind": "status",
+            "message": "I'm searching the team wiki for relevant knowledge about this project...",
+            "status": "running",
+        }))
+        q.put(_sse("agent_step", {"name": "reasoning_research", "arguments": json.dumps({"query": prompt[:80]})}))
 
         research = self._research(prompt)
+        research_duration_ms = int((time.time() - stage_start) * 1000)
 
-        yield _sse("agent_result", {
+        q.put(_sse("agent_activity", {
+            "id": "research-done",
+            "kind": "status",
+            "message": f"I found {len(research.snippets)} wiki pages and identified {len(research.knowledge_gaps)} knowledge gaps.",
+            "status": "done",
+            "detail": {
+                "snippets_found": len(research.snippets),
+                "knowledge_gaps": len(research.knowledge_gaps),
+                "wiki_sparse": research.wiki_is_sparse,
+                "duration_ms": research_duration_ms,
+            }
+        }))
+        reasoning_stages.append({
+            "name": "research",
+            "label": "Research",
+            "status": "done",
+            "duration_ms": research_duration_ms,
+            "summary": f"Found {len(research.snippets)} wiki snippets",
+            "metrics": {"snippets": len(research.snippets), "knowledge_gaps": len(research.knowledge_gaps)},
+        })
+
+        q.put(_sse("agent_result", {
             "name": "reasoning_research",
             "ok": True,
             "result": {
@@ -125,16 +189,70 @@ class PlanningReasoningPipeline:
                 "wiki_sparse": research.wiki_is_sparse,
                 "knowledge_gaps": research.knowledge_gaps[:3],
             },
-        })
+        }))
+
+        # ── Interactive Questions Flow (Phase 2.5) ───────────────────
+        from .history_helpers import (
+            decide_clarifying_question,
+            extract_answered_topics,
+            consolidate_planning_prompt,
+        )
+
+        already_answered = extract_answered_topics(chat_history)
+        question = decide_clarifying_question(
+            prompt=prompt,
+            chat_history=chat_history or [],
+            team=self.team,
+            mode=mode,
+            wiki_snippets_found=len(research.snippets),
+            knowledge_gaps=research.knowledge_gaps,
+            wiki_is_sparse=research.wiki_is_sparse,
+            already_answered_topics=already_answered,
+        )
+        if question:
+            q.put(_sse("ask_user", question))
+            return
+
+        # Consolidate prompt with history context before downstream stages
+        prompt = consolidate_planning_prompt(prompt, chat_history, self.team)
 
         # ── Stage 2: Synthesize Domain from wiki + prompt ─────────
-        yield _sse("agent_status", {"status": "Synthesizing domain context from wiki knowledge..."})
-        yield _sse("agent_step", {"name": "reasoning_synthesize", "arguments": "{}"})
+        stage_start = time.time()
+        q.put(_sse("agent_status", {"status": "Synthesizing domain context from wiki knowledge..."}))
+        q.put(_sse("agent_activity", {
+            "id": "synthesize-start",
+            "kind": "status",
+            "message": "I'm analyzing the wiki content to understand the domain context and technical vocabulary...",
+            "status": "running",
+        }))
+        q.put(_sse("agent_step", {"name": "reasoning_synthesize", "arguments": "{}"}))
 
         from planning.domain_classifier import synthesize_domain
         self.domain_ctx = synthesize_domain(prompt, research.context_text, self.team)
+        synthesize_duration_ms = int((time.time() - stage_start) * 1000)
 
-        yield _sse("agent_result", {
+        q.put(_sse("agent_activity", {
+            "id": "synthesize-done",
+            "kind": "status",
+            "message": f"I've identified this as a {self.domain_ctx.domain}/{self.domain_ctx.sub_domain} project. Key vocabulary includes {', '.join(self.domain_ctx.task_vocabulary[:4])}.",
+            "status": "done",
+            "detail": {
+                "domain": self.domain_ctx.domain,
+                "sub_domain": self.domain_ctx.sub_domain,
+                "vocabulary_count": len(self.domain_ctx.task_vocabulary),
+                "duration_ms": synthesize_duration_ms,
+            }
+        }))
+        reasoning_stages.append({
+            "name": "synthesize",
+            "label": "Synthesize",
+            "status": "done",
+            "duration_ms": synthesize_duration_ms,
+            "summary": f"Domain: {self.domain_ctx.domain} / {self.domain_ctx.sub_domain}",
+            "metrics": {"domain": self.domain_ctx.domain, "vocabulary_count": len(self.domain_ctx.task_vocabulary)},
+        })
+
+        q.put(_sse("agent_result", {
             "name": "reasoning_synthesize",
             "ok": True,
             "result": {
@@ -144,11 +262,18 @@ class PlanningReasoningPipeline:
                 "vocabulary_count": len(self.domain_ctx.task_vocabulary),
                 "seed_tasks_available": len(self.domain_ctx.seed_tasks),
             },
-        })
+        }))
 
-        # ── Stage 3 & 4: Combined Decompose & Draft (Phase 5.1 & Speculative Strategy branching) ───
-        yield _sse("agent_status", {"status": f"Speculatively decomposing and drafting alternative plans ({self.domain_ctx.sub_domain})..."})
-        yield _sse("agent_step", {"name": "reasoning_decompose", "arguments": json.dumps({"strategies": ["fast_track", "risk_mitigated"]})})
+        # ── Stage 3 & 4: Combined Decompose & Draft ──────────────────
+        stage_start = time.time()
+        q.put(_sse("agent_status", {"status": f"Speculatively decomposing and drafting alternative plans ({self.domain_ctx.sub_domain})..."}))
+        q.put(_sse("agent_activity", {
+            "id": "decompose-start",
+            "kind": "status",
+            "message": "I'm breaking down the mission into concrete sub-goals and generating two parallel plan strategies...",
+            "status": "running",
+        }))
+        q.put(_sse("agent_step", {"name": "reasoning_decompose", "arguments": json.dumps({"strategies": ["fast_track", "risk_mitigated"]})}))
 
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
@@ -159,17 +284,46 @@ class PlanningReasoningPipeline:
                 fast_decomp, fast_draft = future_fast.result()
             except Exception as e:
                 logger.exception("Fast-track strategy generation failed")
-                # Fallback: run balanced sequentially
-                fast_decomp, fast_draft = self._decompose_and_draft(prompt, mode, project_context, research, "balanced")
+                fast_decomp, fast_draft = self._decompose_and_draft(prompt, mode, project_context, research, "balanced", sse_queue=q)
                 
             try:
                 risk_decomp, risk_draft = future_risk.result()
             except Exception as e:
                 logger.exception("Risk-mitigated strategy generation failed")
-                # Fallback to copy fast
                 risk_decomp, risk_draft = fast_decomp, fast_draft
 
-        yield _sse("agent_result", {
+        decompose_duration_ms = int((time.time() - stage_start) * 1000)
+
+        q.put(_sse("agent_activity", {
+            "id": "decompose-done",
+            "kind": "status",
+            "message": f"I've generated {len(fast_decomp.goals)} sub-goals and drafted 2 plan candidates. Fast-track has {len(fast_draft.tasks)} tasks, risk-mitigated has {len(risk_draft.tasks)} tasks.",
+            "status": "done",
+            "detail": {
+                "fast_track_tasks": len(fast_draft.tasks),
+                "risk_mitigated_tasks": len(risk_draft.tasks),
+                "goals": len(fast_decomp.goals),
+                "duration_ms": decompose_duration_ms,
+            }
+        }))
+        reasoning_stages.append({
+            "name": "decompose",
+            "label": "Decompose",
+            "status": "done",
+            "duration_ms": decompose_duration_ms,
+            "summary": f"Generated {len(fast_decomp.goals)} goals",
+            "metrics": {"fast_track_goals": len(fast_decomp.goals), "risk_mitigated_goals": len(risk_decomp.goals)},
+        })
+        reasoning_stages.append({
+            "name": "draft",
+            "label": "Draft",
+            "status": "done",
+            "duration_ms": 0,
+            "summary": f"2 candidates generated",
+            "metrics": {"fast_track_tasks": len(fast_draft.tasks), "risk_mitigated_tasks": len(risk_draft.tasks)},
+        })
+
+        q.put(_sse("agent_result", {
             "name": "reasoning_decompose",
             "ok": True,
             "result": {
@@ -177,10 +331,10 @@ class PlanningReasoningPipeline:
                 "risk_mitigated_goals": len(risk_decomp.goals),
                 "constraints_analyzed": len(fast_decomp.constraints) + len(risk_decomp.constraints),
             },
-        })
+        }))
 
-        yield _sse("agent_step", {"name": "reasoning_draft", "arguments": json.dumps({"mode": mode})})
-        yield _sse("agent_result", {
+        q.put(_sse("agent_step", {"name": "reasoning_draft", "arguments": json.dumps({"mode": mode})}))
+        q.put(_sse("agent_result", {
             "name": "reasoning_draft",
             "ok": True,
             "result": {
@@ -188,17 +342,46 @@ class PlanningReasoningPipeline:
                 "fast_track_tasks": len(fast_draft.tasks),
                 "risk_mitigated_tasks": len(risk_draft.tasks),
             },
-        })
+        }))
 
         # ── Stage 5: Critique & Path Evaluation Selection ──────────
-        yield _sse("agent_status", {"status": "Evaluating alternative paths and self-critiquing..."})
-        yield _sse("agent_step", {"name": "reasoning_critique", "arguments": json.dumps({"candidates": ["fast_track", "risk_mitigated"]})})
+        stage_start = time.time()
+        q.put(_sse("agent_status", {"status": "Evaluating alternative paths and self-critiquing..."}))
+        q.put(_sse("agent_activity", {
+            "id": "critique-start",
+            "kind": "status",
+            "message": "I'm evaluating both plan strategies against the team's velocity and project constraints...",
+            "status": "running",
+        }))
+        q.put(_sse("agent_step", {"name": "reasoning_critique", "arguments": json.dumps({"candidates": ["fast_track", "risk_mitigated"]})}))
 
         strategy_choice, draft, decomposition, critique = self._evaluate_and_select(
             fast_decomp, fast_draft, risk_decomp, risk_draft
         )
+        critique_duration_ms = int((time.time() - stage_start) * 1000)
 
-        yield _sse("agent_result", {
+        q.put(_sse("agent_activity", {
+            "id": "critique-done",
+            "kind": "status",
+            "message": f"I've selected the {strategy_choice} strategy with a critique score of {critique.score}/100. This choice balances delivery speed with engineering quality.",
+            "status": "done",
+            "detail": {
+                "selected_strategy": strategy_choice,
+                "score": critique.score,
+                "issues_found": len(critique.issues),
+                "duration_ms": critique_duration_ms,
+            }
+        }))
+        reasoning_stages.append({
+            "name": "critique",
+            "label": "Critique",
+            "status": "done",
+            "duration_ms": critique_duration_ms,
+            "summary": f"Selected {strategy_choice} (score: {critique.score}/100)",
+            "metrics": {"selected_strategy": strategy_choice, "score": critique.score},
+        })
+
+        q.put(_sse("agent_result", {
             "name": "reasoning_critique",
             "ok": True,
             "result": {
@@ -207,26 +390,98 @@ class PlanningReasoningPipeline:
                 "issues_found": len(critique.issues),
                 "suggestions": critique.suggestions[:3],
             },
-        })
+        }))
 
         # ── Stage 6: Finalize ─────────────────────────────────────
-        yield _sse("agent_status", {"status": "Inferring dependencies and scheduling..."})
-        yield _sse("agent_step", {"name": "reasoning_finalize", "arguments": "{}"})
+        stage_start = time.time()
+        q.put(_sse("agent_status", {"status": "Inferring dependencies and scheduling..."}))
+        q.put(_sse("agent_activity", {
+            "id": "finalize-start",
+            "kind": "status",
+            "message": "I'm now inferring task dependencies and adjusting dates based on the team's historical velocity...",
+            "status": "running",
+        }))
+        q.put(_sse("agent_step", {"name": "reasoning_finalize", "arguments": "{}"}))
 
         draft = self._finalize(draft)
+        finalize_duration_ms = int((time.time() - stage_start) * 1000)
 
-        yield _sse("agent_result", {
+        deps_inferred = sum(1 for t in draft.tasks if t.get("dependency_ids"))
+        tasks_scheduled = sum(1 for t in draft.tasks if t.get("start_date"))
+
+        q.put(_sse("agent_activity", {
+            "id": "finalize-done",
+            "kind": "status",
+            "message": f"I've inferred {deps_inferred} task dependencies and scheduled {tasks_scheduled} tasks based on team velocity. The plan is ready for review.",
+            "status": "done",
+            "detail": {
+                "dependencies_inferred": deps_inferred,
+                "tasks_scheduled": tasks_scheduled,
+                "duration_ms": finalize_duration_ms,
+            }
+        }))
+        reasoning_stages.append({
+            "name": "finalize",
+            "label": "Finalize",
+            "status": "done",
+            "duration_ms": finalize_duration_ms,
+            "summary": f"{deps_inferred} dependencies inferred",
+            "metrics": {"dependencies_inferred": deps_inferred},
+        })
+
+        q.put(_sse("agent_result", {
             "name": "reasoning_finalize",
             "ok": True,
             "result": {
                 "dependencies_inferred": sum(1 for t in draft.tasks if t.get("dependency_ids")),
                 "tasks_scheduled": sum(1 for t in draft.tasks if t.get("start_date")),
             },
-        })
+        }))
 
-        yield _sse("agent_status", {"status": "Plan reasoning complete."})
+        q.put(_sse("agent_status", {"status": "Plan reasoning complete."}))
 
-        yield _sse("reasoning_done", {
+        # Build wiki snippets with URLs for frontend
+        wiki_snippets_for_frontend = [
+            {
+                "source": s.source,
+                "content": s.content[:200] + "..." if len(s.content) > 200 else s.content,
+                "score": s.score,
+                "page_id": s.page_id,
+                "page_url": f"/wiki?page={s.page_id}" if s.page_id else None,
+                "match": s.match,
+            }
+            for s in research.snippets[:10]
+        ]
+
+        # Build domain context for frontend
+        domain_context_for_frontend = None
+        if self.domain_ctx:
+            domain_context_for_frontend = {
+                "domain": self.domain_ctx.domain,
+                "sub_domain": self.domain_ctx.sub_domain,
+                "expert_persona": self.domain_ctx.expert_persona,
+                "vocabulary": self.domain_ctx.task_vocabulary[:20],
+                "constraints": self.domain_ctx.domain_constraints,
+                "dependency_patterns": getattr(self.domain_ctx, "dependency_patterns", None) or [],
+            }
+
+        # Build strategy comparison for frontend
+        strategy_comparison_for_frontend = {
+            "fast_track": {
+                "tasks": len(fast_draft.tasks),
+                "duration_days": 0,
+                "description": "Maximum concurrency, rapid sprint lifecycle",
+            },
+            "risk_mitigated": {
+                "tasks": len(risk_draft.tasks),
+                "duration_days": 0,
+                "description": "Mandatory QA, buffer time, stability focus",
+            },
+            "selected": strategy_choice,
+            "justification": critique.suggestions[0] if critique.suggestions else f"Selected {strategy_choice} based on realism and engineering integrity",
+        }
+
+        q.put(_sse("reasoning_done", {
             "projectName": draft.project_name,
             "description": draft.description,
             "tasks": draft.tasks,
@@ -239,7 +494,11 @@ class PlanningReasoningPipeline:
             "critique_suggestions": critique.suggestions,
             "domain": self.domain_ctx.domain,
             "sub_domain": self.domain_ctx.sub_domain,
-        })
+            "reasoning_stages": reasoning_stages,
+            "wiki_snippets": wiki_snippets_for_frontend,
+            "domain_context": domain_context_for_frontend,
+            "strategy_comparison": strategy_comparison_for_frontend,
+        }))
 
     # ── Stage Implementations ─────────────────────────────────────────
 
@@ -321,10 +580,32 @@ class PlanningReasoningPipeline:
         snippets.sort(key=lambda s: -s.score)
         snippets = snippets[:15]
 
+        # Context Budgeting (Phase 3): Limit retrieved snippet size to 15k tokens (~60k chars)
+        MAX_SNIPPETS_CHARS = 60000
+        budgeted_snippets = []
+        current_chars = 0
+        for s in snippets:
+            snippet_len = len(s.source) + len(s.content) + 10
+            if current_chars + snippet_len > MAX_SNIPPETS_CHARS:
+                # Truncate content of last acceptable snippet if space allows
+                space_left = MAX_SNIPPETS_CHARS - current_chars - len(s.source) - 15
+                if space_left > 100:
+                    truncated_content = s.content[:space_left] + "..."
+                    budgeted_snippets.append(WikiSnippet(
+                        source=s.source,
+                        content=truncated_content,
+                        score=s.score,
+                        page_id=s.page_id,
+                        match=s.match,
+                    ))
+                break
+            budgeted_snippets.append(s)
+            current_chars += snippet_len
+
         # Build pre-formatted context string for LLM
         context_parts = [
             f"[{s.source}]: {s.content}"
-            for s in snippets
+            for s in budgeted_snippets
         ]
         context_text = "\n\n".join(context_parts)
 
@@ -366,6 +647,7 @@ class PlanningReasoningPipeline:
         project_context: dict | None,
         research: ResearchResult,
         strategy: str = "balanced",
+        sse_queue: Any = None,
     ) -> tuple[DecompositionResult, PlanDraft]:
         """Combine decomposition and drafting stages into a single call (Phase 5.1). Supports strategy branching."""
         ctx = self.domain_ctx
@@ -417,34 +699,30 @@ class PlanningReasoningPipeline:
                 "- Provide safe, generous schedule ranges with buffer time built-in.\n\n"
             )
 
+        expertise_text = "\n".join(expertise_lines) if expertise_lines else "No specific expertise mapping."
+
         system = (
-            persona_block
-            + f"You are the TeamOS Plan Architect. Today is {today_str}.\n\n"
-            + strategy_block
-            + "First, decompose this project mission into SPECIFIC, domain-specific sub-goals.\n"
-            "Sub-goals must be technical and concrete (not generic phases).\n"
-            "Then, generate a grounded project plan details to achieve those goals.\n\n"
-            "CRITICAL RULES:\n"
-            "- Task titles MUST be domain-specific and technical.\n"
-            "- REJECTED: 'Implement features', 'Define requirements', 'Test the system'\n"
-            "- REQUIRED: 'Build KYC/AML verification pipeline', 'Implement settlement engine'\n"
-            "- Reference wiki pages with [[Page Title]] syntax in descriptions.\n"
-            "- Add a 'reasoning' field to each task explaining why it exists.\n"
-            "- Assign tasks using assignee_id from Team Expertise.\n"
-            f"- Every task needs startDate and endDate (YYYY-MM-DD) starting on or after today ({today_str}).\n"
-            "CRITICAL DATE RULE: All dates MUST use the current year. Any date before 2026-05-01 is INVALID and will be rejected. "
-            "Use ONLY dates in 2026 or later. Never generate dates in 2023, 2024, or early 2025.\n\n"
-            "Return JSON:\n"
-            "  goals: [{title, description, constraints, assumptions}]\n"
-            "  scope_summary: string\n"
-            "  projectName: string\n"
-            "  description: string (markdown)\n"
-            "  tasks: [{id, title, description, status, priority, startDate, endDate,"
-            "           assignee_id, reasoning, wikiReferences: []}]\n"
-            "  milestones: [{id, title, date, description, status}]\n"
-            "  members: [{userId, role}]\n"
-            "  reasoning_traces: [string]\n"
-            "  wiki_references: [string]\n"
+            f"ROLE: expert project planner specializing in the {ctx.domain if ctx else 'general'} domain.\n"
+            f"EXPERT_PERSONA: {ctx.expert_persona if ctx else 'Experienced manager.'}\n"
+            f"STRATEGY: {strategy}\n"
+            "TASK: Decompose target goals and draft a high-fidelity plan matching today's reality.\n"
+            "VOCABULARY:\n"
+            + (", ".join(ctx.task_vocabulary[:30]) if ctx else "standard planner")
+            + "\n"
+            "OUTPUT_SCHEMA:\n"
+            "{\n"
+            "  \"goals\": [{\"title\": str, \"description\": str, \"constraints\": [str], \"assumptions\": [str]}],\n"
+            "  \"constraints\": [str],\n"
+            "  \"assumptions\": [str],\n"
+            "  \"scope_summary\": str,\n"
+            "  \"projectName\": str,\n"
+            "  \"description\": str,\n"
+            "  \"tasks\": [{\"id\": str, \"title\": str, \"description\": str, \"status\": str, \"priority\": str, \"startDate\": str, \"endDate\": str, \"assignee_id\": str, \"reasoning\": str, \"wikiReferences\": [str]}],\n"
+            "  \"milestones\": [{\"id\": str, \"title\": str, \"date\": str, \"description\": str, \"status\": str}],\n"
+            "  \"members\": [{\"userId\": str, \"role\": str}],\n"
+            "  \"reasoning_traces\": [str],\n"
+            "  \"wiki_references\": [str]\n"
+            "}"
         )
 
         user_content = (
@@ -471,6 +749,7 @@ class PlanningReasoningPipeline:
                 {"role": "user", "content": user_content},
             ],
             default_on_error={},
+            sse_queue=sse_queue,
         )
 
         if not result:
@@ -532,16 +811,18 @@ class PlanningReasoningPipeline:
         today_str = timezone.now().strftime("%A, %B %d, %Y")
 
         system = (
-            domain_block
-            + f"Decompose this project mission into SPECIFIC sub-goals. Today is {today_str}.\n\n"
+            f"ROLE: AI domain planner. Today: {today_str}.\n"
+            f"DOMAIN: {ctx.domain if ctx else 'general'} / {ctx.sub_domain if ctx else 'general'}\n"
             "RULES:\n"
-            "- Sub-goals must be domain-specific. Do NOT use generic phases.\n"
-            "- BAD: 'Implement core features' | GOOD: 'Build KYC/AML verification pipeline'\n"
-            "- BAD: 'Analyze requirements'    | GOOD: 'Define PCI-DSS compliance scope'\n"
-            "- Each sub-goal = one concrete technical deliverable.\n"
-            "- Use vocabulary from the wiki context where it appears.\n\n"
-            "Return JSON: {goals: [{title, description, constraints, assumptions}], "
-            "constraints: [string], assumptions: [string], scope_summary: string}"
+            "- decompose mission into concrete sub-goals\n"
+            "- technical deliverables only, no generic phases\n"
+            "OUTPUT_SCHEMA:\n"
+            "{\n"
+            "  \"goals\": [{\"title\": str, \"description\": str, \"constraints\": [str], \"assumptions\": [str]}],\n"
+            "  \"constraints\": [str],\n"
+            "  \"assumptions\": [str],\n"
+            "  \"scope_summary\": str\n"
+            "}"
         )
 
         user_content = f"Mission: {prompt}"
@@ -625,28 +906,27 @@ class PlanningReasoningPipeline:
         from django.utils import timezone
         today_str = timezone.now().strftime("%A, %B %d, %Y")
 
+        vocab = ", ".join(ctx.task_vocabulary[:8]) if (ctx and not ctx.is_general) else ""
+
         system = (
-            persona_block
-            + f"You are the TeamOS Plan Architect. Today is {today_str}.\n\n"
-            "CRITICAL RULES:\n"
-            "- Task titles MUST be domain-specific and technical.\n"
-            "- REJECTED: 'Implement features', 'Define requirements', 'Test the system'\n"
-            "- REQUIRED: 'Build KYC/AML verification pipeline', 'Implement settlement engine'\n"
-            "- Reference wiki pages with [[Page Title]] syntax in descriptions.\n"
-            "- Add a 'reasoning' field to each task explaining why it exists.\n"
-            "- Assign tasks using assignee_id from Team Expertise.\n"
-            f"- Every task needs startDate and endDate (YYYY-MM-DD). All schedules MUST be anchored to start on or after today ({today_str}).\n"
-            + "CRITICAL DATE RULE: All dates MUST use the current year. Any date before 2026-05-01 is INVALID and will be rejected. "
-            + "Use ONLY dates in 2026 or later. Never generate dates in 2023, 2024, or early 2025.\n\n"
-            "Return JSON:\n"
-            "  projectName: string\n"
-            "  description: string (markdown)\n"
-            "  tasks: [{id, title, description, status, priority, startDate, endDate,"
-            "           assignee_id, reasoning, wikiReferences: []}]\n"
-            "  milestones: [{id, title, date, description, status}]\n"
-            "  members: [{userId, role}]\n"
-            "  reasoning_traces: [string]\n"
-            "  wiki_references: [string]\n"
+            f"ROLE: AI task scheduler. Today: {today_str}.\n"
+            f"DOMAIN: {ctx.domain if ctx else 'general'} / {ctx.sub_domain if ctx else 'general'}\n"
+            f"VOCABULARY: {vocab}\n"
+            f"RULES:\n"
+            "- technical task titles only\n"
+            "- reference wiki pages using [[Page Title]]\n"
+            "- assign task to assignee_id\n"
+            f"- dates >= today ({today_str}) and must use year 2026\n"
+            "OUTPUT_SCHEMA:\n"
+            "{\n"
+            "  \"projectName\": str,\n"
+            "  \"description\": str,\n"
+            "  \"tasks\": [{\"id\": str, \"title\": str, \"description\": str, \"status\": str, \"priority\": str, \"startDate\": str, \"endDate\": str, \"assignee_id\": str, \"reasoning\": str, \"wikiReferences\": [str]}],\n"
+            "  \"milestones\": [{\"id\": str, \"title\": str, \"date\": str, \"description\": str, \"status\": str}],\n"
+            "  \"members\": [{\"userId\": str, \"role\": str}],\n"
+            "  \"reasoning_traces\": [str],\n"
+            "  \"wiki_references\": [str]\n"
+            "}"
         )
 
         goals_text = "\n".join(
@@ -713,19 +993,16 @@ class PlanningReasoningPipeline:
             )
 
         system = (
-            "You are a senior project management reviewer. Evaluate this plan:\n"
-            "1. Coverage: All sub-goals addressed?\n"
-            "2. Realism: Timelines achievable?\n"
-            "3. Dependencies: Task ordering logical?\n"
-            "4. Risks: Missing contingencies?\n"
-            "5. Completeness: Missing milestones, unclear ownership?\n"
-            + domain_criteria
-            + "\nReturn JSON:\n"
-            "  score: 0-100\n"
-            "  issues: [{type, description, severity: low|medium|high}]\n"
-            "  revised_tasks: [...] (only if changes needed; preserve id, dates)\n"
-            "  revised_milestones: [...] (only if changes needed)\n"
-            "  suggestions: [string]\n"
+            "ROLE: Senior project reviewer.\n"
+            f"CRITERIA: coverage, realism, dependency order, risks, completeness. {domain_criteria.strip()}\n"
+            "OUTPUT_SCHEMA:\n"
+            "{\n"
+            "  \"score\": int (0-100),\n"
+            "  \"issues\": [{\"type\": str, \"description\": str, \"severity\": \"low\"|\"medium\"|\"high\"}],\n"
+            "  \"revised_tasks\": [dict] (only if changes needed; preserve id, dates),\n"
+            "  \"revised_milestones\": [dict] (only if changes needed),\n"
+            "  \"suggestions\": [str]\n"
+            "}"
         )
 
         goals_text = ", ".join(g.title for g in decomposition.goals)
@@ -746,6 +1023,7 @@ class PlanningReasoningPipeline:
                 "score": 70, "issues": [], "revised_tasks": [],
                 "revised_milestones": [], "suggestions": [],
             },
+            sse_queue=self.sse_queue,
         )
 
         return CritiqueResult(
@@ -792,28 +1070,20 @@ class PlanningReasoningPipeline:
         ctx = self.domain_ctx
 
         system = (
-            "You are the senior TeamOS Portfolio Director.\n"
-            "You are evaluating two distinct planning drafts generated for the same project mission.\n"
-            "Compare both candidates carefully and select the one that represents the highest execution quality, logical completeness, and realism.\n\n"
-            "Candidate A (Fast-Track Strategy):\n"
-            f"- Title: {fast_draft.project_name}\n"
-            f"- Scope summary: {fast_decomp.scope_summary}\n"
-            f"- Tasks: {json.dumps(fast_draft.tasks[:10])}\n\n"
-            "Candidate B (Risk-Mitigated Strategy):\n"
-            f"- Title: {risk_draft.project_name}\n"
-            f"- Scope summary: {risk_decomp.scope_summary}\n"
-            f"- Tasks: {json.dumps(risk_draft.tasks[:10])}\n\n"
-            "Evaluate them across these criteria:\n"
-            "1. Realism: Do timeline mappings fit the scope?\n"
-            "2. Concurrency: Are sequential blockers avoided where possible?\n"
-            "3. Integrity: Are critical engineering deliverables addressed?\n"
-            "Select the single best strategy and justify your choice.\n\n"
-            "Return JSON:\n"
-            "  selected_strategy: 'fast_track' | 'risk_mitigated'\n"
-            "  justification: string\n"
-            "  score: 0-100\n"
-            "  issues: [{type, description, severity: 'low'|'medium'|'high'}]\n"
-            "  suggestions: [string]\n"
+            "ROLE: Portfolio Director.\n"
+            "TASK: Evaluate two plan candidates and select the optimal one.\n"
+            "CANDIDATES:\n"
+            f"- Candidate A (Fast-Track): {fast_draft.project_name}. Scope: {fast_decomp.scope_summary}. Tasks: {json.dumps(fast_draft.tasks[:10])}\n"
+            f"- Candidate B (Risk-Mitigated): {risk_draft.project_name}. Scope: {risk_decomp.scope_summary}. Tasks: {json.dumps(risk_draft.tasks[:10])}\n"
+            "CRITERIA: realism, concurrency, engineering integrity.\n"
+            "OUTPUT_SCHEMA:\n"
+            "{\n"
+            "  \"selected_strategy\": \"fast_track\" | \"risk_mitigated\",\n"
+            "  \"justification\": str,\n"
+            "  \"score\": int (0-100),\n"
+            "  \"issues\": [{\"type\": str, \"description\": str, \"severity\": \"low\"|\"medium\"|\"high\"}],\n"
+            "  \"suggestions\": [str]\n"
+            "}"
         )
 
         result = llm_json_call(
@@ -830,6 +1100,7 @@ class PlanningReasoningPipeline:
                 "issues": [],
                 "suggestions": [],
             },
+            sse_queue=self.sse_queue,
         )
 
         choice = result.get("selected_strategy", "fast_track")

@@ -21,6 +21,16 @@ from planning.agent_sync import (
     sync_project_to_wiki,
 )
 from .engine import _auto_resolve_conflicts
+from .engine import (
+    _item_id,
+    _title_key,
+    _should_create_in_manage,
+    _team_user_ids,
+    _resolve_team_user_id,
+    _apply_project_members,
+    _sse,
+    _assess_plan_risk,
+)
 from planning.models import Project, Task, Milestone
 from planning.services import (
     create_milestone,
@@ -57,35 +67,6 @@ PLANNER_AGENT_SYSTEM = (
 )
 
 
-def _item_id(data: dict[str, Any]) -> str | None:
-    value = data.get("id") or data.get("task_id") or data.get("taskId") or data.get("milestone_id") or data.get("milestoneId")
-    return str(value) if value else None
-
-
-def _title_key(value: str | None) -> str:
-    return " ".join((value or "").strip().lower().split())
-
-
-def _should_create_in_manage(data: dict[str, Any], has_existing_items: bool) -> bool:
-    if not has_existing_items:
-        return True
-    action = str(data.get("action") or data.get("operation") or "").strip().lower()
-    return action in {"create", "add", "new"} or data.get("is_new") is True or data.get("isNew") is True
-
-
-def _team_user_ids(team: Team) -> set[str]:
-    return {
-        str(user_id)
-        for user_id in TeamMember.objects.filter(team=team).values_list("user_id", flat=True)
-    }
-
-
-def _resolve_team_user_id(data: dict[str, Any], valid_user_ids: set[str]) -> str | None:
-    value = data.get("assignee_id") or data.get("assigneeId") or data.get("user_id") or data.get("userId")
-    if value and str(value) in valid_user_ids:
-        return str(value)
-    return None
-
 
 def get_slim_project_context(project: Project) -> dict[str, Any]:
     """Backward-compatible slim context; prefer get_plan_mutation_context for manage mode."""
@@ -102,38 +83,6 @@ def get_slim_project_context(project: Project) -> dict[str, Any]:
     }
 
 
-def _apply_project_members(
-    *,
-    project: Project,
-    members_data: list[dict[str, Any]],
-    valid_user_ids: set[str],
-) -> int:
-    changed = 0
-    for member_data in members_data:
-        if not isinstance(member_data, dict):
-            continue
-        user_id = _resolve_team_user_id(member_data, valid_user_ids)
-        if not user_id:
-            continue
-        try:
-            member_user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            continue
-
-        if member_data.get("remove") is True:
-            remove_project_member(project=project, user=member_user)
-            changed += 1
-            continue
-
-        role = member_data.get("role") or member_data.get("project_role") or member_data.get("projectRole") or "Contributor"
-        add_project_member(project=project, user=member_user, role=str(role)[:100])
-        changed += 1
-    return changed
-
-
-def _sse(event: str, data: dict[str, Any]) -> str:
-    """Format a single SSE event."""
-    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
 def run_planner_agent(
@@ -378,59 +327,6 @@ def run_planner_agent(
     })
 
 
-def _assess_plan_risk(
-    team: Team,
-    draft: dict[str, Any],
-    conflicts: list[dict[str, Any]],
-) -> dict[str, Any]:
-    """Use LLM to assess timeline risk for the plan."""
-    tasks_summary = []
-    for t in draft.get("tasks", [])[:10]:
-        tasks_summary.append({
-            "title": t.get("title"),
-            "priority": t.get("priority"),
-            "start": t.get("startDate") or t.get("start_date"),
-            "end": t.get("endDate") or t.get("end_date"),
-        })
-
-    prompt = (
-        f"Assess the timeline risk for this project plan:\n"
-        f"Project: {draft.get('projectName', 'Untitled')}\n"
-        f"Tasks: {json.dumps(tasks_summary)}\n"
-        f"Conflicts detected: {len(conflicts)}\n"
-        f"Total tasks: {len(draft.get('tasks', []))}\n"
-        f"Total milestones: {len(draft.get('milestones', []))}\n\n"
-        f"Return JSON with: score (0-100, higher=riskier), factors (list of risk factor strings), "
-        f"suggestions (list of mitigation suggestions). Return ONLY valid JSON."
-    )
-
-    result = llm_json_call(
-        team=team,
-        operation="plan_risk_assessment",
-        messages=[
-            {"role": "system", "content": "You are a project risk analyst. Assess timeline feasibility and return structured JSON."},
-            {"role": "user", "content": prompt},
-        ],
-        default_on_error={"score": 50, "factors": ["Assessment failed"], "suggestions": ["Review manually"]},
-    )
-
-    score = result.get("score", 50)
-    try:
-        normalized_score = max(0, min(100, int(score)))
-    except (TypeError, ValueError):
-        normalized_score = 50
-    factors = result.get("factors", [])
-    suggestions = result.get("suggestions", [])
-    if not isinstance(factors, list):
-        factors = []
-    if not isinstance(suggestions, list):
-        suggestions = []
-
-    return {
-        "score": normalized_score,
-        "factors": [str(f) for f in factors],
-        "suggestions": [str(s) for s in suggestions],
-    }
 
 
 def generate_risk_resolution_actions(
@@ -483,6 +379,7 @@ def run_planner_agent_v2(
     mode: str = "create",
     project_id: str | None = None,
     user: User,
+    chat_history: list[dict] | None = None,
 ) -> Iterator[str]:
     """
     V2 planner agent using the unified PlanningEngine.
@@ -501,6 +398,12 @@ def run_planner_agent_v2(
             project_context = get_slim_project_context(project)
 
     engine = PlanningEngine(team=team, user=user)
-    for event in engine.run(prompt, mode=mode, project_id=project_id, project_context=project_context):
+    for event in engine.run(
+        prompt,
+        mode=mode,
+        project_id=project_id,
+        project_context=project_context,
+        chat_history=chat_history,
+    ):
         yield event
 

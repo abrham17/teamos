@@ -13,7 +13,7 @@ class FakePlannerPipeline:
     def __init__(self, payload):
         self.payload = payload
 
-    def run(self, prompt, mode="create", project_context=None):
+    def run(self, prompt, mode="create", project_context=None, chat_history=None):
         import json
 
         yield f"event: reasoning_done\ndata: {json.dumps(self.payload)}\n\n"
@@ -23,7 +23,7 @@ class FakeManagePipeline:
     def __init__(self, payload):
         self.payload = payload
 
-    def run(self, prompt, project_context=None):
+    def run(self, prompt, project_context=None, chat_history=None):
         import json
 
         yield f"event: reasoning_done\ndata: {json.dumps(self.payload)}\n\n"
@@ -201,9 +201,9 @@ class PlanningApiTests(APITestCase):
         self.assertIn("milestone", kinds)
 
     @patch("planning.views.reindex_project")
-    @patch("planning.agent_executor._auto_resolve_conflicts")
-    @patch("planning.agent_sync.detect_date_conflicts")
-    def test_conflict_resolver_updates_task_dates(self, mock_detect_conflicts, mock_auto_resolve, _mock_reindex):
+    @patch("planning.remediation._fallback_conflict_actions")
+    @patch("planning.remediation.detect_date_conflicts")
+    def test_conflict_resolver_updates_task_dates(self, mock_detect_conflicts, mock_fallback_actions, _mock_reindex):
         self.client.force_authenticate(user=self.editor)
         task = self.project.tasks.first()
         self.assertIsNotNone(task)
@@ -211,9 +211,10 @@ class PlanningApiTests(APITestCase):
         mock_detect_conflicts.side_effect = [
             [{"type": "task_overlap", "task_1": {"id": str(task.id)}, "task_2": {"id": str(task.id)}}],
             [],
+            [],
         ]
-        mock_auto_resolve.return_value = [
-            {"id": str(task.id), "start_date": "2026-06-01", "end_date": "2026-06-05"}
+        mock_fallback_actions.return_value = [
+            {"action": "update_task_dates", "task_id": str(task.id), "start_date": "2026-06-01", "end_date": "2026-06-05"}
         ]
 
         url = f"/api/planning/{self.team.id}/projects/{self.project.id}/conflicts/resolve/"
@@ -230,19 +231,20 @@ class PlanningApiTests(APITestCase):
         self.assertEqual(task.end_date.isoformat(), "2026-06-05")
 
     @patch("planning.views.reindex_project")
-    @patch("planning.agent_executor._auto_resolve_conflicts")
-    @patch("planning.agent_sync.detect_date_conflicts")
-    def test_conflict_resolver_skips_invalid_updates(self, mock_detect_conflicts, mock_auto_resolve, _mock_reindex):
+    @patch("planning.remediation._fallback_conflict_actions")
+    @patch("planning.remediation.detect_date_conflicts")
+    def test_conflict_resolver_skips_invalid_updates(self, mock_detect_conflicts, mock_fallback_actions, _mock_reindex):
         self.client.force_authenticate(user=self.editor)
         task = self.project.tasks.first()
         self.assertIsNotNone(task)
         mock_detect_conflicts.side_effect = [
             [{"type": "task_overlap", "task_1": {"id": str(task.id)}, "task_2": {"id": str(task.id)}}],
             [{"type": "task_overlap"}],
+            [{"type": "task_overlap"}],
         ]
-        mock_auto_resolve.return_value = [
-            {"id": str(task.id), "start_date": "2026-06-07", "end_date": "2026-06-01"},
-            {"id": "not-a-real-task", "start_date": "2026-06-01", "end_date": "2026-06-02"},
+        mock_fallback_actions.return_value = [
+            {"action": "update_task_dates", "task_id": str(task.id), "start_date": "2026-06-07", "end_date": "2026-06-01"},
+            {"action": "update_task_dates", "task_id": "00000000-0000-0000-0000-000000000000", "start_date": "2026-06-01", "end_date": "2026-06-02"},
         ]
 
         url = f"/api/planning/{self.team.id}/projects/{self.project.id}/conflicts/resolve/"
@@ -251,8 +253,11 @@ class PlanningApiTests(APITestCase):
         self.assertEqual(res.data["data"]["resolved_count"], 0)
         self.assertEqual(res.data["data"]["skipped_count"], 2)
 
+    @patch("planning.remediation.timezone.now")
     @patch("planning.agent_executor.llm_json_call")
-    def test_risk_endpoint_normalizes_score_and_lists(self, mock_llm):
+    def test_risk_endpoint_normalizes_score_and_lists(self, mock_llm, mock_now):
+        import datetime
+        mock_now.return_value = datetime.datetime(2026, 5, 5, tzinfo=datetime.timezone.utc)
         self.client.force_authenticate(user=self.editor)
         mock_llm.return_value = {"score": 999, "factors": "not-list", "suggestions": None}
         url = f"/api/planning/{self.team.id}/projects/{self.project.id}/risk/"
@@ -593,3 +598,109 @@ class SafePlanUpdateTests(APITestCase):
         mock_reindex.assert_not_called()
         self.task.refresh_from_db()
         self.assertTrue(self.task.title)
+
+
+class ClarificationEngineTests(APITestCase):
+    """
+    Deterministic tests for history_helpers — no LLM calls needed for fast-path cases.
+    """
+
+    def test_extract_answered_topics_parses_detail_level(self):
+        """User saying 'include daily subtasks' → topic 'detail_level' detected."""
+        from planning.history_helpers import extract_answered_topics
+
+        history = [
+            {"role": "user", "content": "Plan a product launch for next quarter."},
+            {"role": "assistant", "content": "Should I include daily subtasks or keep it high-level?"},
+            {"role": "user", "content": "Please include daily subtasks for each milestone."},
+        ]
+        topics = extract_answered_topics(history)
+        self.assertIn("detail_level", topics)
+
+    def test_extract_answered_topics_parses_deadline(self):
+        """User mentioning a deadline → topic 'deadline' detected."""
+        from planning.history_helpers import extract_answered_topics
+
+        history = [
+            {"role": "user", "content": "We need to launch by end of Q3."},
+        ]
+        topics = extract_answered_topics(history)
+        self.assertIn("deadline", topics)
+
+    def test_extract_answered_topics_empty_history(self):
+        """Empty history → no topics answered."""
+        from planning.history_helpers import extract_answered_topics
+
+        topics = extract_answered_topics([])
+        self.assertEqual(topics, [])
+
+    def test_decide_clarifying_question_fast_path_skip_explicit_bypass(self):
+        """Prompt containing 'just do it' → immediate None without LLM call."""
+        from planning.history_helpers import decide_clarifying_question
+        from unittest.mock import patch
+
+        with patch("planning.history_helpers.llm_json_call") as mock_llm:
+            result = decide_clarifying_question(
+                prompt="Just do it, create the sprint plan",
+                chat_history=[],
+                team=None,
+                mode="create",
+            )
+        # Should not reach the LLM at all
+        mock_llm.assert_not_called()
+        self.assertIsNone(result)
+
+    def test_decide_clarifying_question_fast_path_skip_rich_context(self):
+        """Rich wiki + answered topics → fast-path None without LLM call."""
+        from planning.history_helpers import decide_clarifying_question
+        from unittest.mock import patch
+
+        history = [
+            {"role": "user", "content": "Build an onboarding flow"},
+            {"role": "assistant", "content": "Should I include daily subtasks?"},
+            {"role": "user", "content": "Keep it high-level, all equal priority"},
+        ]
+        with patch("planning.history_helpers.llm_json_call") as mock_llm:
+            result = decide_clarifying_question(
+                prompt="Add a 2-week launch phase",
+                chat_history=history,
+                team=None,
+                mode="manage",
+                wiki_snippets_found=5,
+                knowledge_gaps=[],
+                wiki_is_sparse=False,
+                already_answered_topics=["detail_level", "priority_workstream"],
+            )
+        mock_llm.assert_not_called()
+        self.assertIsNone(result)
+
+    def test_decide_clarifying_question_calls_llm_when_wiki_sparse(self):
+        """Sparse wiki + empty history → LLM is called and question returned if ask=True."""
+        from planning.history_helpers import decide_clarifying_question
+        from unittest.mock import patch, MagicMock
+
+        mock_team = MagicMock()
+        mock_team.id = "test-team"
+
+        with patch("planning.history_helpers.llm_json_call", return_value={
+            "ask": True,
+            "question": "What tech stack is this project using?",
+            "options": ["Django + React", "Rails + Vue", "Proceed with your best judgment"],
+            "reason": "Wiki has no tech stack info",
+        }) as mock_llm:
+            result = decide_clarifying_question(
+                prompt="Create a backend API plan",
+                chat_history=[],
+                team=mock_team,
+                mode="create",
+                wiki_snippets_found=0,
+                knowledge_gaps=["tech stack unknown", "no existing API standards found"],
+                wiki_is_sparse=True,
+                already_answered_topics=[],
+            )
+
+        mock_llm.assert_called_once()
+        self.assertIsNotNone(result)
+        self.assertIn("question", result)
+        self.assertIn("options", result)
+        self.assertEqual(len(result["options"]), 3)

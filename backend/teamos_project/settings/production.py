@@ -23,6 +23,7 @@ ALLOWED_HOSTS += [
     "teamos-2.onrender.com",
     "team-os-dev.onrender.com",
     "teamos-w37k.vercel.app",
+    "admin-dashboard.team-os.tech",
 ]
 
 # Render (and most load balancers) terminates SSL and passes it via X-Forwarded-Proto
@@ -116,6 +117,7 @@ CSRF_TRUSTED_ORIGINS = [
     "https://teamos-2.onrender.com",
     "https://teamos-w37k.vercel.app",
     "https://team-os-dev.onrender.com",
+    "https://admin-dashboard.team-os.tech",
 ]
 # Allow env var to override if needed
 extra_origins = os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")
@@ -141,6 +143,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://teamos-2.onrender.com",
     "https://teamos-w37k.vercel.app",
     "https://teamos-dev.onrender.com",
+    "https://admin-dashboard.team-os.tech",
 ]
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "authorization",
@@ -167,17 +170,22 @@ SIMPLE_JWT["AUTH_COOKIE_DOMAIN"] = ".team-os.tech"
 SIMPLE_JWT["AUTH_COOKIE_SECURE"] = True
 SIMPLE_JWT["AUTH_COOKIE_SAMESITE"] = "Lax"
 
-# Groq / OpenAI / OpenRouter API Keys
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+# OpenAI / OpenRouter API Keys
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")       # Used ONLY for embeddings
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
 
-# Production: force OpenAI or OpenRouter for LLM and Embeddings
-LLM_BACKEND = os.environ.get("LLM_BACKEND", "openai")
-OPENAI_CHAT_MODEL = "gpt-4o"
-OPENAI_MINI_MODEL = "gpt-4o-mini"
-OPENAI_NANO_MODEL = "gpt-4.1-nano"
+# ── LLM Backend: DeepSeek V4 via OpenRouter ─────────────────────────
+# All chat/planning/agent LLM calls go through OpenRouter → DeepSeek V4.
+# Embeddings remain on OpenAI (OpenRouter does not support embeddings).
+LLM_BACKEND = "openrouter"
+
+# Primary models (OpenRouter format: "provider/model")
+# Legacy aliases (deepseek-chat, deepseek-reasoner) deprecated Jul 24 2026.
+DEEPSEEK_CHAT_MODEL = "deepseek/deepseek-v4-flash"   # V4 Flash — fast, 284B MoE, $0.10/$0.20 per M
+DEEPSEEK_PRO_MODEL  = "deepseek/deepseek-v4-pro"     # V4 Pro  — 1.6T MoE, reasoning, $0.435/$0.87 per M
+
+# OpenAI kept ONLY for embeddings (OpenRouter doesn't support embeddings)
 OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 OPENAI_EMBEDDING_DIMENSIONS = 1536
 USE_DETERMINISTIC_EMBEDDINGS = False

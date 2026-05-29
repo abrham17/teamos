@@ -16,6 +16,6 @@ def production_llm_backend_from_env(environ: Mapping[str, str] | None = None) ->
     env = environ if environ is not None else os.environ
     if str(env.get("ALLOW_NON_OPENAI_LLM_IN_PRODUCTION", "")).strip() == "1":
         raw = (env.get("LLM_BACKEND") or "openai").lower().strip()
-        return raw if raw in ("groq", "openai") else "openai"
+        return raw if raw in ("openai",) else "openai"
     
     return "openai"

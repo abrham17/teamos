@@ -166,6 +166,22 @@ class ChatQueryStreamView(APIView):
     """
     permission_classes = [IsAuthenticated, IsTeamMember]
 
+    def _check_rate_limit(self, team):
+        """Per-tier rate limiting on chat queries (requests/minute)."""
+        from django.conf import settings
+        from django.core.cache import cache
+        plan_tiers = getattr(settings, "PLAN_TIERS", {})
+        plan = getattr(team, "plan", "free")
+        tier = plan_tiers.get(plan, plan_tiers.get("free", {}))
+        rpm = tier.get("rate_limit_per_minute", 20)
+
+        cache_key = f"chat_rl:{team.id}:{int(__import__('time').time() // 60)}"
+        count = cache.get(cache_key, 0)
+        if count >= rpm:
+            return False
+        cache.set(cache_key, count + 1, 65)
+        return True
+
     def post(self, request, team_id, session_id):
         try:
             session = ChatSession.objects.get(id=session_id, team_id=team_id, created_by=request.user)
@@ -184,6 +200,13 @@ class ChatQueryStreamView(APIView):
             if not has_minimum_role(request.team_membership, "editor"):
                 code = "agent_forbidden" if mode == "agent" else "plan_forbidden"
                 return fail("Editor or owner role required.", status_code=403, code=code)
+
+        if not self._check_rate_limit(session.team):
+            return fail(
+                "Rate limit exceeded. Please wait before sending another message.",
+                status_code=429,
+                code="rate_limit_exceeded",
+            )
 
         quota = check_quota(session.team, "token_consume")
         if not quota.allowed:
@@ -219,6 +242,7 @@ class ChatQueryStreamView(APIView):
                     user=request.user,
                     session=session,
                     prompt=user_message,
+                    mode=mode,
                     state=agent_state
                 ):
                     yield line
@@ -228,7 +252,7 @@ class ChatQueryStreamView(APIView):
                     full_content = agent_state.get("full_text") or ""
                     tool_trace = agent_state.get("tool_trace") or []
                     citations = agent_state.get("citations") or []
-                    model_used = agent_state.get("model_used", "gpt-4o")
+                    model_used = agent_state.get("model_used", "deepseek/deepseek-v4-flash")
                     
                     # Store assistant message if one was generated (Lightweight or Agent modes)
                     if full_content:
@@ -416,3 +440,56 @@ class ProactiveAlertsView(APIView):
             })
 
         return ok({"alerts": alerts})
+
+
+class ProactiveSuggestionsView(APIView):
+    """GET /api/chat/:team_id/suggestions/ — lightweight proactive suggestions."""
+
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
+    def get(self, request, team_id):
+        from datetime import timedelta
+        from django.utils import timezone
+        from planning.models import Task, Milestone
+
+        today = timezone.now().date()
+        suggestions = []
+
+        # Overdue tasks
+        overdue_count = Task.objects.filter(
+            project__team_id=team_id,
+            end_date__lt=today,
+            status__in=["todo", "in-progress"],
+        ).count()
+        if overdue_count > 0:
+            suggestions.append({
+                "type": "overdue_tasks",
+                "priority": "high" if overdue_count > 3 else "medium",
+                "message": f"{overdue_count} tasks are overdue",
+                "action": "review_overdue",
+            })
+
+        # Upcoming milestones
+        week_from_now = today + timedelta(days=7)
+        upcoming = Milestone.objects.filter(
+            project__team_id=team_id,
+            target_date__range=[today, week_from_now],
+            status="pending",
+        ).count()
+        if upcoming > 0:
+            suggestions.append({
+                "type": "upcoming_milestones",
+                "priority": "medium",
+                "message": f"{upcoming} milestones due this week",
+                "action": "review_milestones",
+            })
+
+        logger.info(
+            "Suggestions for team %s: overdue=%d, upcoming=%d, returning %d suggestions",
+            team_id,
+            overdue_count,
+            upcoming,
+            len(suggestions)
+        )
+
+        return ok({"suggestions": suggestions})

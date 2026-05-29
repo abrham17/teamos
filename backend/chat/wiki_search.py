@@ -23,20 +23,21 @@ _RESOLVE_MIN_SCORE = 0.35
 _RESOLVE_MIN_GAP = 0.08
 
 
-def expand_search_queries(user_message: str, team) -> list[str]:
+def expand_search_queries(user_message: str, team, max_expansions: int = 3) -> list[str]:
     """
     Original query plus optional LLM query expansion and HyDE (same strategy as chat RAG).
+    ``max_expansions`` caps the number of LLM-generated query variants (0 = no expansion).
     """
     from llm_orchestrator.orchestrator import llm_call, llm_json_call
 
     search_queries = [(user_message or "").strip()]
-    if not search_queries[0] or team is None:
+    if not search_queries[0] or team is None or max_expansions < 1:
         return [q for q in search_queries if q]
 
     try:
         expansion_prompt = (
-            f"Given the user query: '{user_message}', generate 3 diverse search queries that capture the underlying "
-            f"intent and semantic meaning, even if they use different words. "
+            f"Given the user query: '{user_message}', generate {max_expansions} diverse search queries "
+            f"that capture the underlying intent and semantic meaning, even if they use different words. "
             f"Return as a simple JSON list of strings."
         )
         expanded = llm_json_call(
@@ -46,7 +47,7 @@ def expand_search_queries(user_message: str, team) -> list[str]:
             default_on_error=[],
         )
         if isinstance(expanded, list):
-            search_queries.extend(str(x).strip() for x in expanded[:3] if x)
+            search_queries.extend(str(x).strip() for x in expanded[:max_expansions] if x)
 
         hyde_prompt = (
             f"Write a short, professional paragraph that would perfectly answer the query: '{user_message}'. "
@@ -266,17 +267,39 @@ def resolve_wiki_page(
     return page, candidates, None
 
 
+def _get_tier_config(team_obj) -> dict:
+    """Read PLAN_TIERS config for the team's plan tier, with sensible fallbacks."""
+    from django.conf import settings
+    plan_tiers = getattr(settings, "PLAN_TIERS", {})
+    plan = getattr(team_obj, "plan", "free") if team_obj else "free"
+    tier = plan_tiers.get(plan, plan_tiers.get("free", {}))
+    return {
+        "retrieve_k": tier.get("retrieve_k", 10),
+        "context_tokens": tier.get("context_tokens", 2000),
+        "query_expansions": tier.get("query_expansions", 0),
+        "reranker": tier.get("reranker"),
+        "rerank_k": tier.get("rerank_k", 3),
+        "rate_limit_per_minute": tier.get("rate_limit_per_minute", 20),
+    }
+
+
 def _retrieve_wiki_citations(team_id, user_message: str, team_obj=None) -> tuple[list, str]:
     """
     Multi-query expansion → Vector search → wiki + plan citation payloads.
     Generates multiple variations of the query to ensure deep semantic coverage.
+    Tier-gated by the team's plan (free/team/pro).
     """
     from django.conf import settings
-    limit = int(getattr(settings, "CHAT_RAG_RESULT_LIMIT", 10) or 10)
-    max_chars = int(getattr(settings, "CHAT_RAG_MAX_CONTEXT_CHARS", 5000) or 5000)
+
+    tier_cfg = _get_tier_config(team_obj)
+
+    # Tier-gated: retrieve_k from PLAN_TIERS, falling back to env default
+    limit = tier_cfg["retrieve_k"]
+    # Tier-gated: context budget from PLAN_TIERS (chars ~ 4 * tokens)
+    max_chars = tier_cfg["context_tokens"] * 4
 
     search_queries = (
-        expand_search_queries(user_message, team_obj)
+        expand_search_queries(user_message, team_obj, max_expansions=tier_cfg["query_expansions"])
         if team_obj
         else [(user_message or "").strip()]
     )
@@ -302,6 +325,24 @@ def _retrieve_wiki_citations(team_id, user_message: str, team_obj=None) -> tuple
     # Sort all expanded results by score
     all_results.sort(key=lambda x: x.score, reverse=True)
     results = all_results[:limit]
+
+    # Cross-encoder reranking for team/pro tiers
+    reranker_model_name = tier_cfg.get("reranker")
+    if reranker_model_name and len(results) > 1:
+        try:
+            from sentence_transformers import CrossEncoder
+            reranker = CrossEncoder(reranker_model_name)
+            pairs = [(user_message, (res.payload or {}).get("content", "")) for res in results]
+            rerank_scores = reranker.predict(pairs, show_progress_bar=False)
+            for i, score in enumerate(rerank_scores):
+                results[i].rerank_score = float(score)
+            results.sort(key=lambda x: getattr(x, "rerank_score", 0.0), reverse=True)
+            # After reranking, only keep top-k for team/pro
+            rerank_k = tier_cfg.get("rerank_k", limit)
+            if rerank_k and rerank_k < len(results):
+                results = results[:rerank_k]
+        except Exception:
+            logger.warning("Cross-encoder reranking failed, using vector scores only.")
 
     citations = []
     context_blocks = []
@@ -338,7 +379,7 @@ def _retrieve_wiki_citations(team_id, user_message: str, team_obj=None) -> tuple
 
         page_id = payload.get("page_id")
         title = payload.get("page_title", "Untitled")
-        anchor_hint = payload.get("heading") or payload.get("section") or ""
+        anchor_hint = payload.get("section_title") or payload.get("heading") or payload.get("section") or ""
         slug = "unknown"
         try:
             if page_id:

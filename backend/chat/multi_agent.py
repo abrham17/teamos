@@ -227,12 +227,31 @@ If the user asks a simple question like "Who is...", use lightweight."""
         except (json.JSONDecodeError, AttributeError, ValueError):
             return Classification(primary_agent=AgentRole.LIGHTWEIGHT)
 
-    def classify_sync(self, user_message: str, team) -> Classification:
+    def classify_sync(self, user_message: str, team, preferred_mode: str = "ask") -> Classification:
         """Synchronous classification with team budget awareness.
 
         Uses fast rule-based classification first (P1.5), falls through
         to LLM only for ambiguous messages.
+        ``preferred_mode`` (``"ask" | "agent" | "plan"``) biases toward
+        the corresponding specialist when the message is ambiguous.
         """
+        # If user explicitly selected plan mode, prefer PLAN agent
+        if preferred_mode == "plan":
+            fast = self._fast_classify(user_message)
+            if fast is not None and fast.primary_agent == AgentRole.LIGHTWEIGHT:
+                return Classification(
+                    primary_agent=AgentRole.PLAN,
+                    reasoning_depth="standard",
+                    confidence=0.80,
+                )
+            if fast is not None:
+                return fast
+            return Classification(
+                primary_agent=AgentRole.PLAN,
+                reasoning_depth="standard",
+                confidence=0.75,
+            )
+
         # Fast path: rule-based classification (~70% of messages)
         fast = self._fast_classify(user_message)
         if fast is not None:

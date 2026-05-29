@@ -219,12 +219,11 @@ CELERY_BEAT_SCHEDULE = {
 
 # --- External APIs ---
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-# development.py sets LLM_BACKEND to "groq" for local testing; production.py sets "openai".
-LLM_BACKEND = os.environ.get("LLM_BACKEND", "openai")
-GROQ_API_BASE = os.environ.get("GROQ_API_BASE", "https://api.groq.com/openai/v1")
-GROQ_CHAT_MODEL = os.environ.get("GROQ_CHAT_MODEL", "llama-3.1-8b-instant")
-OPENAI_CHAT_MODEL = os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o")
+# All LLM chat/planning calls go through OpenRouter → DeepSeek V4.
+# Embeddings still use OpenAI (OpenRouter does not support embeddings).
+LLM_BACKEND = os.environ.get("LLM_BACKEND", "openrouter")
+# Legacy setting — kept for any code that reads it, but model routing is handled by llm_orchestrator/router.py
+OPENAI_CHAT_MODEL = os.environ.get("OPENAI_CHAT_MODEL", "deepseek/deepseek-v4-flash")
 OPENAI_EMBEDDING_MODEL = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 # When true, skip OpenAI embedding API and use deterministic local vectors (see ingest.vectors).
 USE_DETERMINISTIC_EMBEDDINGS = os.environ.get("USE_DETERMINISTIC_EMBEDDINGS", "").lower() in (
@@ -242,12 +241,9 @@ if OPENAI_EMBEDDING_DIMENSIONS is not None:
 # Assembled wiki context for chat RAG (character budget; drop lowest-ranked chunks first).
 CHAT_RAG_MAX_CONTEXT_CHARS = int(os.environ.get("CHAT_RAG_MAX_CONTEXT_CHARS", "20000"))
 CHAT_RAG_RESULT_LIMIT = int(os.environ.get("CHAT_RAG_RESULT_LIMIT", "10"))
-# Chat TTS (OpenAI audio/speech); requires OPENAI_API_KEY even when LLM_BACKEND=groq.
+# Chat TTS (OpenAI audio/speech); requires OPENAI_API_KEY.
 OPENAI_TTS_MODEL = os.environ.get("OPENAI_TTS_MODEL", "tts-1")
 OPENAI_TTS_DEFAULT_VOICE = os.environ.get("OPENAI_TTS_DEFAULT_VOICE", "alloy")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-QDRANT_URL = os.environ.get("QDRANT_URL", "http://localhost:6333")
-QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
 
 # --- Ingest extractors (OSS; limits overridable via env) ---
 INGEST_MAX_URL_BYTES = int(os.environ.get("INGEST_MAX_URL_BYTES", str(5 * 1024 * 1024)))
@@ -275,18 +271,19 @@ TEAM_SOFT_DELETE_GRACE_HOURS = int(os.environ.get("TEAM_SOFT_DELETE_GRACE_HOURS"
 # --- Plan Tiers ---
 PLAN_TIERS = {
     "free": {
-        "embed_model": "nomic-embed-text",
-        "embed_provider": "local",
+        "embed_model": "text-embedding-3-small",
+        "embed_provider": "openai",
         "chunk_size": 4500,
         "chunk_overlap": 450,
         "chunking_strategy": "character",
         "retrieve_k": 5,
         "rerank_k": 3,
         "context_tokens": 2000,
-        "chat_model": "llama-3.1-8b-instant",
-        "chat_provider": "groq",
+        "chat_model": "deepseek/deepseek-v4-flash",
+        "chat_provider": "openrouter",
         "query_expansions": 0,
         "reranker": None,
+        "rate_limit_per_minute": 10,
     },
     "team": {
         "embed_model": "text-embedding-3-small",
@@ -297,10 +294,11 @@ PLAN_TIERS = {
         "retrieve_k": 20,
         "rerank_k": 8,
         "context_tokens": 6000,
-        "chat_model": "llama-3.3-70b-versatile",
-        "chat_provider": "groq",
+        "chat_model": "deepseek/deepseek-v4-pro",
+        "chat_provider": "openrouter",
         "query_expansions": 3,
         "reranker": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        "rate_limit_per_minute": 30,
     },
     "pro": {
         "embed_model": "text-embedding-3-large",
@@ -311,10 +309,11 @@ PLAN_TIERS = {
         "retrieve_k": 50,
         "rerank_k": 12,
         "context_tokens": 16000,
-        "chat_model": "claude-3-5-sonnet-20241022",
-        "chat_provider": "anthropic",
+        "chat_model": "deepseek/deepseek-v4-pro",
+        "chat_provider": "openrouter",
         "query_expansions": 5,
         "reranker": "cross-encoder/ms-marco-MiniLM-L-12-v2",
+        "rate_limit_per_minute": 60,
     },
 }
 

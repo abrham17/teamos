@@ -39,6 +39,78 @@ def reindex_project_async(self, project_id: str):
         raise
 
 
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_jitter=True,
+    max_retries=3,
+)
+def approve_changeset_async(self, changeset_id: str, user_id: str | None = None, apply_remediation: bool = False):
+    """
+    Approve a changeset asynchronously to avoid Heroku 30s timeout.
+    Applies mutations, reindexes project, and notifies via WebSocket.
+    """
+    from .models import PlanChangeSet
+    from .version_services import approve_changeset
+    from accounts.models import User
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+
+    try:
+        cs = PlanChangeSet.objects.get(id=changeset_id)
+    except PlanChangeSet.DoesNotExist:
+        logger.warning("approve_changeset_async: changeset %s not found, skipping", changeset_id)
+        return {"status": "not_found", "changeset_id": changeset_id}
+
+    # Idempotent: if already approved, skip
+    if cs.status == "approved":
+        logger.info("approve_changeset_async: changeset %s already approved", changeset_id)
+        return {"status": "already_approved", "changeset_id": changeset_id}
+
+    if cs.status != "pending":
+        logger.warning("approve_changeset_async: changeset %s is not pending (status=%s)", changeset_id, cs.status)
+        return {"status": "invalid_status", "changeset_id": changeset_id, "current_status": cs.status}
+
+    try:
+        user = User.objects.get(id=user_id) if user_id else None
+        approve_changeset(cs, user=user)
+
+        if apply_remediation:
+            from .remediation import remediate_project
+            remediate_project(team=cs.project.team, project=cs.project, apply_conflicts=True, apply_risk=False)
+
+        # Reindex project
+        reindex_project_async.delay(str(cs.project_id))
+
+        # Notify via WebSocket
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            try:
+                group_name = f"planner_{str(cs.project.team_id)}_{str(cs.project_id)}"
+                async_to_sync(channel_layer.group_send)(
+                    group_name,
+                    {
+                        "type": "planner_message",
+                        "message": {
+                            "type": "changeset_approved",
+                            "changeset_id": str(cs.id),
+                            "project_id": str(cs.project_id),
+                        }
+                    }
+                )
+            except Exception:
+                logger.exception("Failed to broadcast changeset approval notification")
+
+        logger.info("approve_changeset_async: changeset %s approved successfully", changeset_id)
+        return {"status": "approved", "changeset_id": changeset_id}
+
+    except Exception as exc:
+        logger.exception("approve_changeset_async failed for changeset %s", changeset_id)
+        raise
+
+
 @shared_task(name="planning.tasks.autonomous_schedule_auditor", bind=True)
 def autonomous_schedule_auditor(self):
     """

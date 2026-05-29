@@ -72,13 +72,6 @@ class VectorStore:
             if backend == "openai":
                 self.openai = openai_client
 
-        # 3. Fallback for Groq
-        if backend == "groq" and getattr(settings, "GROQ_API_KEY", ""):
-            self.openai = OpenAI(
-                api_key=settings.GROQ_API_KEY,
-                base_url=getattr(settings, "GROQ_API_BASE", "https://api.groq.com/openai/v1"),
-            )
-
     def _get_embedding(self, text: str, model: str | None = None):
         clean_text = text.replace("\n", " ").strip()
         if not clean_text:
@@ -182,6 +175,7 @@ class VectorStore:
                         "page_title": obj.page.title,
                         "slug": obj.page.slug,
                         "chunk_index": obj.chunk_index,
+                        "section_title": obj.section_title,
                         "content": obj.content,
                         "team_id": str(team_id),
                     }
@@ -235,6 +229,7 @@ class VectorStore:
                         "page_title": obj.page.title,
                         "slug": obj.page.slug,
                         "chunk_index": obj.chunk_index,
+                        "section_title": obj.section_title,
                         "content": obj.content,
                         "team_id": str(team_id),
                     }

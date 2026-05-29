@@ -24,23 +24,81 @@ def _sse(event: str, data: dict[str, Any]) -> str:
 
 
 class ManageUpdatePipeline:
-    def __init__(self, team: Team, user: User):
+    def __init__(self, team: Team, user: User, sse_queue: Optional[Any] = None):
         self.team = team
         self.user = user
+        self.sse_queue = sse_queue
 
-    def run(self, prompt: str, project_context: dict) -> Iterator[str]:
-        yield _sse("agent_status", {"status": "Analyzing change scope..."})
+    def run(self, prompt: str, project_context: dict, chat_history: list[dict] | None = None) -> Iterator[str]:
+        import queue
+        import threading
+
+        q = self.sse_queue or queue.Queue()
+        self.sse_queue = q
+
+        def worker():
+            try:
+                self._run_internal(prompt, project_context, chat_history, q)
+            except Exception as e:
+                logger.exception("Manage update pipeline worker failed")
+                q.put(f"event: agent_error\ndata: {json.dumps({'detail': str(e)})}\n\n")
+            finally:
+                q.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            yield item
+
+    def _run_internal(
+        self, prompt: str, project_context: dict, chat_history: list[dict] | None, q: Any
+    ) -> None:
+        q.put(_sse("agent_status", {"status": "Analyzing change scope..."}))
+
+        # ── Interactive Questions Flow (Phase 2.5) ───────────────────
+        from .history_helpers import (
+            decide_clarifying_question,
+            extract_answered_topics,
+            consolidate_planning_prompt,
+        )
+
+        project_summary = (
+            f"{project_context.get('task_count', 0)} tasks, "
+            f"{project_context.get('milestone_count', 0)} milestones, "
+            f"status={project_context.get('status', 'unknown')}"
+        )
+        risk_factors = (project_context.get("risk") or {}).get("factors", [])
+
+        already_answered = extract_answered_topics(chat_history)
+        question = decide_clarifying_question(
+            prompt=prompt,
+            chat_history=chat_history or [],
+            team=self.team,
+            mode="manage",
+            project_summary=project_summary,
+            risk_factors=risk_factors,
+            already_answered_topics=already_answered,
+        )
+        if question:
+            q.put(_sse("ask_user", question))
+            return
+
+        # Consolidate prompt with history context
+        prompt = consolidate_planning_prompt(prompt, chat_history, self.team)
 
         scope = self._extract_scope(prompt, project_context)
-        yield _sse("agent_step", {"name": "plan_scope", "arguments": json.dumps(scope)})
-        yield _sse("agent_result", {"name": "plan_scope", "ok": True, "result": scope})
+        q.put(_sse("agent_step", {"name": "plan_scope", "arguments": json.dumps(scope)}))
+        q.put(_sse("agent_result", {"name": "plan_scope", "ok": True, "result": scope}))
 
-        yield _sse("agent_status", {"status": "Generating targeted mutations..."})
+        q.put(_sse("agent_status", {"status": "Generating targeted mutations..."}))
         delta = self._generate_mutations(prompt, project_context, scope)
         mutations = delta.get("mutations", [])
         impact = delta.get("impact_summary", {})
 
-        yield _sse("reasoning_done", {
+        q.put(_sse("reasoning_done", {
             "mode": "manage",
             "mutations": mutations,
             "impact_summary": impact,
@@ -52,17 +110,19 @@ class ManageUpdatePipeline:
             "tasks": [],
             "milestones": [],
             "members": [],
-        })
+        }))
 
     def _extract_scope(self, prompt: str, project_context: dict) -> dict[str, Any]:
         system = (
-            "You are a project change-scope analyst. Given a user request and existing project, "
-            "identify what should change and what must NOT be replanned.\n"
-            "Return JSON:\n"
-            "  change_summary: string\n"
-            "  affected_capabilities: [string]\n"
-            "  out_of_scope: [string] (areas the user did NOT ask to change)\n"
-            "  requires_new_tasks: boolean\n"
+            "ROLE: AI change-scope analyst.\n"
+            "TASK: Identify plan updates and preserve unaffected segments.\n"
+            "OUTPUT_SCHEMA:\n"
+            "{\n"
+            "  \"change_summary\": str,\n"
+            "  \"affected_capabilities\": [str],\n"
+            "  \"out_of_scope\": [str],\n"
+            "  \"requires_new_tasks\": bool\n"
+            "}"
         )
         user = (
             f"User request: {prompt}\n\n"
@@ -84,6 +144,7 @@ class ManageUpdatePipeline:
                 "out_of_scope": ["unaffected workstreams"],
                 "requires_new_tasks": True,
             },
+            sse_queue=self.sse_queue,
         )
         return result if isinstance(result, dict) else {}
 
@@ -94,23 +155,23 @@ class ManageUpdatePipeline:
 
         today_str = timezone.now().strftime("%Y-%m-%d")
         system = (
-            f"You are the TeamOS Plan Mutation Architect. Today is {today_str}.\n\n"
-            "CRITICAL: Output ONLY targeted mutations — do NOT regenerate the full plan.\n"
-            "Preserve existing entity IDs for updates. Use semantic_key for new entities.\n\n"
-            "Return JSON:\n"
-            "  mutations: [\n"
-            "    {op: 'update', entity_type: 'task'|'milestone', id: 'uuid', fields: {...}},\n"
-            "    {op: 'create', entity_type: 'task'|'milestone', semantic_key: 'hash', fields: {...}},\n"
-            "    {op: 'delete', entity_type: 'task'|'milestone', id: 'uuid', reason: '...'},\n"
-            "    {op: 'set_dependencies', task_id: 'uuid', depends_on: ['uuid', ...]},\n"
-            "    {op: 'update_project', fields: {name?, description?}}\n"
-            "  ]\n"
-            "  impact_summary: {change_summary: string}\n\n"
-            "Rules:\n"
-            "- Only mutate items affected by the user request.\n"
-            "- Do NOT delete tasks unless explicitly requested.\n"
-            "- For new tasks set semantic_key (short stable slug) and fields with title, description, dates.\n"
-            "- Use existing task/milestone ids from context for updates.\n"
+            f"ROLE: AI plan mutation builder. Today: {today_str}.\n"
+            "TASK: Output only targeted delta mutations, never regenerate the full plan.\n"
+            "RULES:\n"
+            "- preserve existing IDs for updates/deletes\n"
+            "- define 'semantic_key' (stable slug) for new tasks\n"
+            "- only mutate elements requested or directly blocked by the request\n"
+            "OUTPUT_SCHEMA:\n"
+            "{\n"
+            "  \"mutations\": [\n"
+            "    {\"op\": \"update\", \"entity_type\": \"task\"|\"milestone\", \"id\": str, \"fields\": dict},\n"
+            "    {\"op\": \"create\", \"entity_type\": \"task\"|\"milestone\", \"semantic_key\": str, \"fields\": dict},\n"
+            "    {\"op\": \"delete\", \"entity_type\": \"task\"|\"milestone\", \"id\": str, \"reason\": str},\n"
+            "    {\"op\": \"set_dependencies\", \"task_id\": str, \"depends_on\": [str]},\n"
+            "    {\"op\": \"update_project\", \"fields\": dict}\n"
+            "  ],\n"
+            "  \"impact_summary\": {\"change_summary\": str}\n"
+            "}"
         )
         user = (
             f"User request: {prompt}\n\n"
@@ -126,6 +187,7 @@ class ManageUpdatePipeline:
                 {"role": "user", "content": user},
             ],
             default_on_error={"mutations": [], "impact_summary": {}},
+            sse_queue=self.sse_queue,
         )
         if not isinstance(result, dict):
             return {"mutations": [], "impact_summary": {}}

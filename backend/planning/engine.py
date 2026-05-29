@@ -73,20 +73,40 @@ def _resolve_team_user_id(data: dict[str, Any], valid_user_ids: set[str]) -> str
 
 
 def _sanitize_date(date_str: str | None, fallback: str | None = None) -> str | None:
-    """Reject dates before 2026-05-01; return fallback or None if invalid."""
+    """Reject dates before 2026-05-01; return fallback or today's date if invalid/stale."""
+    from django.utils import timezone
+    today_str = timezone.now().strftime("%Y-%m-%d")
     if not date_str:
-        return fallback
+        return fallback or today_str
     try:
         from datetime import date as _date
         parsed = _date.fromisoformat(str(date_str)[:10])
         cutoff = _date(2026, 5, 1)
         if parsed < cutoff:
             logger.warning("Rejected stale date %s (before cutoff)", date_str)
-            return fallback
+            # Try to map the year to 2026
+            try:
+                mapped = parsed.replace(year=2026)
+                if mapped >= cutoff:
+                    return str(mapped)
+            except ValueError:
+                pass
+            return fallback or today_str
         return str(parsed)
     except (ValueError, TypeError):
         logger.warning("Unparseable date %s", date_str)
-        return fallback
+        return fallback or today_str
+
+
+def _is_valid_uuid(val: Any) -> bool:
+    if not val:
+        return False
+    import uuid
+    try:
+        uuid.UUID(str(val))
+        return True
+    except (ValueError, TypeError):
+        return False
 
 
 def _apply_project_members(
@@ -221,6 +241,7 @@ class PlanningEngine:
         mode: str = "create",
         project_id: str | None = None,
         project_context: dict | None = None,
+        chat_history: list[dict] | None = None,
     ) -> Iterator[str]:
         """
         Runs the full 6-stage reasoning pipeline, then performs DB operations,
@@ -229,7 +250,7 @@ class PlanningEngine:
         Yields SSE-compatible string lines.
         """
         if mode == "manage":
-            yield from self._run_manage(prompt, project_id=project_id, project_context=project_context)
+            yield from self._run_manage(prompt, project_id=project_id, project_context=project_context, chat_history=chat_history)
             return
 
         from planning.reasoning_pipeline import PlanningReasoningPipeline
@@ -239,14 +260,20 @@ class PlanningEngine:
         draft_data = None
 
         # ── Step 1: Run Multi-stage reasoning pipeline ────────────────
-        for event in pipeline.run(prompt, mode=mode, project_context=project_context):
+        has_asked_user = False
+        for event in pipeline.run(prompt, mode=mode, project_context=project_context, chat_history=chat_history):
             yield event
+            if "ask_user" in event:
+                has_asked_user = True
             if "reasoning_done" in event:
                 try:
                     data_line = event.split("data: ", 1)[1].strip()
                     draft_data = json.loads(data_line)
                 except Exception:
                     pass
+
+        if has_asked_user:
+            return
 
         if not draft_data:
             yield _sse("agent_error", {"detail": "Reasoning pipeline did not produce a valid plan."})
@@ -258,11 +285,12 @@ class PlanningEngine:
         tasks_data = draft_data.get("tasks", [])
         milestones_data = draft_data.get("milestones", [])
 
-        # Run project and task creations inside an atomic transaction to ensure integrity
+        # Run project creation in an atomic transaction to ensure integrity
+        # (yield SSE events outside the transaction to avoid phantom progress on rollback)
         try:
-            with transaction.atomic():
-                if mode == "create":
-                    yield _sse("agent_status", {"status": "Creating project..."})
+            if mode == "create":
+                yield _sse("agent_status", {"status": "Creating project..."})
+                with transaction.atomic():
                     project_obj = create_project(
                         team_id=self.team_id,
                         user=self.user,
@@ -273,148 +301,166 @@ class PlanningEngine:
                         },
                     )
                     created_project_id = str(project_obj.id)
-                    yield _sse("agent_step", {"name": "plan_create_project", "arguments": json.dumps({"name": project_obj.name})})
-                    yield _sse("agent_result", {"name": "plan_create_project", "ok": True, "result": {"project_id": created_project_id}})
-
                     member_count = _apply_project_members(
                         project=project_obj,
                         members_data=draft_data.get("members", []),
                         valid_user_ids=valid_user_ids,
                     )
-                    if member_count:
-                        yield _sse("agent_step", {"name": "plan_assign_project_roles", "arguments": json.dumps({"project_id": created_project_id})})
-                        yield _sse("agent_result", {"name": "plan_assign_project_roles", "ok": True, "result": {"member_count": member_count}})
+                yield _sse("agent_step", {"name": "plan_create_project", "arguments": json.dumps({"name": project_obj.name})})
+                yield _sse("agent_result", {"name": "plan_create_project", "ok": True, "result": {"project_id": created_project_id}})
+                if member_count:
+                    yield _sse("agent_step", {"name": "plan_assign_project_roles", "arguments": json.dumps({"project_id": created_project_id})})
+                    yield _sse("agent_result", {"name": "plan_assign_project_roles", "ok": True, "result": {"member_count": member_count}})
 
-                else:
-                    yield _sse("agent_error", {"detail": f"Unsupported mode: {mode}"})
-                    return
+            else:
+                yield _sse("agent_error", {"detail": f"Unsupported mode: {mode}"})
+                return
 
-                # Create or update tasks (two-pass: create all first, then resolve dependencies)
-                if tasks_data:
-                    existing_tasks = list(project_obj.tasks.all())
-                    tasks_by_title: dict[str, Task] = {_title_key(t.title): t for t in existing_tasks}
-                    tasks_by_id: dict[str, Task] = {str(t.id): t for t in existing_tasks}
+            # Create or update tasks (two-pass: create all first, then resolve dependencies)
+            if tasks_data:
+                existing_tasks = list(project_obj.tasks.all())
+                tasks_by_title: dict[str, Task] = {_title_key(t.title): t for t in existing_tasks}
+                tasks_by_id: dict[str, Task] = {str(t.id): t for t in existing_tasks}
 
-                    # Track deferred dependencies: task_index -> list of upstream indices
-                    deferred_deps: dict[int, list[int]] = {}
-                    # Map original task index -> created Task object
-                    index_to_task: dict[int, Task] = {}
+                # Track deferred dependencies: task_index -> list of upstream indices
+                deferred_deps: dict[int, list[int]] = {}
+                # Map original task index -> created Task object
+                index_to_task: dict[int, Task] = {}
 
-                    # Pass 1: Create/update all tasks without dependencies
-                    for idx, t_data in enumerate(tasks_data):
-                        title = t_data.get("title", "Untitled Task")
-                        existing_task = None
-                        if mode == "manage":
-                            existing_task = tasks_by_id.get(_item_id(t_data) or "") or tasks_by_title.get(_title_key(title))
-                        will_create = mode == "create" or (
-                            existing_task is None and _should_create_in_manage(t_data, bool(existing_tasks))
-                        )
-                        if mode == "manage" and existing_task is None and not will_create:
-                            yield _sse("agent_step", {"name": "plan_skip_task", "arguments": json.dumps({"title": title})})
-                            yield _sse("agent_result", {"name": "plan_skip_task", "ok": True, "result": {"reason": "No matching existing task."}})
-                            continue
+                # Pass 1: Create/update all tasks without dependencies
+                for idx, t_data in enumerate(tasks_data):
+                    title = t_data.get("title", "Untitled Task")
+                    existing_task = None
+                    if mode == "manage":
+                        existing_task = tasks_by_id.get(_item_id(t_data) or "") or tasks_by_title.get(_title_key(title))
+                    will_create = mode == "create" or (
+                        existing_task is None and _should_create_in_manage(t_data, bool(existing_tasks))
+                    )
+                    if mode == "manage" and existing_task is None and not will_create:
+                        yield _sse("agent_step", {"name": "plan_skip_task", "arguments": json.dumps({"title": title})})
+                        yield _sse("agent_result", {"name": "plan_skip_task", "ok": True, "result": {"reason": "No matching existing task."}})
+                        continue
 
-                        verb = "Updating" if existing_task else "Creating"
-                        yield _sse("agent_status", {"status": f"{verb} task {idx + 1}/{len(tasks_data)}: {title}"})
-                        payload = {
-                            "title": title,
-                            "description": t_data.get("description", ""),
-                            "status": t_data.get("status", "todo"),
-                            "priority": t_data.get("priority", "medium"),
-                            "assignee_id": _resolve_team_user_id(t_data, valid_user_ids),
-                            "start_date": _sanitize_date(t_data.get("startDate") or t_data.get("start_date")),
-                            "end_date": _sanitize_date(t_data.get("endDate") or t_data.get("end_date")),
-                            "order_index": t_data.get("order_index", idx),
-                        }
-                        if payload["assignee_id"] is None:
-                            payload.pop("assignee_id")
+                    verb = "Updating" if existing_task else "Creating"
+                    yield _sse("agent_status", {"status": f"{verb} task {idx + 1}/{len(tasks_data)}: {title}"})
+                    payload = {
+                        "title": title,
+                        "description": t_data.get("description", ""),
+                        "status": t_data.get("status", "todo"),
+                        "priority": t_data.get("priority", "medium"),
+                        "assignee_id": _resolve_team_user_id(t_data, valid_user_ids),
+                        "start_date": _sanitize_date(t_data.get("startDate") or t_data.get("start_date")),
+                        "end_date": _sanitize_date(t_data.get("endDate") or t_data.get("end_date")),
+                        "order_index": t_data.get("order_index", idx),
+                    }
+                    if payload["assignee_id"] is None:
+                        payload.pop("assignee_id")
 
-                        # Collect inferred deps for deferred resolution (Pass 2)
-                        raw_dep_ids = t_data.get("dependency_ids") or t_data.get("_inferred_deps")
-                        if raw_dep_ids:
-                            deferred_deps[idx] = [int(d) for d in raw_dep_ids if str(d).lstrip("-").isdigit()]
+                    # Collect inferred/actual deps for deferred resolution (Pass 2)
+                    raw_dep_ids = t_data.get("dependency_ids") or t_data.get("_inferred_deps")
+                    if raw_dep_ids:
+                        deferred_deps[idx] = raw_dep_ids
 
-                        if existing_task:
-                            task = existing_task
-                            update_task(task, payload)
-                            index_to_task[idx] = task
-                            yield _sse("agent_step", {"name": "plan_update_task", "arguments": json.dumps({"title": task.title, "index": idx + 1, "total": len(tasks_data)})})
-                            yield _sse("agent_result", {"name": "plan_update_task", "ok": True, "result": {"task_id": str(task.id), "title": task.title}})
+                    if existing_task:
+                        task = existing_task
+                        update_task(task, payload)
+                        index_to_task[idx] = task
+                        yield _sse("agent_step", {"name": "plan_update_task", "arguments": json.dumps({"title": task.title, "index": idx + 1, "total": len(tasks_data)})})
+                        yield _sse("agent_result", {"name": "plan_update_task", "ok": True, "result": {"task_id": str(task.id), "title": task.title}})
+                    else:
+                        task = create_task(project=project_obj, user=self.user, payload=payload)
+                        existing_tasks.append(task)
+                        tasks_by_id[str(task.id)] = task
+                        tasks_by_title[_title_key(task.title)] = task
+                        index_to_task[idx] = task
+                        yield _sse("agent_step", {"name": "plan_create_task", "arguments": json.dumps({"title": task.title, "index": idx + 1, "total": len(tasks_data)})})
+                        yield _sse("agent_result", {"name": "plan_create_task", "ok": True, "result": {"task_id": str(task.id), "title": task.title}})
+
+                # Pass 2: Resolve deferred dependencies using index_to_task map or direct UUIDs
+                for task_idx, raw_dep_ids in deferred_deps.items():
+                    task = index_to_task.get(task_idx)
+                    if not task:
+                        continue
+                    resolved_uuids = []
+                    dep_list = []
+                    if isinstance(raw_dep_ids, (list, tuple, set)):
+                        dep_list = list(raw_dep_ids)
+                    elif isinstance(raw_dep_ids, str):
+                        if "," in raw_dep_ids:
+                            dep_list = [item.strip() for item in raw_dep_ids.split(",")]
                         else:
-                            task = create_task(project=project_obj, user=self.user, payload=payload)
-                            existing_tasks.append(task)
-                            tasks_by_id[str(task.id)] = task
-                            tasks_by_title[_title_key(task.title)] = task
-                            index_to_task[idx] = task
-                            yield _sse("agent_step", {"name": "plan_create_task", "arguments": json.dumps({"title": task.title, "index": idx + 1, "total": len(tasks_data)})})
-                            yield _sse("agent_result", {"name": "plan_create_task", "ok": True, "result": {"task_id": str(task.id), "title": task.title}})
+                            dep_list = [raw_dep_ids.strip()]
+                    elif raw_dep_ids is not None:
+                        dep_list = [raw_dep_ids]
 
-                    # Pass 2: Resolve deferred dependencies using index_to_task map
-                    for task_idx, upstream_indices in deferred_deps.items():
-                        task = index_to_task.get(task_idx)
-                        if not task:
+                    for d in dep_list:
+                        if not d and d != 0:
                             continue
-                        resolved_uuids = []
-                        for up_idx in upstream_indices:
+                        d_str = str(d).strip()
+                        if d_str.lstrip("-").isdigit():
+                            up_idx = int(d_str)
                             upstream_task = index_to_task.get(up_idx)
                             if upstream_task and str(upstream_task.id) != str(task.id):
                                 resolved_uuids.append(str(upstream_task.id))
-                        if resolved_uuids:
-                            try:
-                                task.dependencies.set(resolved_uuids)
-                            except Exception:
-                                logger.warning("Failed to set dependencies for task %s", task.id)
-
-                # Create or update milestones
-                if milestones_data:
-                    existing_milestones = list(project_obj.milestones.all())
-                    ms_by_title: dict[str, Milestone] = {_title_key(m.title): m for m in existing_milestones}
-                    ms_by_id: dict[str, Milestone] = {str(m.id): m for m in existing_milestones}
-
-                    for idx, m_data in enumerate(milestones_data):
-                        m_title = m_data.get("title", "Untitled")
-                        existing_milestone = None
-                        if mode == "manage":
-                            existing_milestone = ms_by_id.get(_item_id(m_data) or "") or ms_by_title.get(_title_key(m_title))
-                        will_create = mode == "create" or (
-                            existing_milestone is None and _should_create_in_manage(m_data, bool(existing_milestones))
-                        )
-                        if mode == "manage" and existing_milestone is None and not will_create:
-                            yield _sse("agent_step", {"name": "plan_skip_milestone", "arguments": json.dumps({"title": m_title})})
-                            yield _sse("agent_result", {"name": "plan_skip_milestone", "ok": True, "result": {"reason": "No matching existing milestone."}})
-                            continue
-
-                        if existing_milestone:
-                            milestone = existing_milestone
-                            update_milestone(
-                                milestone,
-                                {
-                                    "title": m_title,
-                                    "description": m_data.get("description", ""),
-                                    "status": m_data.get("status", milestone.status),
-                                    "target_date": m_data.get("date") or m_data.get("target_date"),
-                                    "order_index": idx,
-                                },
-                            )
-                            yield _sse("agent_step", {"name": "plan_update_milestone", "arguments": json.dumps({"title": milestone.title})})
-                            yield _sse("agent_result", {"name": "plan_update_milestone", "ok": True, "result": {"milestone_id": str(milestone.id)}})
                         else:
-                            milestone = create_milestone(
-                                project=project_obj,
-                                user=self.user,
-                                payload={
-                                    "title": m_title,
-                                    "description": m_data.get("description", ""),
-                                    "status": "pending",
-                                    "target_date": m_data.get("date") or m_data.get("target_date"),
-                                    "order_index": idx,
-                                },
-                            )
-                            existing_milestones.append(milestone)
-                            ms_by_id[str(milestone.id)] = milestone
-                            ms_by_title[_title_key(milestone.title)] = milestone
-                            yield _sse("agent_step", {"name": "plan_create_milestone", "arguments": json.dumps({"title": milestone.title})})
-                            yield _sse("agent_result", {"name": "plan_create_milestone", "ok": True, "result": {"milestone_id": str(milestone.id)}})
+                            if _is_valid_uuid(d_str):
+                                resolved_uuids.append(str(d_str))
+                    if resolved_uuids:
+                        try:
+                            task.dependencies.set(resolved_uuids)
+                        except Exception:
+                            logger.warning("Failed to set dependencies for task %s", task.id)
+
+            # Create or update milestones
+            if milestones_data:
+                existing_milestones = list(project_obj.milestones.all())
+                ms_by_title: dict[str, Milestone] = {_title_key(m.title): m for m in existing_milestones}
+                ms_by_id: dict[str, Milestone] = {str(m.id): m for m in existing_milestones}
+
+                for idx, m_data in enumerate(milestones_data):
+                    m_title = m_data.get("title", "Untitled")
+                    existing_milestone = None
+                    if mode == "manage":
+                        existing_milestone = ms_by_id.get(_item_id(m_data) or "") or ms_by_title.get(_title_key(m_title))
+                    will_create = mode == "create" or (
+                        existing_milestone is None and _should_create_in_manage(m_data, bool(existing_milestones))
+                    )
+                    if mode == "manage" and existing_milestone is None and not will_create:
+                        yield _sse("agent_step", {"name": "plan_skip_milestone", "arguments": json.dumps({"title": m_title})})
+                        yield _sse("agent_result", {"name": "plan_skip_milestone", "ok": True, "result": {"reason": "No matching existing milestone."}})
+                        continue
+
+                    if existing_milestone:
+                        milestone = existing_milestone
+                        update_milestone(
+                            milestone,
+                            {
+                                "title": m_title,
+                                "description": m_data.get("description", ""),
+                                "status": m_data.get("status", milestone.status),
+                                "target_date": _sanitize_date(m_data.get("date") or m_data.get("target_date")),
+                                "order_index": idx,
+                            },
+                        )
+                        yield _sse("agent_step", {"name": "plan_update_milestone", "arguments": json.dumps({"title": milestone.title})})
+                        yield _sse("agent_result", {"name": "plan_update_milestone", "ok": True, "result": {"milestone_id": str(milestone.id)}})
+                    else:
+                        milestone = create_milestone(
+                            project=project_obj,
+                            user=self.user,
+                            payload={
+                                "title": m_title,
+                                "description": m_data.get("description", ""),
+                                "status": "pending",
+                                "target_date": _sanitize_date(m_data.get("date") or m_data.get("target_date")),
+                                "order_index": idx,
+                            },
+                        )
+                        existing_milestones.append(milestone)
+                        ms_by_id[str(milestone.id)] = milestone
+                        ms_by_title[_title_key(milestone.title)] = milestone
+                        yield _sse("agent_step", {"name": "plan_create_milestone", "arguments": json.dumps({"title": milestone.title})})
+                        yield _sse("agent_result", {"name": "plan_create_milestone", "ok": True, "result": {"milestone_id": str(milestone.id)}})
 
         except Exception as e:
             logger.exception("Database mutations failed in pipeline")
@@ -524,6 +570,7 @@ class PlanningEngine:
         *,
         project_id: str | None,
         project_context: dict | None,
+        chat_history: list[dict] | None = None,
     ) -> Iterator[str]:
         from django.db import transaction
         from planning.manage_update_pipeline import ManageUpdatePipeline
@@ -551,14 +598,20 @@ class PlanningEngine:
 
         draft_data = None
         pipeline = ManageUpdatePipeline(team=self.team, user=self.user)
-        for event in pipeline.run(prompt, project_context=ctx):
+        has_asked_user = False
+        for event in pipeline.run(prompt, project_context=ctx, chat_history=chat_history):
             yield event
+            if "ask_user" in event:
+                has_asked_user = True
             if "reasoning_done" in event:
                 try:
                     data_line = event.split("data: ", 1)[1].strip()
                     draft_data = json.loads(data_line)
                 except Exception:
                     pass
+
+        if has_asked_user:
+            return
 
         if not draft_data:
             yield _sse("agent_error", {"detail": "Manage pipeline did not produce mutations."})

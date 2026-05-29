@@ -188,13 +188,15 @@ class ContextBuilder:
         current_chars = 0
 
         for res in results:
-            source = (
+            source_type = res.payload.get("source_type", "wiki")
+            source_label = source_type.upper()
+            source_name = (
                 res.payload.get("page_title")
                 or res.payload.get("project_name")
                 or "Knowledge"
             )
             content = res.payload.get("content", "")
-            entry = f"[{source}]: {content}"
+            entry = f"[{source_label}: {source_name}]: {content}"
 
             if current_chars + len(entry) > max_chars:
                 break

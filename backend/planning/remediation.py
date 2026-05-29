@@ -89,7 +89,7 @@ def deterministic_risk(project: Project, conflicts: list[dict[str, Any]]) -> dic
 
 
 def assess_project_risk(team: Team, project: Project, conflicts: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    from planning.agent_executor import _assess_plan_risk
+    from planning.engine import _assess_plan_risk
 
     conflicts = conflicts if conflicts is not None else detect_date_conflicts(str(team.id), project_id=str(project.id))
     fallback = deterministic_risk(project, conflicts)

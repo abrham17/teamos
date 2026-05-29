@@ -417,14 +417,20 @@ class PlanningActivityView(APIView):
     permission_classes = [IsAuthenticated, CanEditPlans]
 
     def get(self, request, team_id):
-        # Fetch 15 most recently updated tasks
+        # Fetch 12 most recently updated tasks
         tasks = (
             Task.objects.filter(project__team_id=team_id)
-            .select_related("project")
-            .order_by("-updated_at")[:15]
+            .select_related("project", "created_by")
+            .order_by("-updated_at")[:12]
         )
         # Fetch 5 most recently updated projects
-        projects = Project.objects.filter(team_id=team_id).order_by("-updated_at")[:5]
+        projects = Project.objects.filter(team_id=team_id).select_related("created_by").order_by("-updated_at")[:5]
+        # Fetch 6 most recently updated milestones
+        milestones = (
+            Milestone.objects.filter(project__team_id=team_id)
+            .select_related("project", "created_by")
+            .order_by("-updated_at")[:6]
+        )
 
         activity = []
         for p in projects:
@@ -451,9 +457,22 @@ class PlanningActivityView(APIView):
                     "user": t.created_by.email if t.created_by else "System",
                 }
             )
+        for m in milestones:
+            activity.append(
+                {
+                    "id": str(m.id),
+                    "project_id": str(m.project_id),
+                    "project_name": m.project.name,
+                    "kind": "milestone",
+                    "title": m.title,
+                    "status": m.status,
+                    "updated_at": m.updated_at.isoformat(),
+                    "user": m.created_by.email if m.created_by else "System",
+                }
+            )
 
         activity.sort(key=lambda x: x["updated_at"], reverse=True)
-        return ok(activity[:20])
+        return ok(activity[:25])
 
 
 class PlanningAssistStreamView(APIView):
@@ -468,6 +487,7 @@ class PlanningAssistStreamView(APIView):
         mode = request.data.get("mode", "create")
         project_id = request.data.get("project_id")
         intent = request.data.get("intent")
+        chat_history = request.data.get("history") or request.data.get("chat_history")
 
         if not prompt:
             return fail("Prompt is required.", status_code=400, code="prompt_required")
@@ -511,6 +531,7 @@ class PlanningAssistStreamView(APIView):
                     mode=mode,
                     project_id=project_id,
                     user=request.user,
+                    chat_history=chat_history,
                 ):
                     yield sse_line
             except Exception as e:
@@ -572,7 +593,7 @@ class PlanningAssistStreamView(APIView):
                     try:
                         from .agent_sync import detect_date_conflicts
                         from .remediation import assess_project_risk
-
+                        
                         project_conflicts = detect_date_conflicts(str(team_id), project_id=str(project_id))
                         project_risk = assess_project_risk(team, curr_project, project_conflicts)
                         current_project_context += (
@@ -614,9 +635,10 @@ class PlanningAssistStreamView(APIView):
                 "wiki planning, team allocation, and risk management.\n\n"
                 "Your objective is to answer questions thoroughly using the provided database and wiki context.\n"
                 "Format your response with premium, clean Markdown (headings, bold text, lists). Be professional, concise, and helpful.\n"
-                "Before generating or proposing any updates, proactively ask the user 1 or 2 extremely friendly, engaging questions "
-                "about (1) daily tasks inclusion, (2) milestone checkpoints, (3) priority settings, or (4) other project related details "
-                "or wiki knowledge gaps. Keep it highly interactive and conversational.\n\n"
+                "IMPORTANT — Clarification questions:\n"
+                "Only ask for clarification if there is a CRITICAL missing detail that would meaningfully change the plan's "
+                "structure or quality. Do NOT repeat any question already answered in the conversation. "
+                "Do NOT ask generic or canned questions. If you have enough context, proceed directly to answering or proposing.\n\n"
                 "If asked about project relationships, task status, team workloads, or specific calendar events, use the context below "
                 "to answer accurately. Keep schedule dates and project constraints in mind.\n\n"
                 f"=== CONTEXT ===\n"
@@ -626,24 +648,36 @@ class PlanningAssistStreamView(APIView):
                 f"{wiki_context}"
             )
 
-            # Call streaming LLM
+            # Call streaming LLM — include chat_history for multi-turn memory
             from llm_orchestrator.orchestrator import llm_call
             try:
+                messages = [{"role": "system", "content": system_prompt}]
+                # Inject last 12 turns of history so the model has full conversational context
+                if chat_history:
+                    for h in chat_history[-12:]:
+                        h_role = h.get("role", "user")
+                        h_content = (h.get("content") or h.get("text") or "").strip()
+                        if h_role in ("user", "assistant") and h_content:
+                            messages.append({"role": h_role, "content": h_content})
+                messages.append({"role": "user", "content": prompt})
+
                 response, model_used, routed_by = llm_call(
                     team=team,
                     operation="architect_chat",
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt}
-                    ],
+                    messages=messages,
                     user=request.user,
                     stream=True
                 )
                 for chunk in response:
                     delta = chunk.choices[0].delta if chunk.choices else None
-                    text = delta.content if delta and delta.content else ""
-                    if text:
-                        yield f"event: agent_chat_chunk\ndata: {_json.dumps({'text': text})}\n\n"
+                    if delta:
+                         reasoning_piece = getattr(delta, "reasoning_content", None) or (
+                             delta.model_extra.get("reasoning_content") if hasattr(delta, "model_extra") and delta.model_extra else None
+                         )
+                         if reasoning_piece:
+                             yield f"event: thinking\ndata: {_json.dumps({'content': reasoning_piece})}\n\n"
+                         if delta.content:
+                             yield f"event: agent_chat_chunk\ndata: {_json.dumps({'text': delta.content})}\n\n"
                 yield f"event: agent_chat_done\ndata: {_json.dumps({'ok': True})}\n\n"
             except Exception as e:
                 logger.exception("AI Architect chat stream failed")
@@ -1064,6 +1098,8 @@ class PlanningChangeSetListView(APIView):
                 "remediation_preview": cs.remediation_preview,
                 "created_at": cs.created_at.isoformat(),
                 "base_version_id": str(cs.base_version_id),
+                "proposed_version_id": str(cs.proposed_version_id) if cs.proposed_version_id else None,
+                "created_by": cs.created_by.email if cs.created_by else "System",
             }
             for cs in qs.order_by("-created_at")[:20]
         ]
@@ -1098,8 +1134,7 @@ class PlanningChangeSetApproveView(APIView):
 
     def post(self, request, team_id, project_id, changeset_id):
         from .models import PlanChangeSet
-        from .version_services import approve_changeset
-        from .tasks import reindex_project_async
+        from .tasks import approve_changeset_async
 
         try:
             cs = PlanChangeSet.objects.get(
@@ -1107,20 +1142,23 @@ class PlanningChangeSetApproveView(APIView):
             )
         except PlanChangeSet.DoesNotExist:
             return fail("ChangeSet not found", status_code=404)
-        try:
-            apply_remediation = request.data.get("apply_remediation", False)
-            cs = approve_changeset(cs, user=request.user)
-            if apply_remediation:
-                from .remediation import remediate_project
 
-                remediate_project(team=cs.project.team, project=cs.project, apply_conflicts=True, apply_risk=False)
-            reindex_project_async.delay(str(project_id))
-            return ok({"approved": True, "changeset_id": str(cs.id)})
-        except ValueError as e:
-            return fail(str(e), status_code=400)
-        except Exception as e:
-            logger.exception("Approve changeset failed")
-            return fail(str(e), status_code=500)
+        # Idempotent: if already approved, return success
+        if cs.status == "approved":
+            return ok({"approved": True, "changeset_id": str(cs.id), "already_approved": True})
+
+        if cs.status != "pending":
+            return fail(f"ChangeSet is not pending: {cs.status}", status_code=400)
+
+        # Queue async approval
+        apply_remediation = request.data.get("apply_remediation", False)
+        task = approve_changeset_async.delay(str(cs.id), str(request.user.id), apply_remediation)
+        
+        return ok({
+            "processing": True,
+            "task_id": str(task.id),
+            "changeset_id": str(cs.id)
+        })
 
 
 class PlanningChangeSetRejectView(APIView):

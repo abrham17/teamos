@@ -6,6 +6,7 @@ Optionally queue wikilink graph wiring.
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from ingest.pipeline import _derive_chunk_config, _persist_chunks
@@ -16,6 +17,12 @@ if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_heading(text: str) -> str:
+    """Return the first markdown heading text found in ``text``, or empty string."""
+    m = re.search(r"^#{1,6}\s+(.+)$", text, re.MULTILINE)
+    return m.group(1).strip()[:300] if m else ""
 
 
 def reindex_wiki_page(
@@ -44,10 +51,17 @@ def reindex_wiki_page(
             for i in range(0, len(words), max(chunk_size - chunk_overlap, 1))
         ]
 
-    chunk_count = _persist_chunks(page, chunks)
+    section_titles = [_extract_heading(c) for c in chunks]
+    chunk_count = _persist_chunks(page, chunks, section_titles=section_titles)
 
     chunks_data = [
-        {"id": str(c.id), "content": c.content, "index": c.chunk_index, "title": page.title}
+        {
+            "id": str(c.id),
+            "content": c.content,
+            "index": c.chunk_index,
+            "title": page.title,
+            "section_title": c.section_title,
+        }
         for c in PageChunk.objects.filter(page=page)
     ]
     vector_store.upsert_chunks(page.team_id, page.id, chunks_data)

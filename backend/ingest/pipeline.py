@@ -208,13 +208,14 @@ def _derive_title(job, source_text: str) -> str:
     return "Ingested Content"
 
 
-def _persist_chunks(page: WikiPage, chunks: list[str]) -> int:
+def _persist_chunks(page: WikiPage, chunks: list[str], section_titles: list[str] | None = None) -> int:
     """Persist text chunks to ``PageChunk`` rows (shared with wiki reindex)."""
     PageChunk.objects.filter(page=page).delete()
     rows = [
         PageChunk(
             page=page,
             chunk_index=idx,
+            section_title=(section_titles[idx] if section_titles and idx < len(section_titles) else ""),
             content=c,
             content_hash=hashlib.sha256(c.encode()).hexdigest(),
         )

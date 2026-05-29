@@ -32,9 +32,7 @@ ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "api.team-os.tech,team-os.tech,l
 # Load environment variables early so they can be used in settings below
 DATABASE_URL = os.environ.get("DATABASE_URL")
 LLM_BACKEND = os.environ.get("LLM_BACKEND")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 QDRANT_URL = os.environ.get("QDRANT_URL")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY")
 

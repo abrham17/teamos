@@ -25,14 +25,10 @@ from teamos_project.llm_env import production_llm_backend_from_env
 class ProductionLlmBackendEnvTests(SimpleTestCase):
     def test_forces_openai_by_default(self):
         self.assertEqual(production_llm_backend_from_env({}), "openai")
-        self.assertEqual(
-            production_llm_backend_from_env({"LLM_BACKEND": "groq"}),
-            "openai",
-        )
 
-    def test_escape_hatch_allows_groq(self):
-        env = {"ALLOW_NON_OPENAI_LLM_IN_PRODUCTION": "1", "LLM_BACKEND": "groq"}
-        self.assertEqual(production_llm_backend_from_env(env), "groq")
+    def test_escape_hatch_allows_openai(self):
+        env = {"ALLOW_NON_OPENAI_LLM_IN_PRODUCTION": "1", "LLM_BACKEND": "openai"}
+        self.assertEqual(production_llm_backend_from_env(env), "openai")
 
     def test_escape_hatch_invalid_backend_becomes_openai(self):
         env = {"ALLOW_NON_OPENAI_LLM_IN_PRODUCTION": "1", "LLM_BACKEND": "mistral"}

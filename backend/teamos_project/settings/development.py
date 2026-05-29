@@ -10,6 +10,7 @@ ALLOWED_HOSTS = [
     ".onrender.com",
     "localhost",
     "127.0.0.1",
+    "admin-dashboard.team-os.tech"
 ]
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000", 
@@ -17,7 +18,7 @@ CSRF_TRUSTED_ORIGINS = [
     "https://api.team-os.tech",
     "https://team-os.tech",
     "https://teamos-2.onrender.com",
-    
+    "https://admin-dashboard.team-os.tech"
 ]
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
@@ -46,9 +47,9 @@ SIMPLE_JWT = {
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 
-# Local testing: Groq OpenAI-compatible API for chat + ingest LLM paths.
-# Production uses OpenAI only (see production.py). Override with LLM_BACKEND=openai if needed.
-LLM_BACKEND = os.environ.get("LLM_BACKEND", "groq")
+# Local testing: OpenRouter → DeepSeek V4 for chat + ingest LLM paths.
+# Production uses OpenRouter (see production.py). Override with LLM_BACKEND=openai for OpenAI.
+LLM_BACKEND = os.environ.get("LLM_BACKEND", "openrouter")
 
 OPENAI_EMBEDDING_MODEL = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 _explicit_det = os.environ.get("USE_DETERMINISTIC_EMBEDDINGS")

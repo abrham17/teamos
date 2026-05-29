@@ -136,7 +136,22 @@ def _infer_from_graph(tasks: list[dict[str, Any]], team_id: str) -> dict[int, se
             for p in pages:
                 title_to_id[p.title] = str(p.id)
 
-        # Check for dependency edges between pages
+        # Collect all page IDs referenced by any task
+        all_page_ids = set(title_to_id.values())
+        if not all_page_ids:
+            return deps
+
+        # Single batch query for all relevant graph edges (fixes N² issue)
+        graph_edges = GraphEdge.objects.filter(
+            from_page_id__in=all_page_ids,
+            to_page_id__in=all_page_ids,
+            edge_type__in=["depends_on", "prerequisite", "implements"],
+        ).values_list("from_page_id", "to_page_id")
+
+        # Build in-memory set for O(1) lookups
+        dep_pairs = set(graph_edges)
+
+        # Check for dependency edges between pages using in-memory set
         for down_idx, down_titles in task_pages.items():
             down_page_ids = {title_to_id[t] for t in down_titles if t in title_to_id}
             if not down_page_ids:
@@ -149,12 +164,12 @@ def _infer_from_graph(tasks: list[dict[str, Any]], team_id: str) -> dict[int, se
                 if not up_page_ids:
                     continue
 
-                # Check if any downstream page depends_on any upstream page
-                has_dep = GraphEdge.objects.filter(
-                    from_page_id__in=down_page_ids,
-                    to_page_id__in=up_page_ids,
-                    edge_type__in=["depends_on", "prerequisite", "implements"],
-                ).exists()
+                # O(1) check against in-memory set instead of N² DB queries
+                has_dep = any(
+                    (down_pid, up_pid) in dep_pairs
+                    for down_pid in down_page_ids
+                    for up_pid in up_page_ids
+                )
 
                 if has_dep:
                     if down_idx not in deps:

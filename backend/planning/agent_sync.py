@@ -216,6 +216,43 @@ def generate_project_timeline_markdown(project: Project) -> str:
     return md
 
 
+def _ensure_plan_graph_edge(project: Project, page: WikiPage) -> None:
+    """Create or update a GraphEdge linking the project wiki page to key plan resources."""
+    GraphEdge.objects.get_or_create(
+        from_page=page,
+        to_page=page,
+        edge_type="parent_child",
+        defaults={
+            "reason": f"Auto-synced wiki page for plan project: {project.name}",
+            "confidence": 1.0,
+            "created_by": "agent",
+            "metadata": {"project_id": str(project.id)},
+        },
+    )
+    # Link to any wiki pages referenced in task descriptions
+    referenced_pages = WikiPage.objects.filter(
+        team=project.team,
+        is_deleted=False,
+    ).filter(
+        Q(title__in=[t.title for t in project.tasks.all()])
+        | Q(title__in=[m.title for m in project.milestones.all()])
+    )
+    for ref_page in referenced_pages:
+        if ref_page.id == page.id:
+            continue
+        GraphEdge.objects.get_or_create(
+            from_page=page,
+            to_page=ref_page,
+            edge_type="references",
+            defaults={
+                "reason": f"Plan project '{project.name}' references this page",
+                "confidence": 0.8,
+                "created_by": "agent",
+                "metadata": {"project_id": str(project.id)},
+            },
+        )
+
+
 def sync_project_to_wiki(project: Project) -> WikiPage | None:
     """
     Update the project's associated wiki page with current plan data.
@@ -234,6 +271,7 @@ def sync_project_to_wiki(project: Project) -> WikiPage | None:
             reindex_wiki_page(page)
         except Exception:
             logger.exception("Failed to reindex project wiki page %s", page.id)
+        _ensure_plan_graph_edge(project, page)
         return page
 
     # Create new wiki page for project
@@ -251,6 +289,7 @@ def sync_project_to_wiki(project: Project) -> WikiPage | None:
         reindex_wiki_page(page)
     except Exception:
         logger.exception("Failed to reindex new project wiki page %s", page.id)
+    _ensure_plan_graph_edge(project, page)
     return page
 
 

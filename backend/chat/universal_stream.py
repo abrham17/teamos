@@ -26,11 +26,14 @@ def iter_universal_intelligence_events(
     session: ChatSession,
     prompt: str,
     project_id: str | None = None,
+    mode: str = "ask",
     state: dict[str, Any],
 ) -> Iterator[str]:
     """
     Main entry point for Universal Intelligence.
     Classifies intent and routes to the appropriate reasoning engine.
+    ``mode`` is the user-selected chat mode ("ask", "agent", "plan") and
+    biases classification toward the corresponding specialist.
     """
     orchestrator = get_orchestrator(str(team.id), str(user.id))
     state["full_text"] = ""
@@ -39,7 +42,7 @@ def iter_universal_intelligence_events(
     
     # 1. Classification Phase
     yield _sse("status", {"status": "Analyzing mission intent..."})
-    classification = orchestrator.classify_sync(prompt, team)
+    classification = orchestrator.classify_sync(prompt, team, preferred_mode=mode)
     
     yield _sse("agent_strategy", {
         "primary_agent": classification.primary_agent.value,
@@ -64,6 +67,17 @@ def iter_universal_intelligence_events(
     # CASE A: Strategic Planning (Deep Reasoning Pipeline)
     if classification.primary_agent == AgentRole.STRATEGIC_PLANNER:
         from planning.agent_executor import run_planner_agent_v2
+        
+        chat_history = []
+        try:
+            msgs = session.messages.order_by("created_at")[:50]
+            for m in msgs:
+                # Classify sender_type to role
+                role = "assistant" if m.sender_type == "assistant" else "user"
+                chat_history.append({"role": role, "content": m.content})
+        except Exception:
+            logger.exception("Failed to build chat history for strategic planner")
+
         # Planning agent handles its own persistence and high-fidelity events
         yield from run_planner_agent_v2(
             team_id=str(team.id),
@@ -71,6 +85,7 @@ def iter_universal_intelligence_events(
             mode="manage" if project_id else "create",
             project_id=project_id,
             user=user,
+            chat_history=chat_history,
         )
         state["ok"] = True
         return

@@ -132,9 +132,9 @@ def llm_call(
                 if attempt < max_retries:
                     logger.warning(f"LLM call failed, retrying ({attempt+1}/{max_retries}): {e}")
                     time.sleep(1.5 ** attempt)
-                    # Fallback to a cheaper model if the big one fails
-                    if "gpt-4" in call_kwargs["model"] or "claude-3-opus" in call_kwargs["model"]:
-                        call_kwargs["model"] = "gpt-4o-mini" # or claude-3-haiku
+                    # Fallback to DeepSeek V4 Flash if Pro/R1 fails
+                    if "v4-pro" in call_kwargs["model"] or "r1" in call_kwargs["model"] or "reasoner" in call_kwargs["model"]:
+                        call_kwargs["model"] = "deepseek/deepseek-v4-flash"
                 else:
                     raise e
         
@@ -178,10 +178,40 @@ def llm_json_call(
     default_on_error: Any = None,
     max_tokens: Optional[int] = None,
     temperature: float = 0.7,
+    sse_queue: Optional[Any] = None,
 ) -> Any:
     """
     Helper for JSON-wrapped calls.
     """
+    if sse_queue is not None:
+        try:
+            resp, model_used, routed_by = llm_call(
+                team=team,
+                operation=operation,
+                messages=messages,
+                user=user,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stream=True,
+            )
+            full_content = []
+            for chunk in resp:
+                if chunk.choices:
+                    delta = chunk.choices[0].delta
+                    reasoning_piece = getattr(delta, "reasoning_content", None) or (
+                        delta.model_extra.get("reasoning_content") if hasattr(delta, "model_extra") and delta.model_extra else None
+                    )
+                    if reasoning_piece:
+                        sse_queue.put(f"event: thinking\ndata: {json.dumps({'content': reasoning_piece})}\n\n")
+                    if delta.content:
+                        full_content.append(delta.content)
+            content = "".join(full_content).strip()
+            content = content.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            return json.loads(content)
+        except Exception:
+            logger.exception("Streaming JSON call failed in orchestrator")
+            return default_on_error
+
     try:
         # Attempt json_object mode
         resp, model_used, routed_by = llm_call(
@@ -216,3 +246,4 @@ def llm_json_call(
             return json.loads(content)
         except Exception:
             return default_on_error
+
