@@ -77,7 +77,7 @@ export const api = {
     const authHeader = await getAuthHeader();
     const res = await fetch(`${API_URL}${url}`, {
       method: "GET",
-      headers: { "Content-Type": "application/json", ...authHeader },
+      headers: { ...authHeader },
       credentials: "include",
     });
     const payload = await parseResponse(res);
