@@ -56,8 +56,10 @@ interface User {
 export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { currentTeamId, setCurrentTeamId } = useWikiStore();
+  const { currentTeamId, setCurrentTeamId, zenMode } = useWikiStore();
   const { theme, toggle: toggleTheme } = useTheme();
+
+  if (zenMode) return null;
 
   const [user, setUser] = useState<User | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -189,15 +191,15 @@ export function Sidebar() {
       return [
         "w-11 h-10 flex items-center justify-center rounded-xl transition-all duration-200 shrink-0 relative group",
         active
-          ? "bg-[var(--accent-subtle)] text-[var(--accent)] shadow-[inset_0_0_12px_rgba(139,127,244,0.15)]"
-          : "text-[var(--text-muted)] hover:bg-white/[0.03] hover:text-[var(--text-secondary)]",
+          ? "text-[var(--text-primary)] font-medium"
+          : "text-[var(--text-muted)] hover:bg-white/[0.02] hover:text-[var(--text-secondary)]",
       ].join(" ");
     }
     return [
       "flex items-center gap-3 px-3.5 py-2.5 w-full text-[13px] rounded-xl transition-all duration-200 relative group",
       active
-        ? "bg-[var(--accent-subtle)] text-[var(--accent)] font-semibold shadow-[inset_0_0_12px_rgba(139,127,244,0.15)]"
-        : "text-[var(--text-muted)] hover:bg-white/[0.03] hover:text-[var(--text-secondary)]",
+        ? "text-[var(--text-primary)] font-semibold"
+        : "text-[var(--text-muted)] hover:bg-white/[0.02] hover:text-[var(--text-secondary)]",
     ].join(" ");
   };
 
@@ -230,7 +232,7 @@ export function Sidebar() {
 
       <div
         style={{ width: collapsed ? "64px" : "240px" }}
-        className={`bg-gradient-to-b from-[var(--bg-900)] to-[var(--bg-950)] border-r border-[var(--border-subtle)] flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out overflow-hidden
+        className={`bg-[var(--bg-900)] border-r border-[var(--border-subtle)] flex flex-col h-full shrink-0 transition-all duration-300 ease-in-out overflow-hidden
           fixed md:static top-0 bottom-0 left-0 z-45 md:z-auto
           ${isOpenMobile ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
         `}
@@ -241,16 +243,16 @@ export function Sidebar() {
           }`}
       >
         {collapsed ? (
-          <button onClick={toggleCollapsed} title="Expand sidebar" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/[0.03] transition-colors">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center shadow-[var(--shadow-glow)]">
-              <span className="text-white font-bold text-[10px]">T</span>
+          <button onClick={toggleCollapsed} title="Expand sidebar" className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-white/[0.02] transition-colors">
+            <div className="w-7 h-7 rounded-lg bg-transparent border border-[var(--border-strong)] flex items-center justify-center">
+              <span className="text-[var(--text-primary)] font-bold text-[10px]">T</span>
             </div>
           </button>
         ) : (
           <>
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center shadow-[var(--shadow-glow)] shrink-0">
-                <span className="text-white font-bold text-[11px]">T</span>
+              <div className="w-7 h-7 rounded-lg bg-transparent border border-[var(--border-strong)] flex items-center justify-center shrink-0">
+                <span className="text-[var(--text-primary)] font-bold text-[11px]">T</span>
               </div>
               <span className="font-semibold text-[var(--text-primary)] tracking-tight text-[15px] leading-none">
                 TeamOS
@@ -259,7 +261,7 @@ export function Sidebar() {
             <button
               onClick={toggleCollapsed}
               title="Collapse sidebar"
-              className="p-1.5 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-white/[0.03] transition-colors"
+              className="p-1.5 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-white/[0.02] transition-colors"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
@@ -285,7 +287,7 @@ export function Sidebar() {
           <div className="relative">
             <button
               onClick={() => setTeamDropOpen(v => !v)}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.04] hover:border-white/[0.08] transition-all text-left shadow-sm"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-transparent border border-[var(--border-subtle)] hover:bg-[var(--bg-700)] transition-colors text-left"
             >
               <div className="w-7 h-7 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center text-[var(--accent)] font-bold text-xs shrink-0">
                 {currentTeam?.name?.[0]?.toUpperCase() ?? "T"}
@@ -307,7 +309,7 @@ export function Sidebar() {
             </button>
 
             {teamDropOpen && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--bg-800)] border border-[var(--border-strong)] rounded-2xl z-50 overflow-hidden shadow-[var(--shadow-lg)] py-1.5 backdrop-blur-md">
+              <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--bg-800)] border border-[var(--border-subtle)] rounded-lg z-50 overflow-hidden py-1.5">
                 {teamLoadError && (
                   <div className="px-3 py-2 text-xs text-[var(--danger)] border-b border-[var(--border-subtle)]">
                     {teamLoadError}
@@ -418,10 +420,10 @@ export function Sidebar() {
               className={navCls(href)}
             >
               {active && (
-                <div className="absolute left-0 top-2.5 bottom-2.5 w-0.5 bg-[var(--accent)] rounded-r-md shadow-[0_0_8px_var(--accent)]" />
+                <div className="absolute left-0 top-2.5 bottom-2.5 w-0.5 bg-[var(--accent)] rounded-r-md" />
               )}
-              <Icon className={`w-4 h-4 shrink-0 transition-transform duration-200 ${active ? "scale-110" : "group-hover:scale-105"}`} />
-              {!collapsed && <span className="transition-all duration-200">{label}</span>}
+              <Icon className="w-4 h-4 shrink-0" />
+              {!collapsed && <span>{label}</span>}
             </Link>
           );
         })}
@@ -488,7 +490,7 @@ export function Sidebar() {
         <div className={`mt-3 pt-3 border-t border-[var(--border-subtle)] ${collapsed ? "flex flex-col items-center gap-2" : ""}`}>
           {collapsed ? (
             <>
-              <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white font-semibold text-xs border border-white/10 shadow-sm">
+              <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center bg-[var(--accent-subtle)] text-white font-semibold text-xs border border-white/10 shadow-sm">
                 {user?.avatar_url
                   ? /* eslint-disable-next-line @next/next/no-img-element */
                   <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
@@ -504,8 +506,8 @@ export function Sidebar() {
               </button>
             </>
           ) : (
-            <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-white/[0.03] transition-colors cursor-default border border-transparent hover:border-white/[0.04]">
-              <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] flex items-center justify-center text-white font-semibold text-xs shrink-0 border border-white/10 shadow-sm">
+            <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[var(--bg-700)] transition-colors cursor-default">
+              <div className="w-8 h-8 rounded-full overflow-hidden bg-[var(--accent-subtle)] flex items-center justify-center text-white font-semibold text-xs shrink-0 border border-transparent">
                 {user?.avatar_url
                   ? /* eslint-disable-next-line @next/next/no-img-element */
                   <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />

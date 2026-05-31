@@ -6,6 +6,9 @@ interface WikiState {
   
   wikiSidebarOpen: boolean;
   setWikiSidebarOpen: (open: boolean) => void;
+
+  zenMode: boolean;
+  setZenMode: (zen: boolean) => void;
 }
 
 export const useWikiStore = create<WikiState>((set) => ({
@@ -14,4 +17,7 @@ export const useWikiStore = create<WikiState>((set) => ({
   
   wikiSidebarOpen: false,
   setWikiSidebarOpen: (open) => set({ wikiSidebarOpen: open }),
+
+  zenMode: false,
+  setZenMode: (zen) => set({ zenMode: zen }),
 }));

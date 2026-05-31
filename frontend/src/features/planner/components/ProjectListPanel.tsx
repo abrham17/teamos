@@ -33,7 +33,7 @@ export function ProjectListPanel({
         </div>
         <button
           onClick={onNewProject}
-          className="p-1.5 rounded-lg bg-[var(--accent-subtle)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white transition-all"
+          className="p-1.5 rounded-lg bg-[var(--accent-subtle)] text-[var(--accent)] border border-[var(--border-subtle)] hover:bg-[var(--accent-subtle)]/80 transition-all"
           title="New Project"
         >
           <Plus className="w-4 h-4" />
@@ -90,7 +90,7 @@ export function ProjectListPanel({
                 onClick={() => onSelectProject(project.id)}
                 className={`w-full text-left p-3 rounded-lg border transition-colors mb-2 ${
                   active
-                    ? "border-[var(--accent)] bg-[var(--accent-subtle)]"
+                    ? "border-[var(--border-subtle)] bg-[var(--accent-subtle)]"
                     : "border-transparent hover:border-[var(--border-subtle)] hover:bg-[var(--bg-900)]"
                 }`}
               >

@@ -63,10 +63,10 @@
   --glass-heavy-bg: rgba(13, 13, 18, 0.94);
 
   /* Shadows — real subtle depth */
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.25);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.3);
-  --shadow-lg: 0 12px 32px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.35);
-  --shadow-glow: 0 0 20px rgba(139, 127, 244, 0.3);
+  --shadow-sm: none;
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.25);
+  --shadow-lg: 0 4px 16px rgba(0,0,0,0.35);
+  --shadow-glow: none;
   --shadow-1: var(--shadow-sm);
   --shadow-2: var(--shadow-md);
   --shadow-3: var(--shadow-lg);
@@ -175,10 +175,10 @@
   --glass-border: rgba(0, 0, 0, 0.06);
   --glass-heavy-bg: rgba(252, 252, 255, 0.96);
 
-  --shadow-sm: 0 1px 3px rgba(15,15,30,0.08), 0 1px 2px rgba(15,15,30,0.05);
-  --shadow-md: 0 4px 12px rgba(15,15,30,0.1), 0 2px 4px rgba(15,15,30,0.07);
-  --shadow-lg: 0 12px 32px rgba(15,15,30,0.14), 0 4px 12px rgba(15,15,30,0.08);
-  --shadow-glow: 0 0 20px rgba(109, 95, 232, 0.2);
+  --shadow-sm: none;
+  --shadow-md: 0 2px 6px rgba(15,15,30,0.06);
+  --shadow-lg: 0 4px 16px rgba(15,15,30,0.1);
+  --shadow-glow: none;
   --shadow-1: var(--shadow-sm);
   --shadow-2: var(--shadow-md);
   --shadow-3: var(--shadow-lg);
@@ -259,96 +259,33 @@
 
 /* Graph page — ambient orbs (home-hero energy, behind Cytoscape) */
 .graph-ambient-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(72px);
-  pointer-events: none;
-  will-change: transform, opacity;
-}
-
-.graph-ambient-orb--a {
-  width: min(52vmin, 480px);
-  height: min(52vmin, 480px);
-  left: -12%;
-  top: 8%;
-  background: radial-gradient(circle, rgba(139, 127, 244, 0.18) 0%, transparent 72%);
-  animation: graph-ambient-drift-a 18s ease-in-out infinite;
-}
-
-.graph-ambient-orb--b {
-  width: min(44vmin, 400px);
-  height: min(44vmin, 400px);
-  right: -8%;
-  bottom: 5%;
-  background: radial-gradient(circle, rgba(161, 156, 247, 0.14) 0%, transparent 70%);
-  animation: graph-ambient-drift-b 22s ease-in-out infinite;
-}
-
-.graph-ambient-orb--c {
-  width: min(36vmin, 320px);
-  height: min(36vmin, 320px);
-  left: 35%;
-  bottom: 18%;
-  background: radial-gradient(circle, rgba(52, 211, 153, 0.1) 0%, transparent 68%);
-  animation: graph-ambient-drift-c 14s ease-in-out infinite;
-}
-
-@keyframes graph-ambient-drift-a {
-  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.32; }
-  50% { transform: translate(6vw, -5vh) scale(1.08); opacity: 0.52; }
-}
-
-@keyframes graph-ambient-drift-b {
-  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.28; }
-  50% { transform: translate(-5vw, 4vh) scale(1.1); opacity: 0.48; }
-}
-
-@keyframes graph-ambient-drift-c {
-  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.22; }
-  50% { transform: translate(-3vw, -6vh) scale(1.15); opacity: 0.4; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .graph-ambient-orb--a,
-  .graph-ambient-orb--b,
-  .graph-ambient-orb--c {
-    animation: none;
-    opacity: 0.2;
-  }
+  display: none;
 }
 
 /* ─── Custom Utilities for Landing Page ──────────────────────────────────────── */
 .glass {
-  background: rgba(255, 255, 255, 0.02);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--bg-800);
+  border: 1px solid var(--border-subtle);
 }
 
 .glass-premium {
-  background: radial-gradient(120% 120% at 50% 10%, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
-  backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.05);
-  transition: border-color var(--t-normal), box-shadow var(--t-normal), transform var(--t-normal);
+  background: var(--bg-800);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--t-normal), box-shadow var(--t-normal);
 }
 
 .glass-premium:hover {
-  border-color: rgba(139, 127, 244, 0.25);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 25px rgba(139, 127, 244, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.08);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
 }
 
 .text-gradient {
-  background: linear-gradient(135deg, #a99cf7 0%, #8b7ff4 50%, #4f46e5 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--accent);
 }
 
 .text-gradient-cyan {
-  background: linear-gradient(135deg, #a5f3fc 0%, #00d4e8 50%, #0891b2 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: #00d4e8;
 }
 
 /* Floating Animation */
@@ -386,26 +323,8 @@
 }
 
 /* Mesh Drift Background Glows */
-@keyframes mesh-drift {
-  0%, 100% {
-    transform: translate(0px, 0px) scale(1);
-  }
-  33% {
-    transform: translate(30px, -50px) scale(1.1);
-  }
-  66% {
-    transform: translate(-20px, 20px) scale(0.95);
-  }
-}
-
 .ambient-glow-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(100px);
-  opacity: 0.15;
-  mix-blend-mode: plus-lighter;
-  pointer-events: none;
-  animation: mesh-drift 15s ease-in-out infinite;
+  display: none;
 }
 
 
@@ -436,7 +355,6 @@
 .callout-block:hover {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.1);
-  transform: translateX(4px);
 }
 
 .callout-block[data-type="warning"] { border-left-color: var(--warning); }
@@ -484,51 +402,38 @@
 
 .prose h1,
 .tiptap h1 {
-  font-size: 2.5rem;
+  font-size: 2rem;
   margin-top: 2rem;
   margin-bottom: 1.5rem;
-  line-height: 1.1;
-  letter-spacing: -0.04em;
-  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  font-weight: 700;
   color: var(--text-primary);
-  border-bottom: 2px solid var(--accent);
-  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 0.5rem;
 }
 
 .prose h2,
 .tiptap h2 {
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   margin-top: 2.5rem;
   margin-bottom: 1rem;
-  letter-spacing: -0.03em;
-  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-weight: 600;
   color: var(--text-primary);
-  border-bottom: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-subtle);
   padding-bottom: 0.5rem;
   position: relative;
 }
 
-.tiptap h2::after {
-  content: '';
-  position: absolute;
-  bottom: -1px;
-  left: 0;
-  width: 60px;
-  height: 2px;
-  background: var(--accent);
-  border-radius: 1px;
-}
-
 .prose h3,
 .tiptap h3 {
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   margin-top: 2rem;
   margin-bottom: 0.75rem;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
   font-weight: 600;
-  color: var(--accent);
-  padding-left: 0.75rem;
-  border-left: 3px solid var(--accent);
+  color: var(--text-primary);
 }
 
 .prose h4,
@@ -688,14 +593,8 @@
 /* ─── TipTap HR ─────────────────────────────────────────── */
 .tiptap hr {
   border: none !important;
-  height: 2px !important;
-  background: linear-gradient(to right, transparent, var(--accent), transparent) !important;
+  border-top: 1px solid var(--border-strong) !important;
   margin: 2.5rem 0 !important;
-  opacity: 0.4;
-}
-
-.tiptap hr:hover {
-  opacity: 0.7;
 }
 
 .prose blockquote {

@@ -798,7 +798,7 @@ export function ChatInterface() {
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden w-full h-full border-none shadow-none">
         {!currentTeamId ? (
           <div className="flex flex-1 flex-col items-center justify-center p-8 text-center space-y-4 my-auto">
-            <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-[var(--accent)]/10 to-[var(--accent)]/20 border border-[var(--accent)]/20 flex items-center justify-center">
+            <div className="relative w-16 h-16 rounded-2xl bg-[var(--accent-subtle)] border border-[var(--border-subtle)] flex items-center justify-center">
               <Bot className="h-7 w-7 text-[var(--accent)]" />
             </div>
             <div className="space-y-1.5 max-w-sm">
@@ -833,18 +833,18 @@ export function ChatInterface() {
                     )}
                   >
                     {!isUser && (
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] mt-0.5 border border-white/5">
-                        <Bot className="h-4.5 w-4.5 text-white" />
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--accent)] mt-0.5">
+                        <Bot className="h-4.5 w-4.5 text-[var(--bg-950)]" />
                       </div>
                     )}
                     <div className={cn("flex max-w-[85%] flex-col gap-2 min-w-0", isUser ? "items-end" : "items-start")}>
                       {!isUser && agentStepsForMessage(m).length > 0 && <ChatAgentToolTimeline steps={agentStepsForMessage(m)} />}
                       <div className="relative group/msg-content w-full">
                         <div className={cn(
-                          "px-4 py-3 text-[14px] leading-relaxed",
+                          "px-4 py-3 text-[14px] leading-relaxed rounded-lg border",
                           isUser
-                            ? "rounded-2xl rounded-br-sm bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white"
-                            : "text-[var(--text-primary)]"
+                            ? "bg-[var(--bg-700)] border-[var(--border-subtle)] text-[var(--text-primary)]"
+                            : "bg-[var(--bg-900)] border-[var(--border-subtle)] text-[var(--text-primary)]"
                         )}>
                             {isEditing ? (
                               <div className="flex flex-col gap-3 min-w-0 w-full">
@@ -979,7 +979,7 @@ export function ChatInterface() {
 
               {isStreaming && status && (
                 <div className="mx-auto flex w-full max-w-5xl justify-start items-center gap-3 pl-13 border-none shadow-none">
-                  <div className="flex items-center gap-2 px-3.5 py-2 rounded-full border border-[var(--border-subtle)] bg-[var(--bg-800)]">
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-900)]">
                     <Loader2 className="w-3 h-3 text-[var(--accent)] animate-spin shrink-0" />
                     <span className="text-[12px] text-[var(--text-muted)]">{status}</span>
                   </div>
@@ -1056,7 +1056,7 @@ export function ChatInterface() {
                   <textarea
                     ref={inputRef}
                     rows={1}
-                    className="w-full rounded-2xl border border-white/[0.08] bg-white/[0.02] py-4 pl-5 pr-28 text-[14px] text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/50 focus:ring-2 focus:ring-[var(--accent)]/5 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden leading-relaxed backdrop-blur-md shadow-none"
+                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-800)] py-4 pl-5 pr-28 text-[14px] text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/5 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden leading-relaxed shadow-none"
                     style={{ maxHeight: "180px" }}
                     placeholder={!sessionReady ? "Initializing…" : isRecording ? "" : "Ask anything…"}
                     value={input}
@@ -1143,7 +1143,7 @@ export function ChatInterface() {
                       disabled={sendDisabled}
                       title={isStreaming ? "Stop generation" : "Send message"}
                       aria-label={isStreaming ? "Stop generation" : "Send message"}
-                      className="h-10 w-10 flex items-center justify-center rounded-full bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white transition-all disabled:opacity-25 hover:scale-105 active:scale-95 shadow-none"
+                      className="h-10 w-10 flex items-center justify-center rounded-full bg-[var(--accent)] text-[var(--bg-950)] transition-all disabled:opacity-25 hover:scale-105 active:scale-95 shadow-none"
                     >
                       {isStreaming ? <X className="h-4.5 w-4.5" /> : <ArrowUp className="h-4.5 w-4.5" />}
                     </button>
@@ -1171,7 +1171,7 @@ export function ChatInterface() {
                       key={label}
                       type="button"
                       onClick={() => { setInput(prompt); inputRef.current?.focus(); }}
-                      className="group flex flex-col gap-2.5 p-4 rounded-xl border border-white/5 bg-white/[0.01] hover:bg-white/[0.03] hover:border-[var(--accent)]/20 text-left transition-all duration-200 shadow-none relative overflow-hidden"
+                      className="group flex flex-col gap-2.5 p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-800)] hover:bg-[var(--bg-700)] text-left transition-all duration-200"
                     >
                       <div className="w-8 h-8 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
                         <Icon className="w-4.5 h-4.5 text-[var(--accent)]" />

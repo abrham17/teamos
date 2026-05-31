@@ -26,7 +26,7 @@ import { AddMemberModal } from "./components/AddMemberModal";
 type PlannerView = "overview" | "calendar" | "activity" | "board" | "timeline" | "team" | "history" | "workload";
 
 export function PlannerWorkspace() {
-  const { currentTeamId } = useWikiStore();
+  const { currentTeamId, zenMode, setZenMode } = useWikiStore();
   const searchParams = useSearchParams();
   const preferredProjectId = searchParams.get("project");
   const preferredSourceKind = searchParams.get("source_kind");
@@ -219,34 +219,47 @@ export function PlannerWorkspace() {
         </div>
       ))}
 
-      <ProjectListPanel
-        projects={projects}
-        activeProjectId={activeProjectId}
-        query={query}
-        loading={loadingProjects}
-        onQueryChange={setQuery}
-        onSelectProject={(id) => {
-          setActiveProjectId(id);
-          setActiveView("overview");
-        }}
-        onNewProject={() => {
-          setAiMode("create");
-          setIsAIOverlayOpen(true);
-        }}
-      />
+      {!zenMode && (
+        <ProjectListPanel
+          projects={projects}
+          activeProjectId={activeProjectId}
+          query={query}
+          loading={loadingProjects}
+          onQueryChange={setQuery}
+          onSelectProject={(id) => {
+            setActiveProjectId(id);
+            setActiveView("overview");
+          }}
+          onNewProject={() => {
+            setAiMode("create");
+            setIsAIOverlayOpen(true);
+          }}
+        />
+      )}
 
       <div className="flex-1 flex flex-col min-w-0">
         <div className="h-14 border-b border-[var(--border-subtle)] px-6 flex items-center justify-between bg-[var(--surface-1)] shrink-0">
-          <div className="flex items-center gap-1 bg-[var(--bg-900)] p-1 rounded-xl border border-[var(--border-subtle)]">
-            <ViewTab active={activeView === "overview"} onClick={() => setActiveView("overview")} icon={<LayoutGrid className="w-3.5 h-3.5" />} label="Overview" />
-            <ViewTab active={activeView === "board"} onClick={() => setActiveView("board")} icon={<Columns className="w-3.5 h-3.5" />} label="Board" />
-            <ViewTab active={activeView === "calendar"} onClick={() => setActiveView("calendar")} icon={<Calendar className="w-3.5 h-3.5" />} label="Calendar" />
-            <ViewTab active={activeView === "timeline"} onClick={() => setActiveView("timeline")} icon={<BarChartHorizontal className="w-3.5 h-3.5" />} label="Timeline" />
-            <ViewTab active={activeView === "team"} onClick={() => setActiveView("team")} icon={<Users className="w-3.5 h-3.5" />} label="Team" />
-            <ViewTab active={activeView === "workload"} onClick={() => setActiveView("workload")} icon={<Users className="w-3.5 h-3.5" />} label="Workload" />
-            <ViewTab active={activeView === "history"} onClick={() => setActiveView("history")} icon={<History className="w-3.5 h-3.5" />} label="History" />
-            <ViewTab active={activeView === "activity"} onClick={() => setActiveView("activity")} icon={<History className="w-3.5 h-3.5" />} label="Activity" />
+          <div className="flex items-center gap-0">
+            <ViewTab active={activeView === "overview"} onClick={() => setActiveView("overview")} label="Overview" />
+            <ViewTab active={activeView === "board"} onClick={() => setActiveView("board")} label="Board" />
+            <ViewTab active={activeView === "calendar"} onClick={() => setActiveView("calendar")} label="Calendar" />
+            <ViewTab active={activeView === "timeline"} onClick={() => setActiveView("timeline")} label="Timeline" />
+            <ViewTab active={activeView === "team"} onClick={() => setActiveView("team")} label="Team" />
+            <ViewTab active={activeView === "workload"} onClick={() => setActiveView("workload")} label="Workload" />
+            <ViewTab active={activeView === "history"} onClick={() => setActiveView("history")} label="History" />
+            <ViewTab active={activeView === "activity"} onClick={() => setActiveView("activity")} label="Activity" />
           </div>
+          <button
+            onClick={() => setZenMode(!zenMode)}
+            className={`text-[12px] px-3 py-1.5 rounded-lg border transition-all font-medium ${
+              zenMode
+                ? "bg-[var(--accent-subtle)] text-[var(--accent)] border-[var(--border-subtle)]"
+                : "bg-[var(--bg-700)] text-[var(--text-muted)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]"
+            }`}
+            title="Toggle Zen Mode"
+          >
+            Zen Mode
+          </button>
         </div>
 
         <div className="flex-1 overflow-hidden flex flex-col">
@@ -391,17 +404,16 @@ export function PlannerWorkspace() {
   );
 }
 
-function ViewTab({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
+function ViewTab({ active, onClick, label }: { active: boolean, onClick: () => void, label: string }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+      className={`flex items-center px-4 h-14 text-[13px] font-medium transition-colors ${
         active
-          ? "bg-[var(--accent-subtle)] text-[var(--accent)]"
+          ? "text-[var(--accent)] font-semibold"
           : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
       }`}
     >
-      {icon}
       {label}
     </button>
   );

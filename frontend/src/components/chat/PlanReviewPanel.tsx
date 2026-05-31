@@ -248,9 +248,10 @@ export function PlanReviewPanel({
         </div>
         <button
           onClick={onClose}
+          aria-label="Close review panel"
           className="p-1.5 hover:bg-[var(--surface-2)] rounded-lg text-[var(--text-dim)] transition-colors"
         >
-          <X className="w-4 h-4" />
+          <X className="w-4 h-4" aria-hidden="true" />
         </button>
       </div>
 

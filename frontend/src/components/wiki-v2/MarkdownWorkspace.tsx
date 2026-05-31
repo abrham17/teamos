@@ -86,7 +86,7 @@ function resolveBodyMarkdown(
 export function MarkdownWorkspace() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { currentTeamId, wikiSidebarOpen, setWikiSidebarOpen } = useWikiStore();
+  const { currentTeamId, wikiSidebarOpen, setWikiSidebarOpen, zenMode, setZenMode } = useWikiStore();
   const { error: toastError, success: toastSuccess } = useToast();
   
   const [loading, setLoading] = useState(false);
@@ -101,6 +101,7 @@ export function MarkdownWorkspace() {
   const [publishBusy, setPublishBusy] = useState(false);
   const [reviewChangeset, setReviewChangeset] = useState<WikiChangeSetPayload | null>(null);
   const [showCitations, setShowCitations] = useState(false);
+  const [showToc, setShowToc] = useState(false);
   const [viewingRawSourceId, setViewingRawSourceId] = useState<string | null>(null);
   const [selectedCitation, setSelectedCitation] = useState<Citation | null>(null);
 
@@ -397,7 +398,7 @@ export function MarkdownWorkspace() {
             <div className="flex flex-wrap justify-center gap-3">
               <button
                 onClick={() => router.push("/wiki?action=new")}
-                className="px-5 py-2.5 bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] text-white font-semibold rounded-xl shadow-[var(--shadow-glow)] hover:shadow-[var(--shadow-lg)] hover:scale-[1.02] active:scale-98 transition-all"
+                className="px-5 py-2.5 bg-[var(--accent)] text-[var(--bg-950)] font-semibold rounded-xl hover:bg-[var(--accent)]/95 transition-all"
               >
                 Create New Page
               </button>
@@ -425,36 +426,47 @@ export function MarkdownWorkspace() {
   return (
     <div className="flex flex-col h-full bg-[var(--bg-950)] w-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-center h-14 border-b border-[var(--border-subtle)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] px-6 gap-3 shrink-0 z-20">
-        <button
-          onClick={() => router.push("/wiki")}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] transition-all active:scale-95"
-        >
-          <ChevronLeft className="w-3.5 h-3.5" />
-          <span>Wiki</span>
-        </button>
+      <div className={`flex items-center h-14 px-6 gap-3 shrink-0 z-20 transition-all ${
+        zenMode 
+          ? "bg-transparent border-none" 
+          : "border-b border-[var(--border-subtle)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)]"
+      }`}>
+        {!zenMode && (
+          <>
+            <button
+              onClick={() => router.push("/wiki")}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px] font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] transition-all active:scale-95"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>Wiki</span>
+            </button>
 
-        <div className="w-px h-5 bg-[var(--border-strong)]" />
+            <div className="w-px h-5 bg-[var(--border-strong)]" />
 
-        <button
-          onClick={() => setWikiSidebarOpen(true)}
-          className="p-2 text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent-subtle)] rounded-lg transition-all active:scale-95"
-          title="Open Library"
-        >
-          <FolderOpen className="w-4 h-4" />
-        </button>
+            <button
+              onClick={() => setWikiSidebarOpen(true)}
+              className="p-2 text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent-subtle)] rounded-lg transition-all active:scale-95"
+              title="Open Library"
+            >
+              <FolderOpen className="w-4 h-4" />
+            </button>
+          </>
+        )}
 
         <div className="flex-1 min-w-0 mx-2">
           <input
-            className="w-full bg-transparent border-none outline-none text-[15px] font-semibold text-[var(--text-primary)] placeholder:text-[var(--text-dim)] transition-all"
+            className={`w-full bg-transparent border-none outline-none font-semibold placeholder:text-[var(--text-dim)] transition-all ${
+              zenMode ? "text-[20px] font-bold text-center text-[var(--text-primary)]" : "text-[15px] text-[var(--text-primary)]"
+            }`}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Untitled"
+            disabled={zenMode}
           />
         </div>
 
         <div className="flex items-center gap-2.5">
-          {saveStatus !== "idle" && (
+          {!zenMode && saveStatus !== "idle" && (
             <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-500 ${
               saveStatus === "saving"
                 ? "text-[var(--warning)] bg-[var(--warning-bg)]"
@@ -465,20 +477,51 @@ export function MarkdownWorkspace() {
             </div>
           )}
 
-          {!isNew && page && page.citations && page.citations.length > 0 && (
+          <button
+            onClick={() => setZenMode(!zenMode)}
+            className={`text-[12px] px-3 py-1.5 rounded-lg border transition-all font-medium ${
+              zenMode
+                ? "bg-[var(--accent-subtle)] text-[var(--accent)] border-[var(--accent)]/20 hover:bg-[var(--accent)] hover:text-[var(--bg-950)]"
+                : "bg-[var(--bg-700)] text-[var(--text-muted)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]"
+            }`}
+            title="Toggle Zen Mode"
+          >
+            {zenMode ? "Exit Zen" : "Zen Mode"}
+          </button>
+
+          {!zenMode && toc.length > 0 && (
             <button
-              onClick={() => setShowCitations(!showCitations)}
+              onClick={() => {
+                setShowToc(!showToc);
+                if (showCitations) setShowCitations(false);
+              }}
+              className={`text-[12px] px-3 py-1.5 rounded-lg border transition-all font-medium ${
+                showToc
+                  ? "bg-[var(--accent-subtle)] text-[var(--accent)] border-[var(--border-subtle)]"
+                  : "bg-[var(--bg-700)] text-[var(--text-muted)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              Outline
+            </button>
+          )}
+
+          {!zenMode && !isNew && page && page.citations && page.citations.length > 0 && (
+            <button
+              onClick={() => {
+                setShowCitations(!showCitations);
+                if (showToc) setShowToc(false);
+              }}
               className={`text-[12px] px-3 py-1.5 rounded-lg border transition-all font-medium ${
                 showCitations
-                  ? "bg-[var(--accent)] text-white border-[var(--accent)] shadow-[var(--shadow-glow)]"
-                  : "bg-[var(--bg-700)] text-[var(--text-muted)] border-[var(--border-subtle)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  ? "bg-[var(--accent-subtle)] text-[var(--accent)] border-[var(--border-subtle)]"
+                  : "bg-[var(--bg-700)] text-[var(--text-muted)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]"
               }`}
             >
               Citations ({page.citations.length})
             </button>
           )}
 
-          {!isNew && page ? (
+          {!zenMode && !isNew && page ? (
             <div className="flex items-center gap-2">
               <label className="hidden sm:flex cursor-pointer items-center gap-2 text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors">
                 <input
@@ -493,7 +536,7 @@ export function MarkdownWorkspace() {
                 type="button"
                 disabled={publishBusy || !resolveBodyMarkdown(editorRef, content, page.content)}
                 onClick={() => void handlePublish()}
-                className="rounded-lg bg-gradient-to-br from-[var(--accent)] to-[var(--accent-dark)] px-4 py-1.5 text-[12px] font-semibold text-white hover:shadow-[var(--shadow-glow)] active:scale-95 disabled:opacity-50 transition-all"
+                className="rounded-lg bg-[var(--accent)] px-4 py-1.5 text-[12px] font-semibold text-[var(--bg-950)] active:scale-95 disabled:opacity-50 transition-all hover:bg-[var(--accent)]/95"
               >
                 {publishBusy ? "Publishing…" : "Publish"}
               </button>
@@ -561,8 +604,8 @@ export function MarkdownWorkspace() {
         </div>
 
         {/* Dynamic Table of Contents Sidebar */}
-        {!showCitations && toc.length > 0 && (
-          <div className="w-56 border-l border-[var(--border-subtle)] bg-gradient-to-b from-[var(--bg-900)] to-[var(--bg-950)] flex flex-col shrink-0 animate-in fade-in duration-300 overflow-y-auto">
+        {!zenMode && showToc && !showCitations && toc.length > 0 && (
+          <div className="w-56 border-l border-[var(--border-subtle)] bg-[var(--bg-900)] flex flex-col shrink-0 animate-in fade-in duration-300 overflow-y-auto">
             <div className="p-5">
               <h3 className="font-semibold text-[11px] uppercase tracking-widest text-[var(--text-dim)] mb-4">On this page</h3>
               <div className="flex flex-col gap-1">
@@ -585,8 +628,8 @@ export function MarkdownWorkspace() {
         )}
 
         {/* Citations Sidebar */}
-        {showCitations && page?.citations && page.citations.length > 0 && (
-          <div className="w-80 border-l border-[var(--border-subtle)] bg-gradient-to-b from-[var(--bg-900)] to-[var(--bg-950)] flex flex-col shrink-0 animate-in slide-in-from-right duration-300">
+        {!zenMode && showCitations && page?.citations && page.citations.length > 0 && (
+          <div className="w-80 border-l border-[var(--border-subtle)] bg-[var(--bg-900)] flex flex-col shrink-0 animate-in slide-in-from-right duration-300">
             <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex justify-between items-center">
               <h3 className="font-semibold text-[14px] text-[var(--text-primary)] tracking-tight">Citations</h3>
               <button
