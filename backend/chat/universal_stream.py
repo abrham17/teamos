@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from typing import Any, Iterator
 
 from accounts.models import Team, User
@@ -29,6 +30,7 @@ def iter_universal_intelligence_events(
     project_id: str | None = None,
     mode: str = "ask",
     state: dict[str, Any],
+    cancel_evt: threading.Event | None = None,
 ) -> Iterator[str]:
     """
     Main entry point for Universal Intelligence.
@@ -131,7 +133,7 @@ def iter_universal_intelligence_events(
                           preloaded_rag=preloaded_rag)
         
         # We need a small wrapper to capture the results for state
-        for event in agent.run(context_str, state):
+        for event in agent.run(context_str, state, cancel_evt=cancel_evt):
             yield event
         return
 
@@ -155,7 +157,7 @@ def iter_universal_intelligence_events(
         )
 
         agent = AgentCore(session=session, ctx=ctx, config=config, preloaded_rag=preloaded_rag)
-        for event in agent.run(context_str, state):
+        for event in agent.run(context_str, state, cancel_evt=cancel_evt):
             yield event
         return
 
@@ -188,5 +190,5 @@ def iter_universal_intelligence_events(
     
     agent = AgentCore(session=session, ctx=ctx, config=config,
                       preloaded_rag=preloaded_rag)
-    for event in agent.run(context_str, state):
+    for event in agent.run(context_str, state, cancel_evt=cancel_evt):
         yield event

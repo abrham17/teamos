@@ -269,14 +269,29 @@ def get_mcp_client(team_id: str) -> MCPClient:
         client = MCPClient(team_id)
         # Load registered servers from DB
         try:
+            import os
+            from urllib.parse import urlparse
             from chat.models import MCPServerRegistration
+            
+            gateway_base = os.environ.get("MCP_GATEWAY_BASE_URL")
+            
             for reg in MCPServerRegistration.objects.filter(
                 team_id=team_id, enabled=True
             ):
+                url = reg.url
+                if gateway_base:
+                    parsed = urlparse(url)
+                    if parsed.hostname in ("localhost", "127.0.0.1"):
+                        base_parsed = urlparse(gateway_base)
+                        port_suffix = f":{parsed.port}" if parsed.port else ""
+                        url = f"{base_parsed.scheme}://{base_parsed.hostname}{port_suffix}{parsed.path}"
+                        if parsed.query:
+                            url += f"?{parsed.query}"
+
                 client.register_server(MCPServerConfig(
                     name=reg.name,
-                    url=reg.url,
-                    auth_token=reg.auth_token,
+                    url=url,
+                    auth_token=reg.decrypted_token,
                     capabilities=reg.capabilities or [],
                     enabled=reg.enabled,
                 ))
@@ -285,3 +300,14 @@ def get_mcp_client(team_id: str) -> MCPClient:
             pass
         _mcp_clients[team_id] = client
     return _mcp_clients[team_id]
+
+
+def invalidate_mcp_client(team_id: str) -> None:
+    """Invalidate the in-memory MCPClient cache for a team.
+    
+    This forces the client to reload MCPServerRegistration config
+    from the database on the next request.
+    """
+    if team_id in _mcp_clients:
+        del _mcp_clients[team_id]
+

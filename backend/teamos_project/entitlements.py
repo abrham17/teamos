@@ -111,6 +111,28 @@ def check_quota(team, operation: str, **kwargs) -> QuotaResult:
             return QuotaResult(allowed=False, limit=limit, current=state.current, reason="research_limit_reached")
         return QuotaResult(allowed=True, limit=limit, current=state.current)
 
+    # 7. TTS Characters Quota Checks
+    if operation == "tts_characters":
+        from django.conf import settings
+        from django.core.cache import cache
+        plan_tiers = getattr(settings, "PLAN_TIERS", {})
+        tier = plan_tiers.get(plan, plan_tiers.get("free", {}))
+        limit = int(tier.get("tts_character_quota", 10000))
+
+        today = timezone.localdate()
+        cache_key = f"tts_quota:{team.id}:{today.year}:{today.month}"
+        current = int(cache.get(cache_key, 0))
+        amount = kwargs.get("amount", 0)
+
+        if current + amount > limit:
+            return QuotaResult(allowed=False, limit=limit, current=current, reason="tts_quota_reached")
+
+        if kwargs.get("consume", False):
+            cache.set(cache_key, current + amount, 32 * 86400)  # cache for 32 days
+            current += amount
+
+        return QuotaResult(allowed=True, limit=limit, current=current)
+
     return QuotaResult(allowed=True, limit=-1, current=-1)
 
 def get_team_status_banner(team) -> dict | None:

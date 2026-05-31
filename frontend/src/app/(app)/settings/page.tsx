@@ -15,6 +15,7 @@ import {
 import { Download, Users, Plus, Shield, Settings2, AlertTriangle, Trash2, Clock } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { BillingSettings } from "@/components/settings/BillingSettings";
+import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings";
 import { AVATAR_OPTIONS } from "@/lib/avatars";
 
 interface TeamData {
@@ -971,7 +972,7 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {(activeTab === "instructions" || activeTab === "integrations" || activeTab === "api_keys") && (
+            {(activeTab === "instructions" || activeTab === "api_keys") && (
               <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-8 text-center max-w-xl">
                 <h3 className="text-base font-semibold text-[var(--text-primary)] capitalize">
                   {activeTab.replace("_", " ")}
@@ -980,6 +981,13 @@ export default function SettingsPage() {
                   This feature is coming soon in a future release of TeamOS Zen.
                 </p>
               </div>
+            )}
+
+            {activeTab === "integrations" && currentTeamId && (
+              <IntegrationsSettings
+                teamId={currentTeamId}
+                myRole={team?.my_role}
+              />
             )}
           </div>
         </div>

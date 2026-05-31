@@ -36,6 +36,29 @@ services:
       timeout: 5s
       retries: 5
 
+  # --- MCP HTTP Gateway Sidecar ---
+  mcp-gateway:
+    build:
+      context: ./mcp-gateway
+    ports:
+      - "9091:9091"   # GitHub
+      - "9092:9092"   # Slack
+      - "9093:9093"   # Trello
+      - "9094:9094"   # Notion
+      - "9095:9095"   # Google Drive
+      - "9096:9096"   # Google Calendar
+    env_file:
+      - ./mcp-gateway/.env
+    environment:
+      - GATEWAY_HOST=0.0.0.0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9091/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
   # --- Application Services ---
   backend:
     build:
@@ -52,12 +75,17 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # MCP gateway base — backend replaces the host portion of each
+      # MCPServerRegistration.url when running inside Docker
+      - MCP_GATEWAY_BASE_URL=http://mcp-gateway
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
       qdrant:
+        condition: service_healthy
+      mcp-gateway:
         condition: service_healthy
 
   worker:
@@ -71,6 +99,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - QDRANT_URL=http://qdrant:6333
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MCP_GATEWAY_BASE_URL=http://mcp-gateway
     depends_on:
       - backend
 
@@ -87,3 +116,4 @@ services:
 volumes:
   postgres_data:
   qdrant_data:
+

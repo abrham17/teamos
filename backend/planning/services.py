@@ -113,10 +113,14 @@ def create_project(*, team_id: str, user: User, payload: dict) -> Project:
     return project
 
 
+UPDATABLE_PROJECT_FIELDS = {"name", "description", "status"}
+
+
 def update_project(project: Project, payload: dict) -> Project:
-    for field, value in payload.items():
+    sanitized_fields = {k: v for k, v in payload.items() if k in UPDATABLE_PROJECT_FIELDS}
+    for field, value in sanitized_fields.items():
         setattr(project, field, value)
-    project.save(update_fields=[*payload.keys(), "updated_at"])
+    project.save(update_fields=[*sanitized_fields.keys(), "updated_at"])
     return project
 
 

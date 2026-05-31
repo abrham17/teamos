@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.conf import settings
 
-from accounts.permissions import IsTeamMember
+from accounts.permissions import IsTeamMember, IsTeamAdmin
 from accounts.team_access import has_minimum_role
 from teamos_project.entitlements import check_quota
 from product_analytics.services import record_first_once
@@ -26,8 +26,15 @@ TTS_ALLOWED_VOICES = frozenset({"alloy", "echo", "fable", "onyx", "nova", "shimm
 
 
 def estimate_tokens(text: str) -> int:
-    # Lightweight approximation: ~4 chars/token for English-like text.
-    return max(1, len((text or "").strip()) // 4)
+    if not text:
+        return 0
+    try:
+        import tiktoken
+        encoding = tiktoken.get_encoding("cl100k_base")
+        return len(encoding.encode(text))
+    except Exception:
+        # Fallback to lightweight approximation: ~4 chars/token
+        return max(1, len(text.strip()) // 4)
 
 
 def _research_capability_state(member) -> dict:
@@ -124,6 +131,28 @@ class ChatTTSView(APIView):
             return fail("Text required.", status_code=400, code="text_required")
 
         text = text[:TTS_MAX_CHARS]
+
+        # 1. Rate Limiting Check (30 calls per minute per user)
+        from django.core.cache import cache
+        import time
+        rl_key = f"tts_rl:{request.user.id}:{int(time.time() // 60)}"
+        count = cache.get(rl_key, 0)
+        if count >= 30:
+            return fail("Rate limit exceeded for TTS calls.", status_code=429, code="rate_limit_exceeded")
+        cache.set(rl_key, count + 1, 65)
+
+        # 2. Quota Check
+        team = request.team_membership.team
+        character_count = len(text)
+        quota = check_quota(team, "tts_characters", amount=character_count)
+        if not quota.allowed:
+            return fail(
+                "TTS quota exceeded.",
+                status_code=403,
+                code="quota_exceeded",
+                details=quota.to_details()
+            )
+
         voice = (request.data.get("voice") or settings.OPENAI_TTS_DEFAULT_VOICE or "alloy").lower()
         if voice not in TTS_ALLOWED_VOICES:
             voice = "alloy"
@@ -148,6 +177,9 @@ class ChatTTSView(APIView):
         except Exception as e:
             logger.exception("OpenAI TTS failed: %s", e)
             return fail("TTS generation failed.", status_code=502, code="tts_failed")
+
+        # 3. Consume quota
+        check_quota(team, "tts_characters", amount=character_count, consume=True)
 
         return HttpResponse(audio_bytes, content_type="audio/mpeg")
 
@@ -272,6 +304,7 @@ class ChatQueryStreamView(APIView):
             session.save()
 
         membership = request.team_membership
+        cancel_evt = threading.Event()
 
         def event_stream():
             from chat.universal_stream import iter_universal_intelligence_events
@@ -286,8 +319,11 @@ class ChatQueryStreamView(APIView):
                     session=session,
                     prompt=user_message,
                     mode=mode,
-                    state=agent_state
+                    state=agent_state,
+                    cancel_evt=cancel_evt
                 ):
+                    if cancel_evt.is_set():
+                        break
                     yield line
 
                 # Post-stream persistence and tracking
@@ -298,7 +334,7 @@ class ChatQueryStreamView(APIView):
                     model_used = agent_state.get("model_used", "deepseek/deepseek-v4-flash")
                     
                     # Store assistant message if one was generated (Lightweight or Agent modes)
-                    if full_content:
+                    if full_content and not cancel_evt.is_set():
                         ChatMessage.objects.create(
                             session=session,
                             role="assistant",
@@ -308,18 +344,19 @@ class ChatQueryStreamView(APIView):
                         )
                     
                     # Track token usage
-                    approx = estimate_tokens(user_message) + estimate_tokens(full_content) + 1000 # Add buffer for RAG context
-                    ChatTokenUsage.objects.create(
-                        team=session.team,
-                        user=request.user,
-                        session=session,
-                        prompt_tokens=max(approx // 2, 1),
-                        completion_tokens=max(approx // 2, 1),
-                        total_tokens=approx,
-                        metadata={"model": model_used, "mode": "universal"},
-                    )
+                    if not cancel_evt.is_set():
+                        approx = estimate_tokens(user_message) + estimate_tokens(full_content) + 1000 # Add buffer for RAG context
+                        ChatTokenUsage.objects.create(
+                            team=session.team,
+                            user=request.user,
+                            session=session,
+                            prompt_tokens=max(approx // 2, 1),
+                            completion_tokens=max(approx // 2, 1),
+                            total_tokens=approx,
+                            metadata={"model": model_used, "mode": "universal"},
+                        )
 
-                if ChatMessage.objects.filter(session__team=session.team, role="assistant").count() == 1:
+                if not cancel_evt.is_set() and ChatMessage.objects.filter(session__team=session.team, role="assistant").count() == 1:
                     record_first_once(
                         event_name="first_chat_answer_received",
                         team=session.team,
@@ -327,11 +364,13 @@ class ChatQueryStreamView(APIView):
                         properties={"session_id": str(session.id), "mode": "universal"},
                     )
                 
-                yield f"event: done\ndata: {json.dumps({'status': 'done', 'mode': 'universal'})}\n\n"
+                if not cancel_evt.is_set():
+                    yield f"event: done\ndata: {json.dumps({'status': 'done', 'mode': 'universal'})}\n\n"
 
             except Exception as e:
                 logger.exception("Universal chat stream failed")
-                yield f"event: error\ndata: {json.dumps({'detail': str(e)})}\n\n"
+                if not cancel_evt.is_set():
+                    yield f"event: error\ndata: {json.dumps({'detail': str(e)})}\n\n"
 
 
         _stream_done = object()
@@ -351,6 +390,8 @@ class ChatQueryStreamView(APIView):
             def producer():
                 try:
                     for line in event_stream():
+                        if cancel_evt.is_set():
+                            break
                         out_q.put(line)
                 except Exception:
                     logger.exception("Universal chat SSE producer thread failed")
@@ -365,16 +406,21 @@ class ChatQueryStreamView(APIView):
 
             yield ": connected\n\n"
 
-            while True:
-                chunk = await asyncio.to_thread(
-                    _queue_get_timed, out_q, 18.0
-                )
-                if chunk is _stream_done:
-                    break
-                if chunk is _heartbeat:
-                    yield ": keepalive\n\n"
-                    continue
-                yield chunk
+            try:
+                while True:
+                    chunk = await asyncio.to_thread(
+                        _queue_get_timed, out_q, 18.0
+                    )
+                    if chunk is _stream_done:
+                        break
+                    if chunk is _heartbeat:
+                        yield ": keepalive\n\n"
+                        continue
+                    yield chunk
+            except asyncio.CancelledError:
+                cancel_evt.set()
+                logger.info("Universal chat SSE connection cancelled by client.")
+                raise
 
         response = StreamingHttpResponse(async_event_stream(), content_type="text/event-stream")
         response["Cache-Control"] = "no-cache"
@@ -382,16 +428,9 @@ class ChatQueryStreamView(APIView):
         return response
 
 class AdminUsageStatsView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsTeamAdmin]
 
     def get(self, request, team_id):
-        from accounts.models import TeamMember
-        if not TeamMember.objects.filter(team_id=team_id, user=request.user).exists():
-            return fail("Team membership required", status_code=403)
-        membership = TeamMember.objects.filter(team_id=team_id, user=request.user).first()
-        if not has_minimum_role(membership, "owner"):
-            return fail("Owner access required", status_code=403)
-            
         from django.db.models import Sum
         from chat.models import ChatTokenUsage
         from django.utils import timezone
@@ -414,7 +453,7 @@ class AdminUsageStatsView(APIView):
                 "total_tokens": u["total"] or 0,
             })
 
-        team = TeamMember.objects.select_related("team").get(team_id=team_id, user=request.user).team
+        team = request.team_membership.team
         quota = TeamResearchQuota.objects.filter(team_id=team_id).first()
         quota_state = TeamResearchQuota.get_state(team)
         month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -558,3 +597,153 @@ class ProactiveSuggestionsView(APIView):
         )
 
         return ok({"suggestions": suggestions})
+
+
+# ── MCP Integration Management Views ───────────────────────────────────
+
+def _to_bool(val):
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return val.strip().lower() == "true"
+    return bool(val)
+
+
+class MCPServerRegistrationListView(APIView):
+    permission_classes = [IsAuthenticated, IsTeamAdmin]
+
+    def get(self, request, team_id):
+        from .models import MCPServerRegistration
+        regs = MCPServerRegistration.objects.filter(team_id=team_id)
+        data = []
+        for r in regs:
+            data.append({
+                "id": str(r.id),
+                "name": r.name,
+                "url": r.url,
+                "enabled": r.enabled,
+                "capabilities": r.capabilities or [],
+                "has_token": bool(r.auth_token),
+                "created_at": r.created_at.isoformat(),
+                "updated_at": r.updated_at.isoformat(),
+            })
+        return ok(data)
+
+    def post(self, request, team_id):
+        name = request.data.get("name", "").strip().lower()
+        url = request.data.get("url", "").strip()
+        auth_token = request.data.get("auth_token", "").strip()
+        enabled = _to_bool(request.data.get("enabled", True))
+
+        if not name or not url:
+            return fail("Name and URL are required.", status_code=400, code="invalid_input")
+
+        from .models import MCPServerRegistration
+        from .mcp_client import invalidate_mcp_client
+
+        # Let's see if there's already a registration for this team and name
+        reg, created = MCPServerRegistration.objects.update_or_create(
+            team_id=team_id,
+            name=name,
+            defaults={
+                "url": url,
+                "enabled": enabled,
+            }
+        )
+        if auth_token:
+            reg.auth_token = auth_token
+            reg.save()
+
+        # Invalidate in-memory MCPClient for the team
+        invalidate_mcp_client(team_id)
+
+        return ok({
+            "id": str(reg.id),
+            "name": reg.name,
+            "url": reg.url,
+            "enabled": reg.enabled,
+            "capabilities": reg.capabilities or [],
+            "has_token": bool(reg.auth_token),
+            "created_at": reg.created_at.isoformat(),
+            "updated_at": reg.updated_at.isoformat(),
+        }, status_code=201 if created else 200)
+
+
+class MCPServerRegistrationDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsTeamAdmin]
+
+    def patch(self, request, team_id, server_id):
+        from django.shortcuts import get_object_or_404
+        from .models import MCPServerRegistration
+        from .mcp_client import invalidate_mcp_client
+        reg = get_object_or_404(MCPServerRegistration, id=server_id, team_id=team_id)
+
+        if "url" in request.data:
+            reg.url = request.data["url"].strip()
+        if "auth_token" in request.data:
+            token = request.data["auth_token"].strip()
+            if token and token != "******":
+                reg.auth_token = token
+        if "enabled" in request.data:
+            reg.enabled = _to_bool(request.data["enabled"])
+        if "name" in request.data:
+            reg.name = request.data["name"].strip().lower()
+
+        reg.save()
+        invalidate_mcp_client(team_id)
+
+        return ok({
+            "id": str(reg.id),
+            "name": reg.name,
+            "url": reg.url,
+            "enabled": reg.enabled,
+            "capabilities": reg.capabilities or [],
+            "has_token": bool(reg.auth_token),
+        })
+
+    def delete(self, request, team_id, server_id):
+        from django.shortcuts import get_object_or_404
+        from .models import MCPServerRegistration
+        from .mcp_client import invalidate_mcp_client
+        reg = get_object_or_404(MCPServerRegistration, id=server_id, team_id=team_id)
+        reg.delete()
+        invalidate_mcp_client(team_id)
+        return Response(status=204)
+
+
+class MCPServerRegistrationSyncView(APIView):
+    permission_classes = [IsAuthenticated, IsTeamAdmin]
+
+    def post(self, request, team_id, server_id):
+        from django.shortcuts import get_object_or_404
+        from .models import MCPServerRegistration
+        from .mcp_client import invalidate_mcp_client, get_mcp_client
+        reg = get_object_or_404(MCPServerRegistration, id=server_id, team_id=team_id)
+        
+        # Invalidate the client to reload from database
+        invalidate_mcp_client(team_id)
+        
+        # Test connecting and discovering tools
+        client = get_mcp_client(team_id)
+        # Clear redis/cache for this server to force a fresh discovery
+        from django.core.cache import cache
+        cache.delete(f"mcp_tools:{team_id}:{reg.name}")
+        
+        tools = client.discover_tools(reg.name)
+        
+        if tools:
+            reg.capabilities = [t.name for t in tools]
+            reg.save()
+            return ok({
+                "status": "connected",
+                "tools_count": len(tools),
+                "tools": [t.name for t in tools]
+            })
+        else:
+            return fail(
+                "Failed to sync tools from MCP server. Verify the server is running and accessible.",
+                status_code=502,
+                code="mcp_sync_failed"
+            )
+
+

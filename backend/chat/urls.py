@@ -8,6 +8,9 @@ from .views import (
     AdminUsageStatsView,
     ProactiveAlertsView,
     ProactiveSuggestionsView,
+    MCPServerRegistrationListView,
+    MCPServerRegistrationDetailView,
+    MCPServerRegistrationSyncView,
 )
 
 urlpatterns = [
@@ -19,4 +22,10 @@ urlpatterns = [
     path("<uuid:team_id>/usage-stats/", AdminUsageStatsView.as_view()),
     path("<uuid:team_id>/alerts/", ProactiveAlertsView.as_view()),
     path("<uuid:team_id>/suggestions/", ProactiveSuggestionsView.as_view()),
+    
+    # MCP server registration endpoints
+    path("<uuid:team_id>/mcp-servers/", MCPServerRegistrationListView.as_view()),
+    path("<uuid:team_id>/mcp-servers/<uuid:server_id>/", MCPServerRegistrationDetailView.as_view()),
+    path("<uuid:team_id>/mcp-servers/<uuid:server_id>/sync/", MCPServerRegistrationSyncView.as_view()),
 ]
+

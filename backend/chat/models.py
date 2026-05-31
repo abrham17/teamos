@@ -144,7 +144,36 @@ class MCPServerRegistration(models.Model):
         unique_together = ("team", "name")
         ordering = ["name"]
 
+    def _get_encryptor(self):
+        import base64
+        import hashlib
+        from django.conf import settings
+        from cryptography.fernet import Fernet
+        key = hashlib.sha256(settings.SECRET_KEY.encode("utf-8")).digest()
+        return Fernet(base64.urlsafe_b64encode(key))
+
+    def save(self, *args, **kwargs):
+        if self.auth_token and not self.auth_token.startswith("enc::"):
+            f = self._get_encryptor()
+            encrypted = f.encrypt(self.auth_token.encode("utf-8")).decode("utf-8")
+            self.auth_token = f"enc::{encrypted}"
+        super().save(*args, **kwargs)
+
+    @property
+    def decrypted_token(self) -> str:
+        if not self.auth_token:
+            return ""
+        if not self.auth_token.startswith("enc::"):
+            return self.auth_token
+        try:
+            f = self._get_encryptor()
+            encrypted_payload = self.auth_token[5:]  # strip 'enc::'
+            return f.decrypt(encrypted_payload.encode("utf-8")).decode("utf-8")
+        except Exception:
+            return ""
+
     def __str__(self):
         status = "✓" if self.enabled else "✗"
         return f"MCP[{status}] {self.name} ({self.team.name})"
+
 

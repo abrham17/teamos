@@ -208,10 +208,6 @@ CELERY_BEAT_SCHEDULE = {
         "task": "chat.background_agents.weekly_retrospective_all_teams",
         "schedule": crontab(day_of_week="monday", hour="8", minute="0"),
     },
-    "cleanup-expired-memories": {
-        "task": "chat.background_agents.cleanup_expired_memories",
-        "schedule": crontab(hour="3", minute="0"),
-    },
     "prune-expired-agent-memories": {
         "task": "chat.tasks.prune_expired_agent_memories",
         "schedule": crontab(hour="3", minute="30"),
@@ -303,6 +299,7 @@ PLAN_TIERS = {
         "query_expansions": 0,
         "reranker": None,
         "rate_limit_per_minute": 10,
+        "tts_character_quota": 10000,
     },
     "team": {
         "embed_model": "text-embedding-3-small",
@@ -318,6 +315,7 @@ PLAN_TIERS = {
         "query_expansions": 3,
         "reranker": "cross-encoder/ms-marco-MiniLM-L-6-v2",
         "rate_limit_per_minute": 30,
+        "tts_character_quota": 50000,
     },
     "pro": {
         "embed_model": "text-embedding-3-large",
@@ -333,6 +331,7 @@ PLAN_TIERS = {
         "query_expansions": 5,
         "reranker": "cross-encoder/ms-marco-MiniLM-L-12-v2",
         "rate_limit_per_minute": 60,
+        "tts_character_quota": 250000,
     },
 }
 

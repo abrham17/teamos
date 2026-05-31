@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import concurrent.futures
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator
@@ -92,7 +93,12 @@ class AgentCore:
         self.preloaded_rag = preloaded_rag  # P1.3: avoid redundant RAG search
         self._research_citations: list[dict[str, Any]] = []
 
-    def run(self, context_str: str, state: dict[str, Any]) -> Iterator[str]:
+    def run(
+        self,
+        context_str: str,
+        state: dict[str, Any],
+        cancel_evt: threading.Event | None = None,
+    ) -> Iterator[str]:
         """
         Execute the full agent loop with reflection.
 
@@ -110,6 +116,10 @@ class AgentCore:
         retry_budget = 2  # max retries from reflection
 
         for _round in range(self.config.max_rounds):
+            if cancel_evt is not None and cancel_evt.is_set():
+                logger.info("Agent execution cooperative cancellation triggered.")
+                return
+
             # ── LLM call ──────────────────────────────────────────
             try:
                 resp, model_used, _ = llm_call(

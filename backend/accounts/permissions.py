@@ -103,3 +103,27 @@ class CanEditPlans(BasePermission):
         if request.method in SAFE_METHODS:
             return True
         return has_minimum_role(membership, "editor")
+
+
+class IsTeamAdmin(BasePermission):
+    """
+    Allows access only to team members with the 'owner' role.
+    """
+
+    message = "Owner access required."
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        team_id = _resolve_team_id(view, request)
+        if not team_id:
+            return False
+
+        membership = getattr(request, "team_membership", None) or get_team_membership(request.user, team_id)
+        if not membership:
+            return False
+
+        request.team_membership = membership
+        return has_minimum_role(membership, "owner")
+
