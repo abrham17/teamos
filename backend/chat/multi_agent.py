@@ -20,6 +20,7 @@ class AgentRole(Enum):
     STRATEGIC_PLANNER = "strategic_planner"  # Deep reasoning pipeline
     ANALYST = "analyst"
     LIGHTWEIGHT = "lightweight"  # Quick RAG lookup
+    RESEARCH = "research"  # External web research
 
 
 @dataclass
@@ -75,6 +76,12 @@ SPECIALIST_SYSTEM_PROMPTS = {
         "You are a Lightweight Assistant. You provide quick, accurate answers from existing knowledge "
         "without using complex tools or planning loops. Focus on speed and directness."
     ),
+    AgentRole.RESEARCH: (
+        "You are the ResearchAgent specialist for TeamOS. "
+        "Your core duty is to investigate external technical, market, legal, and current-event questions. "
+        "Search aggressively, read source pages when needed, synthesize objectively, and cite every external source with markdown links. "
+        "If the user explicitly asks to save findings, use research_save_to_wiki after producing a concise, source-backed markdown summary."
+    ),
 }
 
 SPECIALIST_TOOLS = {
@@ -104,6 +111,11 @@ SPECIALIST_TOOLS = {
         "plan_get_analytics", "wiki_get_analytics",
     ],
     AgentRole.LIGHTWEIGHT: [],  # No tools, just RAG
+    AgentRole.RESEARCH: [
+        "web_search",
+        "web_read_page",
+        "research_save_to_wiki",
+    ],
 }
 
 
@@ -128,6 +140,13 @@ _WIKI_PATTERNS = re.compile(
 _ANALYST_PATTERNS = re.compile(
     r"\b(retrospective|analytics|trend|performance\s+analysis"
     r"|team\s+stats|gap\s+analysis)\b",
+    re.IGNORECASE,
+)
+_RESEARCH_PATTERNS = re.compile(
+    r"\b("
+    r"latest|current|today|recent|web|website|search the web|research|market\s+size|compare|comparison|"
+    r"regulation|legal|law|standard|specification|benchmark|competitor|news|external source|source-backed"
+    r")\b",
     re.IGNORECASE,
 )
 
@@ -169,6 +188,12 @@ class AgentOrchestrator:
                 reasoning_depth="standard",
                 confidence=0.85,
             )
+        if _RESEARCH_PATTERNS.search(message):
+            return Classification(
+                primary_agent=AgentRole.RESEARCH,
+                reasoning_depth="standard",
+                confidence=0.84,
+            )
         # Short simple questions → lightweight
         if len(message.split()) < 8 and "?" in message:
             return Classification(
@@ -190,10 +215,11 @@ Available specialists:
 - plan: project management, listing tasks, minor schedule updates.
 - strategic_planner: Building a new project plan from scratch, complex roadmapping, deep reasoning.
 - analyst: data analysis, retrospectives, trends.
+- research: external sources, current facts, technical standards, legal frameworks, market data.
 
 Return JSON:
 {{
-  "primary_agent": "lightweight|wiki|plan|strategic_planner|analyst",
+  "primary_agent": "lightweight|wiki|plan|strategic_planner|analyst|research",
   "reasoning_depth": "lightweight|standard|deep",
   "requires_multiple": true/false,
   "subtasks": [["agent_name", "subtask description"], ...],
@@ -201,6 +227,7 @@ Return JSON:
 }}
 
 If the user wants to "create a plan", "architect a project", or "build a roadmap", use strategic_planner and deep reasoning.
+If the user asks for current facts, source-backed external material, or public web research, use research.
 If the user asks a simple question like "Who is...", use lightweight."""
 
         resp, _, _ = llm_call(
@@ -232,9 +259,16 @@ If the user asks a simple question like "Who is...", use lightweight."""
 
         Uses fast rule-based classification first (P1.5), falls through
         to LLM only for ambiguous messages.
-        ``preferred_mode`` (``"ask" | "agent" | "plan"``) biases toward
+        ``preferred_mode`` (``"ask" | "agent" | "plan" | "research"``) biases toward
         the corresponding specialist when the message is ambiguous.
         """
+        if preferred_mode == "research":
+            return Classification(
+                primary_agent=AgentRole.RESEARCH,
+                reasoning_depth="standard",
+                confidence=0.88,
+            )
+
         # If user explicitly selected plan mode, prefer PLAN agent
         if preferred_mode == "plan":
             fast = self._fast_classify(user_message)
@@ -271,10 +305,11 @@ Available specialists:
 - plan: project management, minor updates, status changes, conflict detection/resolution, risk assessment/mitigation, workload/timeline cleanup.
 - strategic_planner: New project creation, roadmapping, deep reasoning.
 - analyst: data analysis.
+- research: external sources, current facts, technical standards, legal frameworks, market data.
 
 Return JSON:
 {{
-  "primary_agent": "lightweight|wiki|plan|strategic_planner|analyst",
+  "primary_agent": "lightweight|wiki|plan|strategic_planner|analyst|research",
   "reasoning_depth": "lightweight|standard|deep",
   "requires_multiple": true/false,
   "subtasks": [["agent_name", "subtask description"], ...],
@@ -284,6 +319,8 @@ Return JSON:
 Route to plan when the user mentions semantic planning work even without exact keywords:
 timeline pressure, blockers, overlap, overloaded assignee, deadline danger, risk, safer roadmap,
 clean it up, make it safer, resolve scheduling, mitigate, unblock, reschedule, or conflicts.
+Route to research when the query depends on current or external public sources, recent facts,
+technical standards, laws, competitor comparisons, or market information.
 Use lightweight only when no tool-backed wiki/planning action or lookup is needed."""
 
         try:

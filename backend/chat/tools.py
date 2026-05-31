@@ -6,11 +6,16 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
+from urllib.parse import urlparse
 from typing import Any
 
 from django.core.cache import cache
+from django.conf import settings
 from django.db.models import Q
+from django.utils import timezone
+import requests
 
 from accounts.models import TeamMember, User
 from graph_engine.analytics import invalidate_team_graph_analytics_cache
@@ -56,6 +61,80 @@ def openai_tool_schemas(
     If whitelist is provided, only tools in the whitelist are returned.
     """
     all_tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": (
+                    "Search the public web for current, external, or source-backed information. "
+                    "Use for recent facts, technical standards, market research, laws, and third-party sources."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query to send to the web provider.",
+                        },
+                        "max_results": {
+                            "type": "integer",
+                            "description": "Max search results to return (default 5, max 10).",
+                            "default": 5,
+                        },
+                    },
+                    "required": ["query"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "web_read_page",
+                "description": (
+                    "Fetch and extract the readable text from a single public URL for deeper reading."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "Public URL to extract.",
+                        },
+                    },
+                    "required": ["url"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "research_save_to_wiki",
+                "description": (
+                    "Persist curated research findings into the team's wiki through the existing ingest pipeline."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "description": "Title for the saved research note."},
+                        "markdown": {
+                            "type": "string",
+                            "description": "Markdown body to ingest as a wiki page.",
+                        },
+                        "source_urls": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "URLs referenced by the research summary.",
+                        },
+                        "auto_approve": {
+                            "type": "boolean",
+                            "default": True,
+                            "description": "Whether the resulting ingest job should auto-approve.",
+                        },
+                    },
+                    "required": ["markdown"],
+                },
+            },
+        },
         {
             "type": "function",
             "function": {
@@ -928,6 +1007,10 @@ def _register_tools():
         return
 
     _TOOL_REGISTRY.update({
+        # Research tools
+        "web_search": _web_search,
+        "web_read_page": _web_read_page,
+        "research_save_to_wiki": _research_save_to_wiki,
         # Wiki tools
         "wiki_list_pages": _wiki_list_pages,
         "wiki_team_overview": _wiki_team_overview,
@@ -1288,6 +1371,329 @@ def _graph_remove_edge(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]
         invalidate_team_graph_analytics_cache(ctx.team_id)
         
     return {"ok": True, "deleted_count": deleted}
+
+
+def _research_default_quota_for_team(team) -> int:
+    plan = getattr(getattr(team, "subscription", None), "plan_key", None) or getattr(team, "plan", "free")
+    quotas = getattr(settings, "RESEARCH_MONTHLY_QUOTAS", {})
+    try:
+        return int(quotas.get(plan, quotas.get("free", 0)) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _research_state(team) -> dict[str, Any]:
+    from research.models import TeamResearchQuota
+
+    quota = TeamResearchQuota.objects.filter(team=team).first()
+    if quota is None:
+        limit = _research_default_quota_for_team(team)
+        return {"limit": limit, "current": 0, "remaining": max(0, limit), "reason": None}
+
+    state = quota.to_state()
+    return {
+        "limit": state.limit,
+        "current": state.current,
+        "remaining": state.remaining,
+        "reason": state.reason,
+    }
+
+
+def _research_blocked_url(url: str) -> str | None:
+    parsed = urlparse(url or "")
+    host = (parsed.hostname or "").lower()
+    raw = (url or "").lower()
+    blocklist = getattr(settings, "RESEARCH_DOMAIN_BLOCKLIST", [])
+    for entry in blocklist:
+        needle = (entry or "").strip().lower()
+        if not needle:
+            continue
+        if needle in raw:
+            return needle
+        if host == needle or host.endswith(f".{needle}"):
+            return needle
+    return None
+
+
+def _research_log(
+    *,
+    team,
+    user,
+    action: str,
+    raw_query: str = "",
+    optimized_search_query: str = "",
+    urls_accessed: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    try:
+        from research.models import ResearchLog
+
+        ResearchLog.objects.create(
+            team=team,
+            initiated_by=user,
+            action=action,
+            raw_query=(raw_query or "")[:5000],
+            optimized_search_query=(optimized_search_query or "")[:512],
+            urls_accessed=list(urls_accessed or []),
+            metadata=metadata or {},
+        )
+    except Exception:
+        logger.exception("Failed to record research log")
+
+
+def _research_provider_call(path: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
+    api_key = getattr(settings, "TAVILY_API_KEY", "").strip()
+    if not api_key:
+        return {"ok": False, "error": "research_unconfigured"}
+
+    body = {**payload, "api_key": api_key}
+    resp = requests.post(f"https://api.tavily.com/{path.lstrip('/')}", json=body, timeout=timeout)
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, dict):
+        return {"ok": False, "error": "invalid_provider_response"}
+    return data
+
+
+def _research_filter_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    max_chars = int(getattr(settings, "RESEARCH_MAX_CONTENT_CHARS", 60000) or 60000)
+    filtered: list[dict[str, Any]] = []
+    for item in results or []:
+        if not isinstance(item, dict):
+            continue
+        url = (item.get("url") or item.get("source") or "").strip()
+        if not url:
+            continue
+        if _research_blocked_url(url):
+            continue
+        content = (item.get("content") or item.get("raw_content") or item.get("text") or "").strip()
+        if len(content) > max_chars:
+            content = content[:max_chars]
+        filtered.append(
+            {
+                "title": (item.get("title") or item.get("name") or url).strip(),
+                "url": url,
+                "score": float(item.get("score") or item.get("relevance_score") or 0.0),
+                "content": content,
+            }
+        )
+    filtered.sort(key=lambda r: r["score"], reverse=True)
+    return filtered
+
+
+def _research_url_payload(url: str, title: str, content: str, score: float | None = None) -> dict[str, Any]:
+    return {
+        "source": "web",
+        "title": title or url,
+        "url": url,
+        "snippet": content[:280] if content else "",
+        "confidence": score,
+    }
+
+
+def _web_search(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    team = ctx.membership.team
+    query = (args.get("query") or "").strip()
+    if not query:
+        return {"ok": False, "error": "query_required"}
+
+    quota = check_quota(team, "research_search")
+    if not quota.allowed:
+        return {"ok": False, "error": "plan_limit_exceeded", "details": quota.to_details()}
+
+    ok, quota_row, state = (False, None, None)
+    try:
+        from research.models import TeamResearchQuota
+
+        ok, quota_row, state = TeamResearchQuota.consume_search(team)
+        if not ok:
+            return {"ok": False, "error": "plan_limit_exceeded", "details": {
+                "limit": state.limit,
+                "current": state.current,
+                "remaining": state.remaining,
+                "reason": "research_limit_reached",
+            }}
+    except Exception as exc:
+        logger.exception("Failed to consume research quota")
+        return {"ok": False, "error": str(exc)}
+
+    try:
+        raw = _research_provider_call(
+            "search",
+            {
+                "query": query,
+                "max_results": min(max(int(args.get("max_results") or 5), 1), 10),
+                "include_raw_content": True,
+                "search_depth": "advanced",
+            },
+            timeout=20.0,
+        )
+    except requests.RequestException as exc:
+        logger.exception("Tavily web_search failed")
+        return {"ok": False, "error": f"provider_error:{exc}", "query": query}
+    except Exception as exc:
+        logger.exception("Unexpected web_search failure")
+        return {"ok": False, "error": str(exc), "query": query}
+
+    results = _research_filter_results(raw.get("results") or [])
+    urls = [row["url"] for row in results]
+    _research_log(
+        team=team,
+        user=ctx.user,
+        action="search",
+        raw_query=query,
+        optimized_search_query=query[:512],
+        urls_accessed=urls,
+        metadata={
+            "result_count": len(results),
+            "quota_current": state.current if state else None,
+            "quota_remaining": state.remaining if state else None,
+        },
+    )
+    return {
+        "ok": True,
+        "query": query,
+        "results": results,
+        "count": len(results),
+        "quota": {
+            "limit": state.limit if state else quota_row.effective_limit() if quota_row else quota.limit,
+            "current": state.current if state else quota.current,
+            "remaining": state.remaining if state else max(0, quota.limit - quota.current),
+        },
+    }
+
+
+def _web_read_page(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    url = (args.get("url") or "").strip()
+    if not url:
+        return {"ok": False, "error": "url_required"}
+
+    blocked = _research_blocked_url(url)
+    if blocked:
+        return {"ok": False, "error": "blocked_domain", "blocked": blocked, "url": url}
+
+    try:
+        raw = _research_provider_call(
+            "extract",
+            {
+                "urls": [url],
+                "include_raw_content": True,
+            },
+            timeout=25.0,
+        )
+    except requests.RequestException as exc:
+        logger.exception("Tavily web_read_page failed")
+        return {"ok": False, "error": f"provider_error:{exc}", "url": url}
+    except Exception as exc:
+        logger.exception("Unexpected web_read_page failure")
+        return {"ok": False, "error": str(exc), "url": url}
+
+    items = raw.get("results") or raw.get("data") or raw.get("pages") or []
+    if isinstance(items, dict):
+        items = [items]
+    if not isinstance(items, list):
+        items = []
+
+    max_chars = int(getattr(settings, "RESEARCH_MAX_CONTENT_CHARS", 60000) or 60000)
+    extracted = ""
+    title = url
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        candidate_url = (item.get("url") or item.get("source") or url).strip()
+        if _research_blocked_url(candidate_url):
+            continue
+        content = (item.get("content") or item.get("raw_content") or item.get("text") or "").strip()
+        if content:
+            extracted = content[:max_chars]
+            title = (item.get("title") or item.get("name") or title).strip()
+            break
+
+    if not extracted:
+        extracted = str(raw.get("content") or raw.get("raw_content") or "").strip()[:max_chars]
+
+    _research_log(
+        team=ctx.membership.team,
+        user=ctx.user,
+        action="read",
+        raw_query=url,
+        optimized_search_query=url[:512],
+        urls_accessed=[url],
+        metadata={"content_chars": len(extracted)},
+    )
+
+    return {
+        "ok": True,
+        "url": url,
+        "title": title,
+        "content": extracted,
+        "content_chars": len(extracted),
+        "snippet": extracted[:280],
+    }
+
+
+def _research_save_to_wiki(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    team = ctx.membership.team
+    markdown = (args.get("markdown") or "").strip()
+    if not markdown:
+        return {"ok": False, "error": "markdown_required"}
+
+    title = (args.get("title") or "").strip()
+    source_urls = [str(url).strip() for url in (args.get("source_urls") or []) if str(url).strip()]
+    auto_approve = bool(args.get("auto_approve", True))
+
+    if title and not markdown.lstrip().startswith("#"):
+        markdown = f"# {title}\n\n{markdown}"
+
+    quota = check_quota(team, "ingest_job_create")
+    if not quota.allowed:
+        return {"ok": False, "error": "plan_limit_exceeded", "details": quota.to_details()}
+
+    from ingest.models import IngestJob
+    from ingest.tasks import run_ingest_job
+
+    job = IngestJob.objects.create(
+        team=team,
+        created_by=ctx.user,
+        source_type="markdown",
+        source_filename=(title or "research-findings").strip()[:120] + ".md",
+        status="pending",
+        ingest_stage="queued",
+        ingest_stage_detail="Queued from research mode",
+        auto_approve=auto_approve,
+        source_metadata={
+            "research_mode": True,
+            "research_title": title,
+            "research_source_urls": source_urls,
+            "research_saved_by": str(ctx.user.id) if ctx.user else None,
+        },
+        raw_data=markdown,
+    )
+    try:
+        run_ingest_job.delay(str(job.id), markdown, trace_id=None)
+    except Exception as exc:
+        logger.exception("Queue research ingest from chat agent")
+        return {"ok": False, "error": str(exc), "job_id": str(job.id)}
+
+    _research_log(
+        team=team,
+        user=ctx.user,
+        action="save",
+        raw_query=title or markdown[:512],
+        optimized_search_query=title[:512] if title else markdown[:512],
+        urls_accessed=source_urls,
+        metadata={"job_id": str(job.id), "auto_approve": auto_approve},
+    )
+
+    return {
+        "ok": True,
+        "job_id": str(job.id),
+        "status": "queued",
+        "title": title or "Research findings",
+        "source_urls": source_urls,
+    }
+
+
 def _ingest_markdown(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     text = (args.get("markdown") or "").strip()
     if not text:
@@ -2246,4 +2652,3 @@ def select_relevant_tools(query: str, tools: list[dict[str, Any]], max_tools: in
     # Sort descending by score
     scored_tools.sort(key=lambda x: x[0], reverse=True)
     return [t for _, t in scored_tools[:max_tools]]
-

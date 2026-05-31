@@ -7,7 +7,6 @@ Celery tasks for the chat app.
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
 
 from celery import shared_task
 from django.utils import timezone
@@ -64,29 +63,6 @@ def prune_expired_agent_memories(self):
 
     except Exception as exc:
         logger.exception("prune_expired_agent_memories failed")
-        raise self.retry(exc=exc, countdown=60)
-
-
-@shared_task(name="chat.tasks.prune_old_episodes", bind=True, max_retries=1)
-def prune_old_episodes(self):
-    """
-    Auto-prune successful agent episodes older than 60 days.
-    Keep failed episodes longer for analysis.
-    """
-    try:
-        from chat.models import AgentEpisode
-        
-        cutoff = timezone.now() - timedelta(days=60)
-        deleted, _ = AgentEpisode.objects.filter(
-            created_at__lt=cutoff,
-            success=True
-        ).delete()
-        
-        if deleted > 0:
-            logger.info("Pruned %d old AgentEpisode records.", deleted)
-        return {"deleted": deleted}
-    except Exception as exc:
-        logger.exception("prune_old_episodes failed")
         raise self.retry(exc=exc, countdown=60)
 
 
@@ -161,5 +137,4 @@ def retrospective_learning_loop(self, episode_id: str):
     except Exception as exc:
         logger.exception("retrospective_learning_loop failed")
         raise self.retry(exc=exc, countdown=30)
-
 

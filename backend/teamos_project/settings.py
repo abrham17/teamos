@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     'product_analytics',
     'admin_api',
     'planning',
+    'research',
 ]
 
 MIDDLEWARE = [

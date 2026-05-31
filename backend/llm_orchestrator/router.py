@@ -24,6 +24,7 @@ MODEL_PRICING = {
 OPERATION_CONFIG = {
     "chat_ask": {"value_score": "medium", "priority_model": MODEL_DEEPSEEK_FLASH, "fallback": MODEL_GPT_4O_MINI},
     "chat_agent": {"value_score": "high", "priority_model": MODEL_DEEPSEEK_PRO, "fallback": MODEL_DEEPSEEK_FLASH},
+    "research_agent": {"value_score": "high", "priority_model": MODEL_DEEPSEEK_PRO, "fallback": MODEL_DEEPSEEK_FLASH},
     "plan_generate": {"value_score": "high", "priority_model": MODEL_DEEPSEEK_PRO, "fallback": MODEL_DEEPSEEK_FLASH},
     "ingest_decompose": {"value_score": "high", "priority_model": MODEL_DEEPSEEK_PRO, "fallback": MODEL_DEEPSEEK_FLASH},
     "ingest_decompose_outline": {"value_score": "high", "priority_model": MODEL_DEEPSEEK_PRO, "fallback": MODEL_DEEPSEEK_FLASH},

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any
 
 from chat.models import AgentMemory, ChatSession
 from ingest.vectors import vector_store
@@ -18,19 +17,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_TOKENS = 14000
 CHARS_PER_TOKEN = 3.8  # approximate
-
-
-@dataclass
-class ContextBlock:
-    """A ranked block of context text with metadata."""
-    source: str
-    content: str
-    relevance: float = 1.0
-    token_estimate: int = 0
-
-    def __post_init__(self):
-        if not self.token_estimate:
-            self.token_estimate = int(len(self.content) / CHARS_PER_TOKEN)
 
 
 @dataclass
@@ -113,6 +99,7 @@ class ContextBuilder:
         include_graph: bool = True,
         history_limit: int = 12,
         preloaded_rag: list | None = None,
+        suppress_empty_rag_message: bool = False,
     ) -> BuiltContext:
         """Build the full context for an agent call.
 
@@ -141,6 +128,8 @@ class ContextBuilder:
                 rag_results = []
 
         rag_block, rag_count = self._build_rag_block(rag_results, budget)
+        if suppress_empty_rag_message and rag_block == "No retrieval snippets were returned for this query.":
+            rag_block = ""
         blocks_included += rag_count
 
         # ── 3. Graph: Expand from top RAG hits (reuse same results) ─

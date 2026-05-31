@@ -67,33 +67,6 @@ def daily_team_health_check(self, team_id: str):
     return health
 
 
-@shared_task(bind=True, max_retries=2, default_retry_delay=300)
-def on_wiki_page_updated(self, page_id: str):
-    """After wiki page save: enrich graph edges, check plan references."""
-    try:
-        page = WikiPage.objects.get(id=page_id, is_deleted=False)
-    except WikiPage.DoesNotExist:
-        return
-
-    from graph_engine.enricher import enrich_on_page_save
-    enrich_on_page_save(page)
-
-    affected = Task.objects.filter(
-        project__team_id=page.team_id,
-        description__contains=f"[[{page.title}]]",
-        status__in=["todo", "in-progress"],
-    )
-    for task in affected:
-        task.frontmatter = task.frontmatter or {}
-        task.frontmatter.setdefault("wiki_updates", []).append({
-            "page": page.title, "updated_at": str(page.updated_at),
-        })
-        task.save(update_fields=["frontmatter"])
-
-    if affected.exists():
-        logger.info("Wiki '%s' updated — %d tasks affected", page.title, affected.count())
-
-
 @shared_task(bind=True, max_retries=1, default_retry_delay=600)
 def weekly_retrospective(self, team_id: str):
     """Weekly: generate team performance summary."""

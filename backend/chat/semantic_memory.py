@@ -145,25 +145,6 @@ def recall_relevant_memories(team_id: str, query: str, top_k: int = 5) -> list[d
     ]
 
 
-def should_remember(trigger: str, success: bool, learnings: str) -> bool:
-    """Determine if this interaction is worth persisting as an episode."""
-    # Always remember failures
-    if not success:
-        return True
-
-    # Remember if there are explicit learnings
-    if learnings and len(learnings) > 50:
-        return True
-
-    # Remember if the trigger contains decision-making keywords
-    decision_keywords = ["decide", "decision", "priority", "blocker", "risk", "conflict", "resolve"]
-    trigger_lower = trigger.lower()
-    if any(kw in trigger_lower for kw in decision_keywords):
-        return True
-
-    return False
-
-
 def get_memory_context(team_id: str, query: str) -> str:
     """Build a memory context string for injection into the agent's system prompt."""
     episodes = recall_similar_episodes(team_id, query, top_k=3)

@@ -206,3 +206,23 @@ EMAIL_USE_SSL = (_EMAIL_PORT == 465)
 EMAIL_HOST_USER = os.environ.get("SMTP_USER")
 EMAIL_HOST_PASSWORD = os.environ.get("SMTP_PASSWORD")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "TeamOS <hello@team-os.tech>")
+
+
+
+# --- Research mode (web search + ingest) ---
+TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
+RESEARCH_DOMAIN_BLOCKLIST = [
+    entry.strip().lower()
+    for entry in os.environ.get(
+        "RESEARCH_DOMAIN_BLOCKLIST",
+        "accounts.google.com,login.microsoftonline.com,facebook.com,instagram.com,x.com,twitter.com",
+    ).split(",")
+    if entry.strip()
+]
+RESEARCH_MAX_CONTENT_CHARS = int(os.environ.get("RESEARCH_MAX_CONTENT_CHARS", "60000"))
+RESEARCH_MONTHLY_QUOTAS = {
+    "free": int(os.environ.get("RESEARCH_QUOTA_FREE", "0")),
+    "team": int(os.environ.get("RESEARCH_QUOTA_TEAM", "25")),
+    "pro": int(os.environ.get("RESEARCH_QUOTA_PRO", "100")),
+    "enterprise": int(os.environ.get("RESEARCH_QUOTA_ENTERPRISE", "500")),
+}

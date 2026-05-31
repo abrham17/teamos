@@ -17,11 +17,11 @@ from __future__ import annotations
 import json
 import logging
 import concurrent.futures
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Iterator
 
 from accounts.models import Team
-from chat.agent_reflector import AgentReflector, Reflection
+from chat.agent_reflector import AgentReflector
 from chat.context_builder import ContextBuilder
 from chat.models import ChatSession
 from chat.tools import ToolContext
@@ -90,6 +90,7 @@ class AgentCore:
         self.context_builder = ContextBuilder(str(session.team_id))
         self.working_memory = WorkingMemory(str(session.id))
         self.preloaded_rag = preloaded_rag  # P1.3: avoid redundant RAG search
+        self._research_citations: list[dict[str, Any]] = []
 
     def run(self, context_str: str, state: dict[str, Any]) -> Iterator[str]:
         """
@@ -100,6 +101,8 @@ class AgentCore:
             state: Mutable dict to communicate results back to the caller.
         """
         state["ok"] = False
+        self._state = state
+        self._research_citations = list(state.get("citations") or [])
 
         messages = self._build_messages(context_str)
         tool_trace: list[dict[str, Any]] = []
@@ -109,9 +112,9 @@ class AgentCore:
         for _round in range(self.config.max_rounds):
             # ── LLM call ──────────────────────────────────────────
             try:
-                resp, model_used, routed_by = llm_call(
+                resp, model_used, _ = llm_call(
                     team=self.team,
-                    operation="chat_agent",
+                    operation=self._llm_operation_name(),
                     messages=messages,
                     user=self.session.created_by,
                     tools=self.config.tools,
@@ -133,6 +136,8 @@ class AgentCore:
             if not msg.tool_calls:
                 # Pass the initial content to avoid double LLM call
                 initial_content = msg.content or ""
+                if self.config.mode == "research":
+                    yield _sse("research_complete", {"status": "Synthesis ready"})
                 yield from self._stream_final_answer(messages, state, tool_trace, initial_content)
                 return
 
@@ -165,6 +170,8 @@ class AgentCore:
                 tools_executed += 1
                 name = tc.function.name
                 arguments = tc.function.arguments or "{}"
+                if self.config.mode == "research":
+                    yield from self._emit_research_tool_call(name, arguments)
                 yield _sse("tool_call", {"name": name, "arguments": arguments})
                 tool_calls_to_run.append((tc, name, arguments))
 
@@ -190,6 +197,8 @@ class AgentCore:
                     entry = {"name": name, "arguments": arguments, "result": truncated_result}
                     tool_trace.append(entry)
                     round_results.append(entry)
+                    if self.config.mode == "research":
+                        yield from self._emit_research_tool_result(name, arguments, result)
                     yield _sse("tool_result", {"name": name, "ok": result.get("ok"), "result": truncated_result})
                     self.working_memory.track_tool_call(name, {}, bool(result.get("ok")))
                     messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(truncated_result)})
@@ -201,6 +210,8 @@ class AgentCore:
                     entry = {"name": name, "arguments": arguments, "result": truncated_result}
                     tool_trace.append(entry)
                     round_results.append(entry)
+                    if self.config.mode == "research":
+                        yield from self._emit_research_tool_result(name, arguments, result)
                     yield _sse("tool_result", {"name": name, "ok": result.get("ok"), "result": truncated_result})
                     self.working_memory.track_tool_call(name, {}, bool(result.get("ok")))
                     messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(truncated_result)})
@@ -252,6 +263,7 @@ class AgentCore:
             include_graph=True,
             history_limit=12,
             preloaded_rag=self.preloaded_rag,  # P1.3: reuse RAG from universal_stream
+            suppress_empty_rag_message=self.config.mode == "research",
         )
 
         system = self.config.system_prefix
@@ -304,6 +316,120 @@ class AgentCore:
                 messages.append({"role": msg.role, "content": msg.content})
 
         return messages
+
+    def _emit_research_tool_call(self, name: str, arguments: str) -> Iterator[str]:
+        if name == "web_search":
+            try:
+                payload = json.loads(arguments or "{}")
+            except Exception:
+                payload = {}
+            yield _sse(
+                "research_search_call",
+                {
+                    "query": str(payload.get("query") or "").strip(),
+                    "max_results": int(payload.get("max_results") or 5),
+                },
+            )
+        elif name == "web_read_page":
+            try:
+                payload = json.loads(arguments or "{}")
+            except Exception:
+                payload = {}
+            yield _sse("research_read_call", {"url": str(payload.get("url") or "").strip()})
+        elif name == "research_save_to_wiki":
+            try:
+                payload = json.loads(arguments or "{}")
+            except Exception:
+                payload = {}
+            yield _sse("research_save_wiki", {"title": str(payload.get("title") or "").strip(), "status": "queued"})
+
+    def _emit_research_tool_result(
+        self,
+        name: str,
+        arguments: str,
+        raw_result: dict[str, Any],
+    ) -> Iterator[str]:
+        if name == "web_search" and raw_result.get("ok"):
+            try:
+                payload = json.loads(arguments or "{}")
+            except Exception:
+                payload = {}
+            query = str(payload.get("query") or "").strip()
+            results = raw_result.get("results") or []
+            citations = [c for c in (self._research_citation_from_result(row) for row in results if isinstance(row, dict)) if c]
+            if citations:
+                merged = self._dedupe_citations((self._research_citations or []) + citations)
+                self._research_citations = merged
+                if hasattr(self, "_state") and isinstance(self._state, dict):
+                    self._state["citations"] = merged
+                yield _sse("citations", {"citations": merged})
+            yield _sse(
+                "research_search_results",
+                {
+                    "query": query,
+                    "count": len(results),
+                    "results": [
+                        {
+                            "title": row.get("title"),
+                            "url": row.get("url"),
+                            "score": row.get("score"),
+                        }
+                        for row in results[:10]
+                        if isinstance(row, dict)
+                    ],
+                },
+            )
+        elif name == "web_read_page" and raw_result.get("ok"):
+            content = str(raw_result.get("content") or "")
+            yield _sse(
+                "research_read_complete",
+                {
+                    "url": raw_result.get("url"),
+                    "title": raw_result.get("title"),
+                    "content_chars": len(content),
+                    "snippet": content[:280],
+                },
+            )
+        elif name == "research_save_to_wiki" and raw_result.get("ok"):
+            yield _sse(
+                "research_save_wiki",
+                {
+                    "job_id": raw_result.get("job_id"),
+                    "status": raw_result.get("status", "queued"),
+                    "title": raw_result.get("title"),
+                },
+            )
+
+    def _research_citation_from_result(self, row: dict[str, Any]) -> dict[str, Any] | None:
+        url = str(row.get("url") or "").strip()
+        if not url:
+            return None
+        title = str(row.get("title") or url).strip()
+        content = str(row.get("content") or "").strip()
+        return {
+            "source": "web",
+            "title": title,
+            "url": url,
+            "snippet": content[:280],
+            "confidence": row.get("score"),
+        }
+
+    def _dedupe_citations(self, citations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        seen = set()
+        merged: list[dict[str, Any]] = []
+        for citation in citations:
+            key = (
+                citation.get("source"),
+                citation.get("url"),
+                citation.get("page_slug"),
+                citation.get("project_id"),
+                citation.get("chunk_id"),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(citation)
+        return merged
 
     def _execute_tool(self, name: str, arguments: str) -> dict[str, Any]:
         """Execute a tool with timeout protection."""
@@ -366,9 +492,9 @@ class AgentCore:
                     yield _sse("chunk", {"token": final_text[i:i + CHUNK_SIZE]})
             else:
                 # Otherwise, make a new streaming call
-                stream_resp, stream_model_used, _ = llm_call(
+                stream_resp, _, _ = llm_call(
                     team=self.team,
-                    operation="chat_agent",
+                    operation=self._llm_operation_name(),
                     messages=messages,
                     user=self.session.created_by,
                     stream=True,
@@ -406,6 +532,9 @@ class AgentCore:
             logger.exception("Agent final streaming failed")
             yield _sse("error", {"detail": str(e)})
 
+    def _llm_operation_name(self) -> str:
+        return "research_agent" if self.config.mode == "research" else "chat_agent"
+
     def _store_episode(
         self,
         user_message: str,
@@ -441,4 +570,3 @@ class AgentCore:
             self.working_memory.clear()
         except Exception:
             logger.exception("Failed to store agent episode")
-

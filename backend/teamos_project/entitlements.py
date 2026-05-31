@@ -84,6 +84,33 @@ def check_quota(team, operation: str, **kwargs) -> QuotaResult:
                 return QuotaResult(allowed=False, limit=limit, current=current, reason="wiki_page_limit_reached")
         return QuotaResult(allowed=True, limit=10000, current=0)
 
+    # 6. Research Web Searches
+    if operation == "research_search":
+        from django.conf import settings
+
+        tavily_key = getattr(settings, "TAVILY_API_KEY", "")
+        if not tavily_key.strip():
+            return QuotaResult(allowed=False, limit=0, current=0, reason="research_unconfigured")
+
+        from research.models import TeamResearchQuota
+
+        quota = TeamResearchQuota.objects.filter(team=team).first()
+        quota_map = getattr(settings, "RESEARCH_MONTHLY_QUOTAS", {})
+        default_limit = int(quota_map.get(plan, quota_map.get("free", 0)) or 0)
+
+        if quota is None:
+            if default_limit <= 0:
+                return QuotaResult(allowed=False, limit=0, current=0, reason="research_limit_disabled")
+            return QuotaResult(allowed=True, limit=default_limit, current=0)
+
+        state = quota.to_state()
+        limit = quota.effective_limit() or default_limit
+        if limit <= 0:
+            return QuotaResult(allowed=False, limit=0, current=state.current, reason="research_limit_disabled")
+        if state.current >= limit:
+            return QuotaResult(allowed=False, limit=limit, current=state.current, reason="research_limit_reached")
+        return QuotaResult(allowed=True, limit=limit, current=state.current)
+
     return QuotaResult(allowed=True, limit=-1, current=-1)
 
 def get_team_status_banner(team) -> dict | None:

@@ -13,14 +13,11 @@ from django.conf import settings
 
 from accounts.permissions import IsTeamMember
 from accounts.team_access import has_minimum_role
-from ingest.vectors import vector_store
-from wiki.models import WikiPage
 from teamos_project.entitlements import check_quota
 from product_analytics.services import record_first_once
 from .models import ChatSession, ChatMessage, ChatTokenUsage
 from .serializers import ChatSessionSerializer
 from teamos_project.api_response import ok, fail
-from llm_orchestrator.orchestrator import llm_call, llm_json_call
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +28,34 @@ TTS_ALLOWED_VOICES = frozenset({"alloy", "echo", "fable", "onyx", "nova", "shimm
 def estimate_tokens(text: str) -> int:
     # Lightweight approximation: ~4 chars/token for English-like text.
     return max(1, len((text or "").strip()) // 4)
+
+
+def _research_capability_state(member) -> dict:
+    from research.models import TeamResearchQuota
+
+    team = member.team
+    quota_result = check_quota(team, "research_search")
+    if not getattr(settings, "TAVILY_API_KEY", "").strip():
+        return {
+            "available": False,
+            "quota": {"limit": 0, "current": 0, "remaining": 0, "reason": "research_unconfigured"},
+            "save_available": False,
+        }
+
+    quota = TeamResearchQuota.get_state(team)
+    available = bool(quota_result.allowed)
+    limit = quota_result.limit if quota_result.limit >= 0 else quota.limit
+    current = quota_result.current if quota_result.current >= 0 else quota.current
+    return {
+        "available": available,
+        "quota": {
+            "limit": limit,
+            "current": current,
+            "remaining": max(0, limit - current),
+            "reason": quota_result.reason,
+        },
+        "save_available": has_minimum_role(member, "editor"),
+    }
 
 
 def _build_ask_system_prompt(context_str: str) -> str:
@@ -69,6 +94,7 @@ class ChatCapabilitiesView(APIView):
         m = request.team_membership
         # Strategy standardizes on OpenAI-capable features for all paid tiers
         agent_ok = True 
+        research_state = _research_capability_state(m)
         return ok(
             {
                 "can_edit_wiki": has_minimum_role(m, "editor"),
@@ -76,6 +102,9 @@ class ChatCapabilitiesView(APIView):
                 "can_ingest": has_minimum_role(m, "editor"),
                 "agent_mode_available": agent_ok,
                 "plan_mode_available": agent_ok,
+                "research_mode_available": research_state["available"],
+                "research_quota": research_state["quota"],
+                "research_save_available": has_minimum_role(m, "editor"),
             }
         )
 
@@ -162,7 +191,7 @@ class ChatQueryStreamView(APIView):
     """
     POST /api/chat/:team_id/sessions/:session_id/query/
     Ask mode: RAG + stream (default). Agent mode: tool loop + stream (editors, OpenAI backend only).
-    Body: { "message": "...", "mode": "ask" | "agent" | "plan" }
+    Body: { "message": "...", "mode": "ask" | "agent" | "plan" | "research" }
     """
     permission_classes = [IsAuthenticated, IsTeamMember]
 
@@ -193,13 +222,24 @@ class ChatQueryStreamView(APIView):
             return fail("Message required.", status_code=400, code="message_required")
 
         mode = (request.data.get("mode") or "ask").strip().lower()
-        if mode not in ("ask", "agent", "plan"):
+        if mode not in ("ask", "agent", "plan", "research"):
             return fail("Invalid mode.", status_code=400, code="invalid_mode")
 
         if mode in ("agent", "plan"):
             if not has_minimum_role(request.team_membership, "editor"):
                 code = "agent_forbidden" if mode == "agent" else "plan_forbidden"
                 return fail("Editor or owner role required.", status_code=403, code=code)
+
+        if mode == "research":
+            research_quota = check_quota(session.team, "research_search")
+            if not research_quota.allowed:
+                code = "research_limit_exceeded" if research_quota.reason == "research_limit_reached" else "research_unavailable"
+                return fail(
+                    "Research mode is unavailable for this team right now.",
+                    status_code=402,
+                    code=code,
+                    details=research_quota.to_details(),
+                )
 
         if not self._check_rate_limit(session.team):
             return fail(
@@ -343,11 +383,16 @@ class AdminUsageStatsView(APIView):
 
     def get(self, request, team_id):
         from accounts.models import TeamMember
-        if not TeamMember.objects.filter(team_id=team_id, user=request.user, role="admin").exists():
-            return fail("Admin access required", status_code=403)
+        if not TeamMember.objects.filter(team_id=team_id, user=request.user).exists():
+            return fail("Team membership required", status_code=403)
+        membership = TeamMember.objects.filter(team_id=team_id, user=request.user).first()
+        if not has_minimum_role(membership, "owner"):
+            return fail("Owner access required", status_code=403)
             
         from django.db.models import Sum
         from chat.models import ChatTokenUsage
+        from django.utils import timezone
+        from research.models import ResearchLog, TeamResearchQuota
         
         # Aggregate by model
         usages = ChatTokenUsage.objects.filter(team_id=team_id).values("metadata__model").annotate(
@@ -365,8 +410,25 @@ class AdminUsageStatsView(APIView):
                 "completion_tokens": u["total_completion"] or 0,
                 "total_tokens": u["total"] or 0,
             })
-            
-        return ok(data)
+
+        team = TeamMember.objects.select_related("team").get(team_id=team_id, user=request.user).team
+        quota = TeamResearchQuota.objects.filter(team_id=team_id).first()
+        quota_state = TeamResearchQuota.get_state(team)
+        month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        research_logs_this_month = ResearchLog.objects.filter(team_id=team_id, timestamp__gte=month_start).count()
+        research_payload = {
+            "enabled": bool(getattr(settings, "TAVILY_API_KEY", "").strip() and quota_state.limit > 0),
+            "quota": {
+                "limit": quota_state.limit,
+                "current": quota_state.current,
+                "remaining": quota_state.remaining,
+            },
+            "logs_this_month": research_logs_this_month,
+            "searches_this_month": quota.searches_this_month if quota else 0,
+            "max_searches_per_month": quota.max_searches_per_month if quota else 0,
+        }
+
+        return ok({"models": data, "research": research_payload})
 
 
 class ProactiveAlertsView(APIView):
@@ -408,7 +470,7 @@ class ProactiveAlertsView(APIView):
             project__team_id=team_id,
             target_date__range=[today, week_from_now],
             status="pending",
-        ).select_related("project")[:3]
+        ).select_related("project")[:5]
 
         for m in approaching:
             alerts.append({
@@ -426,7 +488,7 @@ class ProactiveAlertsView(APIView):
             team_id=team_id,
             is_deleted=False,
             updated_at__lt=timezone.now() - timedelta(days=90),
-        )[:3]
+        )[:5]
 
         for p in stale:
             alerts.append({

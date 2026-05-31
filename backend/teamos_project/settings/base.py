@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "planning",
     "llm_orchestrator",
     "admin_api",
+    "research",
 ]
 
 MIDDLEWARE = [
@@ -244,6 +245,24 @@ CHAT_RAG_RESULT_LIMIT = int(os.environ.get("CHAT_RAG_RESULT_LIMIT", "10"))
 # Chat TTS (OpenAI audio/speech); requires OPENAI_API_KEY.
 OPENAI_TTS_MODEL = os.environ.get("OPENAI_TTS_MODEL", "tts-1")
 OPENAI_TTS_DEFAULT_VOICE = os.environ.get("OPENAI_TTS_DEFAULT_VOICE", "alloy")
+
+# --- Research mode (web search + ingest) ---
+TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
+RESEARCH_DOMAIN_BLOCKLIST = [
+    entry.strip().lower()
+    for entry in os.environ.get(
+        "RESEARCH_DOMAIN_BLOCKLIST",
+        "accounts.google.com,login.microsoftonline.com,facebook.com,instagram.com,x.com,twitter.com",
+    ).split(",")
+    if entry.strip()
+]
+RESEARCH_MAX_CONTENT_CHARS = int(os.environ.get("RESEARCH_MAX_CONTENT_CHARS", "60000"))
+RESEARCH_MONTHLY_QUOTAS = {
+    "free": int(os.environ.get("RESEARCH_QUOTA_FREE", "0")),
+    "team": int(os.environ.get("RESEARCH_QUOTA_TEAM", "25")),
+    "pro": int(os.environ.get("RESEARCH_QUOTA_PRO", "100")),
+    "enterprise": int(os.environ.get("RESEARCH_QUOTA_ENTERPRISE", "500")),
+}
 
 # --- Ingest extractors (OSS; limits overridable via env) ---
 INGEST_MAX_URL_BYTES = int(os.environ.get("INGEST_MAX_URL_BYTES", str(5 * 1024 * 1024)))
