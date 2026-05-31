@@ -12,6 +12,9 @@ class LlmUsageMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
+        if request.method == "OPTIONS":
+            return self.get_response(request)
+
         team_id = self._resolve_team_id(request)
         if team_id:
             try:

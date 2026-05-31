@@ -6,6 +6,58 @@ from accounts.models import TeamMember
 from teamos_project.api_response import fail, ok
 
 from .services import record_product_event, weekly_cohort_summary, weekly_funnel_counts
+from wiki.models import WikiPage
+from planning.models import Project
+from ingest.models import IngestJob
+
+
+import datetime
+from django.db.models import Sum
+from chat.models import ChatTokenUsage
+
+class TeamQuantitativeStatsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, team_id):
+        membership = TeamMember.objects.filter(team_id=team_id, user=request.user).select_related("team").first()
+        if not membership:
+            return fail("Forbidden.", status_code=403, code="forbidden")
+
+        team = membership.team
+        docs_processed = IngestJob.objects.filter(team=team, status="done").count()
+        wiki_created = WikiPage.objects.filter(team=team, is_deleted=False).count()
+        projects_count = Project.objects.filter(team=team).count()
+
+        # Token usage aggregation for last 14 days
+        today = datetime.date.today()
+        start_date = today - datetime.timedelta(days=13)
+
+        token_qs = (
+            ChatTokenUsage.objects.filter(team=team, created_at__date__gte=start_date)
+            .values("created_at__date")
+            .annotate(total=Sum("total_tokens"))
+            .order_by("created_at__date")
+        )
+
+        token_map = {item["created_at__date"]: item["total"] for item in token_qs}
+
+        daily_token_usage = []
+        for i in range(14):
+            day = start_date + datetime.timedelta(days=i)
+            daily_token_usage.append({
+                "date": day.isoformat(),
+                "label": str(day.day),
+                "tokens": token_map.get(day, 0)
+            })
+
+        return ok(
+            {
+                "documents_processed": docs_processed,
+                "wiki_created": wiki_created,
+                "projects_count": projects_count,
+                "daily_token_usage": daily_token_usage,
+            }
+        )
 
 
 class TeamFunnelWeeklyView(APIView):

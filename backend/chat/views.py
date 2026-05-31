@@ -222,6 +222,9 @@ class ChatQueryStreamView(APIView):
             return fail("Message required.", status_code=400, code="message_required")
 
         mode = (request.data.get("mode") or "ask").strip().lower()
+        research_requested = bool(request.data.get("research"))
+        if research_requested and mode == "ask":
+            mode = "research"
         if mode not in ("ask", "agent", "plan", "research"):
             return fail("Invalid mode.", status_code=400, code="invalid_mode")
 

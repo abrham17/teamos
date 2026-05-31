@@ -258,7 +258,7 @@ RESEARCH_DOMAIN_BLOCKLIST = [
 ]
 RESEARCH_MAX_CONTENT_CHARS = int(os.environ.get("RESEARCH_MAX_CONTENT_CHARS", "60000"))
 RESEARCH_MONTHLY_QUOTAS = {
-    "free": int(os.environ.get("RESEARCH_QUOTA_FREE", "0")),
+    "free": int(os.environ.get("RESEARCH_QUOTA_FREE", "10")),
     "team": int(os.environ.get("RESEARCH_QUOTA_TEAM", "25")),
     "pro": int(os.environ.get("RESEARCH_QUOTA_PRO", "100")),
     "enterprise": int(os.environ.get("RESEARCH_QUOTA_ENTERPRISE", "500")),

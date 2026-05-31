@@ -1,4 +1,5 @@
 import os
+from functools import lru_cache
 from typing import Optional, Tuple
 from urllib.parse import urlparse
 
@@ -12,6 +13,16 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 User = get_user_model()
 
 
+@lru_cache(maxsize=8)
+def _get_jwk_client(jwks_url: str) -> jwt.PyJWKClient:
+    """
+    Reuse JWKS clients so authenticated requests do not refetch Clerk keys
+    on every request. This is especially important for high-traffic auth
+    endpoints and browser preflights.
+    """
+    return jwt.PyJWKClient(jwks_url)
+
+
 class ClerkJWTAuthentication(BaseAuthentication):
     """
     Validates Clerk Bearer tokens against Clerk JWKS and maps identity
@@ -19,6 +30,9 @@ class ClerkJWTAuthentication(BaseAuthentication):
     """
 
     def authenticate(self, request) -> Optional[Tuple[User, None]]:
+        if request.method == "OPTIONS":
+            return None
+
         header = request.headers.get("Authorization", "")
         if not header.startswith("Bearer "):
             return None
@@ -102,7 +116,7 @@ class ClerkJWTAuthentication(BaseAuthentication):
             )
 
         try:
-            jwk_client = jwt.PyJWKClient(jwks_url)
+            jwk_client = _get_jwk_client(jwks_url)
             signing_key = jwk_client.get_signing_key_from_jwt(token)
             
             # If audience is provided in env, verify it. 
@@ -160,6 +174,9 @@ class ClerkJWTAuthentication(BaseAuthentication):
 
 class CookieJWTAuthentication(JWTAuthentication):
     def authenticate(self, request):
+        if request.method == "OPTIONS":
+            return None
+
         header = self.get_header(request)
         
         # Fallback to reading token from HTTP headers if no cookie found (useful for APIs)
