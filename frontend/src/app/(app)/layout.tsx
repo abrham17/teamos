@@ -12,14 +12,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[var(--bg-900)]">
-      <ProvisionUser />
-      <Sidebar />
-      <main className="flex-1 flex flex-col min-w-0 min-h-0 bg-[var(--bg-900)]">
-        <MobileHeader />
-        {children}
-      </main>
-      <CommandPalette />
+    <div className="teamos-app-shell h-screen w-screen overflow-hidden bg-[var(--app-outer)] md:p-4">
+      <div className="flex h-full w-full overflow-hidden bg-[var(--bg-900)] md:rounded-[var(--radius-xl)] md:border md:border-[var(--app-shell-border)] md:shadow-[var(--shadow-lg)]">
+        <ProvisionUser />
+        <Sidebar />
+        <main className="flex-1 flex flex-col min-w-0 min-h-0 bg-[var(--bg-900)]">
+          <MobileHeader />
+          {children}
+        </main>
+        <CommandPalette />
+      </div>
     </div>
   );
 }

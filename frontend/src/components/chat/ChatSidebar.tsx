@@ -109,7 +109,7 @@ export function ChatSidebar({
           /* Desktop: always visible */
           "md:translate-x-0"
         )}
-        style={{ width: collapsed ? "64px" : "240px" }}
+        style={{ width: collapsed ? "64px" : "220px" }}
       >
         {/* ── Header ── */}
         <div

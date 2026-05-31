@@ -1,38 +1,53 @@
 @import "tailwindcss";
 
+/* ─── Sidebar Custom Variables (Always Dark Split for navigation contrast) ─── */
+:root {
+  --sidebar-bg: #0a0a0f;
+  --sidebar-border: rgba(255, 255, 255, 0.05);
+  --sidebar-border-strong: rgba(255, 255, 255, 0.12);
+  --sidebar-text-primary: rgba(255, 255, 255, 0.95);
+  --sidebar-text-secondary: rgba(255, 255, 255, 0.75);
+  --sidebar-text-muted: rgba(255, 255, 255, 0.45);
+  --sidebar-text-dim: rgba(255, 255, 255, 0.2);
+  --sidebar-bg-hover: rgba(255, 255, 255, 0.05);
+  --sidebar-bg-active: rgba(108, 92, 231, 0.18);
+  --sidebar-border-active: rgba(108, 92, 231, 0.3);
+  --sidebar-accent: #8b7ff4;
+}
+
 /* ─── Dark Theme (Default) ──────────────────────────────────────── */
 :root, [data-theme="dark"] {
   /* Backgrounds — deep slate-violet, premium feel */
-  --bg-950: #08080c;
-  --bg-900: #0d0d12;
-  --bg-800: #13131a;
-  --bg-700: #1a1a23;
-  --bg-600: #22222e;
-  --bg-500: #2b2b3a;
+  --bg-950: #0a0a0f;
+  --bg-900: #13131e;
+  --bg-800: #1c1c28;
+  --bg-700: #2e2e42;
+  --bg-600: #38384f;
+  --bg-500: #4b4b68;
 
   /* Text */
-  --text-primary: #eeeef2;
-  --text-secondary: #a0a0b8;
-  --text-muted: #62627a;
-  --text-dim: #3d3d52;
+  --text-primary: #ffffff;
+  --text-secondary: #f5f4f8;
+  --text-muted: #9898b0;
+  --text-dim: #6b6b85;
 
   /* Accent — soft violet-purple, distinctive and warm */
   --accent: #8b7ff4;
   --accent-rgb: 139, 127, 244;
   --accent-light: #a99cf7;
-  --accent-dark: #7165e0;
+  --accent-dark: #6c5ce7;
   --accent-glow: rgba(139, 127, 244, 0.28);
   --accent-subtle: rgba(139, 127, 244, 0.12);
 
   /* Status */
-  --success: #34d399;
-  --warning: #fbbf24;
-  --danger: #f87171;
-  --info: #60a5fa;
-  --success-bg: rgba(52, 211, 153, 0.1);
-  --danger-bg: rgba(248, 113, 113, 0.1);
-  --warning-bg: rgba(251, 191, 36, 0.1);
-  --info-bg: rgba(96, 165, 250, 0.1);
+  --success: #00c9a7;
+  --warning: #f59e0b;
+  --danger: #f43f5e;
+  --info: #38bdf8;
+  --success-bg: rgba(0, 201, 167, 0.1);
+  --danger-bg: rgba(244, 63, 94, 0.1);
+  --warning-bg: rgba(245, 158, 11, 0.1);
+  --info-bg: rgba(56, 189, 248, 0.1);
 
   /* Legacy aliases */
   --green: var(--success);
@@ -56,27 +71,28 @@
   --ring: var(--accent);
 
   /* Glass */
-  --glass-bg: rgba(13, 13, 18, 0.82);
-  --glass-bg-light: rgba(13, 13, 18, 0.55);
+  --glass-bg: rgba(28, 28, 40, 0.82);
+  --glass-bg-light: rgba(28, 28, 40, 0.55);
   --glass-border: rgba(255, 255, 255, 0.07);
   --glass-blur: 20px;
-  --glass-heavy-bg: rgba(13, 13, 18, 0.94);
+  --glass-heavy-bg: rgba(10, 10, 15, 0.94);
 
   /* Shadows — real subtle depth */
   --shadow-sm: none;
-  --shadow-md: 0 2px 8px rgba(0,0,0,0.25);
-  --shadow-lg: 0 4px 16px rgba(0,0,0,0.35);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.18), 0 1px 4px rgba(0,0,0,0.12);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.28), 0 4px 12px rgba(0,0,0,0.18);
   --shadow-glow: none;
   --shadow-1: var(--shadow-sm);
   --shadow-2: var(--shadow-md);
   --shadow-3: var(--shadow-lg);
 
-  /* Typography — Geist (loaded in layout.tsx) */
-  --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
-  --font-display: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  /* Typography — loaded in layout.tsx */
+  --font-sans: var(--font-dm-sans), system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-dm-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-dm-mono), ui-monospace, monospace;
+  --font-serif: var(--font-instrument-serif), Georgia, serif;
   --text-base: 14px;
-  --leading-base: 1.6;
+  --leading-base: 1.65;
   --heading-1: 2rem;
   --heading-2: 1.5rem;
 
@@ -98,14 +114,14 @@
   /* Layout — proper radius restored */
   --radius-xs: 4px;
   --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-2xl: 20px;
-  --radius: 8px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-2xl: 26px;
+  --radius: 10px;
   --sidebar-w: 240px;
-  --sidebar-w-collapsed: 58px;
-  --sidebar-w-rail: 58px;
+  --sidebar-w-collapsed: 64px;
+  --sidebar-w-rail: 64px;
   --header-h: 52px;
   --panel-max-w: 1024px;
 
@@ -128,33 +144,33 @@
 
 /* ─── Light Theme ────────────────────────────────────────────────── */
 [data-theme="light"] {
-  --bg-950: #f8f8fb;
-  --bg-900: #f2f2f6;
+  --bg-950: #f0eff5;
+  --bg-900: #f5f4f8;
   --bg-800: #ffffff;
   --bg-700: #ebebf0;
   --bg-600: #e2e2ea;
   --bg-500: #d5d5e0;
 
-  --text-primary: #0f0f18;
-  --text-secondary: #3a3a52;
-  --text-muted: #68687e;
-  --text-dim: #a8a8bc;
+  --text-primary: #0a0a0f;
+  --text-secondary: #3d3d55;
+  --text-muted: #7a7a95;
+  --text-dim: #9898b0;
 
-  --accent: #6d5fe8;
-  --accent-rgb: 109, 95, 232;
+  --accent: #6c5ce7;
+  --accent-rgb: 108, 92, 231;
   --accent-light: #8b7ff4;
-  --accent-dark: #5448d4;
-  --accent-glow: rgba(109, 95, 232, 0.2);
-  --accent-subtle: rgba(109, 95, 232, 0.09);
+  --accent-dark: #5549c8;
+  --accent-glow: rgba(108, 92, 231, 0.18);
+  --accent-subtle: rgba(108, 92, 231, 0.07);
 
-  --success: #10b981;
+  --success: #00c9a7;
   --warning: #f59e0b;
-  --danger: #ef4444;
-  --info: #3b82f6;
-  --success-bg: rgba(16, 185, 129, 0.08);
-  --danger-bg: rgba(239, 68, 68, 0.08);
+  --danger: #f43f5e;
+  --info: #38bdf8;
+  --success-bg: rgba(0, 201, 167, 0.08);
+  --danger-bg: rgba(244, 63, 94, 0.08);
   --warning-bg: rgba(245, 158, 11, 0.08);
-  --info-bg: rgba(59, 130, 246, 0.08);
+  --info-bg: rgba(56, 189, 248, 0.08);
 
   --green: var(--success);
   --yellow: var(--warning);
@@ -164,27 +180,55 @@
   --red-bg: var(--danger-bg);
 
   --surface-1: #ffffff;
-  --surface-2: #f4f4f9;
+  --surface-2: #f5f4f8;
   --surface-3: var(--bg-700);
 
   --border-subtle: rgba(0, 0, 0, 0.07);
-  --border-strong: rgba(0, 0, 0, 0.13);
+  --border-strong: rgba(0, 0, 0, 0.12);
 
-  --glass-bg: rgba(255, 255, 255, 0.88);
+  --glass-bg: rgba(245, 244, 248, 0.88);
   --glass-bg-light: rgba(255, 255, 255, 0.65);
   --glass-border: rgba(0, 0, 0, 0.06);
-  --glass-heavy-bg: rgba(252, 252, 255, 0.96);
+  --glass-heavy-bg: rgba(245, 244, 248, 0.96);
 
-  --shadow-sm: none;
-  --shadow-md: 0 2px 6px rgba(15,15,30,0.06);
-  --shadow-lg: 0 4px 16px rgba(15,15,30,0.1);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06);
   --shadow-glow: none;
   --shadow-1: var(--shadow-sm);
   --shadow-2: var(--shadow-md);
   --shadow-3: var(--shadow-lg);
 
-  --primary-500: #8b7ff4;
-  --primary-900: #3d3580;
+  --primary-500: #6c5ce7;
+  --primary-900: #5549c8;
+}
+
+.teamos-app-shell {
+  --sidebar-w: 220px;
+  --app-outer: #e8e7f0;
+  --app-shell-border: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="dark"] .teamos-app-shell {
+  --bg-950: #09090d;
+  --bg-900: #11111a;
+  --bg-800: #191923;
+  --bg-700: #242436;
+  --bg-600: #313148;
+  --bg-500: #484862;
+  --surface-1: #191923;
+  --surface-2: #20202e;
+  --surface-3: #2a2a3d;
+  --glass-bg: rgba(17, 17, 26, 0.88);
+  --glass-bg-light: rgba(25, 25, 35, 0.68);
+  --app-outer: #050508;
+  --app-shell-border: rgba(255, 255, 255, 0.07);
+}
+
+[data-theme="light"] .teamos-app-shell {
+  --bg-950: #e8e7f0;
+  --surface-2: #f7f6fa;
+  --surface-3: #eeedf4;
 }
 
 /* ─── Base Layer ─────────────────────────────────────────────────── */
@@ -400,14 +444,20 @@
   --tw-prose-td-borders: var(--border-subtle);
 }
 
+.doc-title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+}
+
 .prose h1,
 .tiptap h1 {
-  font-size: 2rem;
+  font-family: var(--font-serif);
+  font-size: 2.2rem;
   margin-top: 2rem;
   margin-bottom: 1.5rem;
   line-height: 1.15;
-  letter-spacing: -0.03em;
-  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-weight: 400;
   color: var(--text-primary);
   border-bottom: 1px solid var(--border-subtle);
   padding-bottom: 0.5rem;
@@ -415,11 +465,12 @@
 
 .prose h2,
 .tiptap h2 {
-  font-size: 1.5rem;
+  font-family: var(--font-serif);
+  font-size: 1.7rem;
   margin-top: 2.5rem;
   margin-bottom: 1rem;
-  letter-spacing: -0.02em;
-  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-weight: 400;
   color: var(--text-primary);
   border-bottom: 1px solid var(--border-subtle);
   padding-bottom: 0.5rem;

@@ -785,7 +785,7 @@ export function ChatInterface() {
   const hasMessages = messages.length > 0;
 
   return (
-    <div className="flex h-full w-full flex-1 bg-[var(--bg-950)] overflow-hidden border-none shadow-none">
+    <div className="flex h-full w-full flex-1 bg-[var(--bg-900)] overflow-hidden border-none shadow-none">
       <ChatSidebar
         sessions={sessions}
         activeSessionId={activeSessionId}
@@ -807,7 +807,7 @@ export function ChatInterface() {
             </div>
           </div>
         ) : (
-          <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden">
+            <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-[var(--bg-900)]">
             
             {/* ── Messages scroll area ─────────────────────────── */}
             <div 
@@ -1007,7 +1007,7 @@ export function ChatInterface() {
               className={cn(
                 "w-full transition-all duration-300 border-none shadow-none flex flex-col items-center",
                 hasMessages 
-                  ? "shrink-0 bg-[var(--bg-950)] px-4 pt-3 pb-5 border-t border-white/5" 
+                  ? "shrink-0 bg-[var(--bg-900)] px-4 pt-3 pb-5 border-t border-[var(--border-subtle)]" 
                   : "flex-1 justify-center p-6 max-w-4xl mx-auto custom-scrollbar overflow-y-auto"
               )}
             >
