@@ -11,18 +11,18 @@ interface ThemeContextType {
 }
 
 const ThemeContext = createContext<ThemeContextType>({
-  theme: "dark",
+  theme: "light",
   toggle: () => {},
   setTheme: () => {},
 });
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("dark");
+  const [theme, setThemeState] = useState<Theme>("light");
 
   useEffect(() => {
     // Read what the inline script already applied
     const current = document.documentElement.getAttribute("data-theme") as Theme | null;
-    const saved = (localStorage.getItem("teamos-theme") as Theme) || "dark";
+    const saved = (localStorage.getItem("teamos-theme") as Theme) || "light";
     const initial = current || saved;
     setThemeState(initial);
     document.documentElement.setAttribute("data-theme", initial);

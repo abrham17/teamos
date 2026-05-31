@@ -45,7 +45,7 @@ export const metadata: Metadata = {
 
 // Inline script — runs before React hydrates to prevent theme flash
 function ThemeScript() {
-  const script = `try{var t=localStorage.getItem('teamos-theme')||'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){}`;
+  const script = `try{var t=localStorage.getItem('teamos-theme')||'light';document.documentElement.setAttribute('data-theme',t);}catch(e){}`;
   return <script dangerouslySetInnerHTML={{ __html: script }} />;
 }
 
