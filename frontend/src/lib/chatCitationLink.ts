@@ -1,5 +1,5 @@
 export type ChatCitationLinkInput = {
-  source?: "wiki" | "plan" | string;
+  source?: "wiki" | "plan" | "web" | string;
   page_slug?: string;
   project_id?: string;
   chunk_id?: string | null;
@@ -7,9 +7,13 @@ export type ChatCitationLinkInput = {
   snippet?: string | null;
   source_kind?: string | null;
   source_ref_id?: string | null;
+  url?: string | null;
 };
 
 export function buildChatCitationHref(citation: ChatCitationLinkInput): string {
+  if ((citation.source || "").toLowerCase() === "web") {
+    return (citation.url || "").trim() || "#";
+  }
   if ((citation.source || "").toLowerCase() === "plan") {
     const params = new URLSearchParams();
     if (citation.project_id) params.set("project", String(citation.project_id));

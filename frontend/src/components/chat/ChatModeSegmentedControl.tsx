@@ -1,16 +1,17 @@
 "use client";
 
 import { motion } from "motion/react";
-import { Search, Layout, ShieldCheck, type LucideIcon } from "lucide-react";
+import { Search, Layout, ShieldCheck, Globe2, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type ChatMode = "ask" | "plan" | "agent";
+export type ChatMode = "ask" | "plan" | "agent" | "research";
 
 type Caps = {
   can_edit_wiki: boolean;
   can_edit_plans: boolean;
   agent_mode_available: boolean;
   plan_mode_available: boolean;
+  research_mode_available: boolean;
 };
 
 interface ChatModeSegmentedControlProps {
@@ -45,6 +46,13 @@ export function ChatModeSegmentedControl({
         icon: ShieldCheck, 
         disabled: !capabilities?.can_edit_wiki || !capabilities?.agent_mode_available,
         color: "var(--accent)"
+    },
+    {
+        id: "research",
+        label: "Research",
+        icon: Globe2,
+        disabled: !capabilities?.research_mode_available,
+        color: "var(--success)",
     },
   ];
 

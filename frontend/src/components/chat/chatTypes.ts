@@ -1,7 +1,7 @@
 export type ChatSession = { id: string; title: string };
 
 export type Citation = {
-  source?: "wiki" | "plan" | string;
+  source?: "wiki" | "plan" | "web" | string;
   title?: string;
   page_slug?: string;
   page_title?: string;
@@ -9,6 +9,7 @@ export type Citation = {
   project_name?: string;
   source_kind?: string;
   source_ref_id?: string;
+  url?: string;
   confidence?: number;
   anchor_hint?: string;
   chunk_id?: string;
@@ -81,6 +82,14 @@ export type ChatCapabilities = {
   can_ingest: boolean;
   agent_mode_available: boolean;
   plan_mode_available: boolean;
+  research_mode_available: boolean;
+  research_quota?: {
+    limit: number;
+    current: number;
+    remaining: number;
+    reason?: string | null;
+  };
+  research_save_available?: boolean;
 };
 
 export type ReviewMutation = {

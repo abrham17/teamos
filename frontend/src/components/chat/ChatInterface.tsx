@@ -11,7 +11,7 @@ import { ChatAgentToolTimeline } from "@/components/chat/ChatAgentToolTimeline";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
-import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentStrategy, ActivityEntry } from "@/components/chat/chatTypes";
+import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentStrategy, ActivityEntry, ChatCapabilities } from "@/components/chat/chatTypes";
 import { AgentActivityFeed } from "@/components/chat/AgentActivityFeed";
 import { CollapsibleThoughtBlock } from "@/components/chat/CollapsibleThoughtBlock";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -19,6 +19,7 @@ import { ICONSCOUT } from "@/lib/iconscoutAssets";
 import { PlanReviewPanel, type ReviewMutation, type ReviewPlanPreview } from "@/components/chat/PlanReviewPanel";
 import { QuestionCard } from "@/components/chat/QuestionCard";
 import { ProactiveSuggestions } from "@/components/chat/ProactiveSuggestions";
+import { ChatModeSegmentedControl, type ChatMode } from "@/components/chat/ChatModeSegmentedControl";
 
 type SessionDetailResponse = { messages?: ChatMessage[] };
 
@@ -59,6 +60,8 @@ export function ChatInterface() {
   const [status, setStatus] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
   const [strategy, setStrategy] = useState<AgentStrategy | null>(null);
+  const [capabilities, setCapabilities] = useState<ChatCapabilities | null>(null);
+  const [mode, setMode] = useState<ChatMode>("ask");
 
   // Review states
   const [isReviewOpen, setIsReviewOpen] = useState(false);
@@ -260,6 +263,32 @@ export function ChatInterface() {
     return () => { cancelled = true; };
   }, [currentTeamId, toastError]);
 
+  useEffect(() => {
+    if (!currentTeamId) {
+      setCapabilities(null);
+      return;
+    }
+
+    let cancelled = false;
+    api
+      .get<ChatCapabilities>(`/chat/${currentTeamId}/capabilities/`)
+      .then((data) => {
+        if (cancelled) return;
+        setCapabilities(data);
+        if (mode === "research" && !data.research_mode_available) {
+          setMode("ask");
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load chat capabilities", err);
+        if (!cancelled) setCapabilities(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTeamId, mode]);
+
 
   useEffect(() => {
     if (!currentTeamId || !activeSessionId) return;
@@ -294,9 +323,13 @@ export function ChatInterface() {
     async (userMsg: string) => {
       const trimmed = userMsg.trim();
       if (!trimmed || !currentTeamId || !activeSessionId || isStreaming) return;
+      if (mode === "research" && !capabilities?.research_mode_available) {
+        toastError("Research mode is not available for this team.");
+        return;
+      }
 
       setIsStreaming(true);
-      setStatus("Analyzing mission...");
+      setStatus(mode === "research" ? "Searching external sources..." : "Analyzing mission...");
       setStrategy(null);
       
       const userMsgObj: ChatMessage = { role: "user", content: trimmed, id: `u-${Date.now()}` };
@@ -325,7 +358,7 @@ export function ChatInterface() {
             method: "POST",
             headers: { "Content-Type": "application/json", ...auth },
             credentials: "include",
-            body: JSON.stringify({ message: trimmed }),
+            body: JSON.stringify({ message: trimmed, mode }),
             signal: abortControllerRef.current.signal,
           },
         );
@@ -337,6 +370,18 @@ export function ChatInterface() {
         const decoder = new TextDecoder();
         let working = { ...assistantMsg };
         let buffer = "";
+
+        const pushActivity = (entry: ActivityEntry) => {
+          working = {
+            ...working,
+            activityFeed: [...(working.activityFeed || []), entry],
+          };
+          setMessages((prev) => {
+            const next = [...prev];
+            next[next.length - 1] = { ...working };
+            return next;
+          });
+        };
 
         while (true) {
           const { value, done } = await reader.read();
@@ -377,6 +422,84 @@ export function ChatInterface() {
                       next[next.length - 1] = { ...working };
                       return next;
                     });
+                  } else if (currentEvent === "research_start") {
+                    setStatus(String(data.status ?? "Searching external sources..."));
+                    pushActivity({
+                      id: `research-start-${Date.now()}`,
+                      timestamp: Date.now(),
+                      kind: "status",
+                      message: String(data.status ?? "Searching external sources..."),
+                      detail: { query: String(data.query ?? "") },
+                      status: "running",
+                    });
+                  } else if (currentEvent === "research_search_call") {
+                    pushActivity({
+                      id: `research-search-${Date.now()}`,
+                      timestamp: Date.now(),
+                      kind: "tool",
+                      message: "Searching the web",
+                      detail: {
+                        query: String(data.query ?? ""),
+                        max_results: Number(data.max_results ?? 5),
+                      },
+                      status: "running",
+                    });
+                  } else if (currentEvent === "research_search_results") {
+                    const results = Array.isArray((data as { results?: unknown[] }).results) ? (data as { results: Array<Record<string, unknown>> }).results : [];
+                    const urls = results.map((r) => String(r.url ?? "")).filter(Boolean);
+                    pushActivity({
+                      id: `research-results-${Date.now()}`,
+                      timestamp: Date.now(),
+                      kind: "tool",
+                      message: `Found ${Number(data.count ?? results.length)} web sources`,
+                      detail: {
+                        query: String(data.query ?? ""),
+                        urls,
+                      },
+                      status: "done",
+                    });
+                  } else if (currentEvent === "research_read_call") {
+                    pushActivity({
+                      id: `research-read-${Date.now()}`,
+                      timestamp: Date.now(),
+                      kind: "tool",
+                      message: "Reading source page",
+                      detail: { url: String(data.url ?? "") },
+                      status: "running",
+                    });
+                  } else if (currentEvent === "research_read_complete") {
+                    pushActivity({
+                      id: `research-read-done-${Date.now()}`,
+                      timestamp: Date.now(),
+                      kind: "tool",
+                      message: "Finished reading source page",
+                      detail: {
+                        url: String(data.url ?? ""),
+                        title: String(data.title ?? ""),
+                        content_chars: Number(data.content_chars ?? 0),
+                      },
+                      status: "done",
+                    });
+                  } else if (currentEvent === "research_save_wiki") {
+                    pushActivity({
+                      id: `research-save-${Date.now()}`,
+                      timestamp: Date.now(),
+                      kind: "status",
+                      message: "Queued wiki save for research findings",
+                      detail: {
+                        job_id: String(data.job_id ?? ""),
+                        title: String(data.title ?? ""),
+                      },
+                      status: "running",
+                    });
+                  } else if (currentEvent === "research_complete") {
+                    pushActivity({
+                      id: `research-complete-${Date.now()}`,
+                      timestamp: Date.now(),
+                      kind: "status",
+                      message: String(data.status ?? "Research complete"),
+                      status: "done",
+                    });
                   } else if (currentEvent === "tool_call") {
                     const name = String((data as { name?: string }).name ?? "");
                     const arg = String((data as { arguments?: string }).arguments ?? "");
@@ -384,25 +507,25 @@ export function ChatInterface() {
                     working = { ...working, toolSteps: steps };
                     setMessages((prev) => {
                       const next = [...prev];
-                    next[next.length - 1] = { ...working };
-                    return next;
-                  });
-                } else if (currentEvent === "tool_result") {
-                  const name = String((data as { name?: string }).name ?? "");
-                  const ok = Boolean((data as { ok?: boolean }).ok);
-                  const result = (data as { result?: unknown }).result;
-                  const steps = [...(working.toolSteps ?? [])];
-                  let li = -1;
-                  for (let i = steps.length - 1; i >= 0; i--) {
-                    if (steps[i].name === name && steps[i].ok === undefined) { li = i; break; }
-                  }
-                  if (li >= 0) steps[li] = { ...steps[li], ok, result };
-                  working = { ...working, toolSteps: steps };
-                  setMessages((prev) => {
-                    const next = [...prev];
-                    next[next.length - 1] = { ...working };
-                    return next;
-                  });
+                      next[next.length - 1] = { ...working };
+                      return next;
+                    });
+                  } else if (currentEvent === "tool_result") {
+                    const name = String((data as { name?: string }).name ?? "");
+                    const ok = Boolean((data as { ok?: boolean }).ok);
+                    const result = (data as { result?: unknown }).result;
+                    const steps = [...(working.toolSteps ?? [])];
+                    let li = -1;
+                    for (let i = steps.length - 1; i >= 0; i--) {
+                      if (steps[i].name === name && steps[i].ok === undefined) { li = i; break; }
+                    }
+                    if (li >= 0) steps[li] = { ...steps[li], ok, result };
+                    working = { ...working, toolSteps: steps };
+                    setMessages((prev) => {
+                      const next = [...prev];
+                      next[next.length - 1] = { ...working };
+                      return next;
+                    });
                 } else if (currentEvent === "agent_step") {
                   const name = String((data as { name?: string }).name ?? "");
                   const arg = String((data as { arguments?: string }).arguments ?? "");
@@ -566,7 +689,7 @@ export function ChatInterface() {
         toastError("Failed to connect to AI server.");
       }
     },
-    [activeSessionId, currentTeamId, isStreaming, toastError],
+    [activeSessionId, capabilities?.research_mode_available, currentTeamId, isStreaming, mode, toastError],
   );
 
   const handleNewChat = async () => {
@@ -916,6 +1039,25 @@ export function ChatInterface() {
 
               {/* Textarea Input Card */}
               <div className="w-full max-w-3xl relative">
+                <div className="mb-3 flex flex-col gap-2">
+                  <ChatModeSegmentedControl
+                    value={mode}
+                    onChange={setMode}
+                    capabilities={capabilities}
+                  />
+                  {mode === "research" && capabilities?.research_quota && (
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2 text-[11px] text-[var(--text-dim)]">
+                      <span>
+                        Research quota: {capabilities.research_quota.remaining} of {capabilities.research_quota.limit} remaining
+                      </span>
+                      {capabilities.research_quota.reason && (
+                        <span className="text-amber-300">
+                          {capabilities.research_quota.reason}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
                 {strategy && hasMessages && (
                   <motion.div
                     initial={{ opacity: 0, y: 4 }}

@@ -15,7 +15,8 @@ export function useMultiplayer(
   teamId: string | null,
   projectId: string | null,
   onStateChange?: () => void,
-  onNodeMove?: (nodeId: string, position: { x: number; y: number }) => void
+  onNodeMove?: (nodeId: string, position: { x: number; y: number }) => void,
+  onChangesetApproved?: (changesetId: string) => void
 ) {
   const { user } = useUser();
   const [cursors, setCursors] = useState<Record<string, CursorPosition>>({});
@@ -23,9 +24,9 @@ export function useMultiplayer(
   const wsRef = useRef<WebSocket | null>(null);
   const colorRef = useRef<string>(COLORS[Math.floor(Math.random() * COLORS.length)]);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const callbacksRef = useRef({ onStateChange, onNodeMove });
+  const callbacksRef = useRef({ onStateChange, onNodeMove, onChangesetApproved });
 
-  callbacksRef.current = { onStateChange, onNodeMove };
+  callbacksRef.current = { onStateChange, onNodeMove, onChangesetApproved };
 
   useEffect(() => {
     if (!teamId || !projectId || !user?.id) return;
@@ -40,7 +41,7 @@ export function useMultiplayer(
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        const { onStateChange: sc, onNodeMove: nm } = callbacksRef.current;
+        const { onStateChange: sc, onNodeMove: nm, onChangesetApproved: oca } = callbacksRef.current;
 
         if (data.type === "cursor_move") {
           if (data.userId === user?.id) return;
@@ -57,6 +58,8 @@ export function useMultiplayer(
         } else if (data.type === "node_move") {
           if (data.userId === user?.id) return;
           nm?.(data.nodeId, data.position);
+        } else if (data.type === "changeset_approved") {
+          oca?.(data.changeset_id || data.changesetId);
         } else if (data.type === "state_change" || data.type === "plan_update") {
           sc?.();
         }

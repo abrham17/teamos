@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FileText, Layers } from "lucide-react";
+import { ExternalLink, FileText, Globe, Layers } from "lucide-react";
 import { buildChatCitationHref } from "@/lib/chatCitationLink";
 import type { Citation } from "@/components/chat/chatTypes";
 
@@ -15,15 +15,27 @@ function CitationLink({ c }: { c: Citation }) {
     snippet: c.snippet,
     source_kind: c.source_kind,
     source_ref_id: c.source_ref_id,
+    url: c.url,
   });
   const isPlan = (c.source || "").toLowerCase() === "plan";
+  const isWeb = (c.source || "").toLowerCase() === "web";
   const displayTitle = c.title ?? c.page_title ?? c.project_name ?? c.page_slug ?? "Source";
-  
+  const classes = "flex items-center gap-2 px-3 py-1.5 border border-[var(--border-subtle)] bg-[var(--bg-800)] hover:bg-[var(--bg-700)] hover:border-[var(--border-strong)] transition-colors duration-150 group";
+
+  if (isWeb) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" className={classes}>
+        <Globe className="h-3 w-3 text-[var(--success)] shrink-0" />
+        <span className="text-[11px] font-medium text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] truncate max-w-[120px] transition-colors">
+          {displayTitle}
+        </span>
+        <ExternalLink className="h-3 w-3 text-[var(--text-dim)] shrink-0" />
+      </a>
+    );
+  }
+
   return (
-    <Link
-      href={href}
-      className="flex items-center gap-2 px-3 py-1.5 border border-[var(--border-subtle)] bg-[var(--bg-800)] hover:bg-[var(--bg-700)] hover:border-[var(--border-strong)] transition-colors duration-150 group"
-    >
+    <Link href={href} className={classes}>
       {isPlan ? (
           <Layers className="h-3 w-3 text-[var(--warning)] shrink-0" />
       ) : (

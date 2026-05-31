@@ -28,16 +28,6 @@ import {
 
 interface AIPlannerOverlayProps {
   teamId: string;
-  /** "create" = new project; "manage" = update active project (requires projectId). */
-  mode?: "create" | "manage";
-  /** Required when mode is "manage". */
-  projectId?: string | null;
-  onClose: () => void;
-  onPlanGenerated: (plan: { projectName: string; description: string; tasks: unknown[]; milestones: unknown[] }) => Promise<void> | void;
-}
-
-interface AIPlannerOverlayProps {
-  teamId: string;
   mode?: "create" | "manage";
   projectId?: string | null;
   onClose: () => void;

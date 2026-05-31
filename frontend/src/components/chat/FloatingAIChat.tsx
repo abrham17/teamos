@@ -7,6 +7,8 @@ import { useWikiStore } from "@/stores/useWikiStore";
 import { ChatMessageContent } from "./ChatMessageContent";
 import { cn } from "@/lib/utils";
 import { motion } from "motion/react";
+import type { ChatCapabilities } from "@/components/chat/chatTypes";
+import { ChatModeSegmentedControl, type ChatMode } from "@/components/chat/ChatModeSegmentedControl";
 
 type ChatSession = {
   id: string;
@@ -37,6 +39,8 @@ export function FloatingAIChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [capabilities, setCapabilities] = useState<ChatCapabilities | null>(null);
+  const [mode, setMode] = useState<ChatMode>("ask");
 
   const [isRecording, setIsRecording] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,6 +65,26 @@ export function FloatingAIChat() {
   useEffect(() => {
     if (isOpen) fetchSessions();
   }, [isOpen, fetchSessions]);
+
+  useEffect(() => {
+    if (!currentTeamId || !isOpen) return;
+    let cancelled = false;
+    api
+      .get<ChatCapabilities>(`/chat/${currentTeamId}/capabilities/`)
+      .then((data) => {
+        if (cancelled) return;
+        setCapabilities(data);
+        if (mode === "research" && !data.research_mode_available) {
+          setMode("ask");
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch chat capabilities", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentTeamId, isOpen, mode]);
 
   // Fetch messages for active session
   useEffect(() => {
@@ -141,6 +165,7 @@ export function FloatingAIChat() {
   const handleSend = useCallback(async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text || !currentTeamId || !activeSessionId || isStreaming) return;
+    if (mode === "research" && !capabilities?.research_mode_available) return;
 
     if (!overrideText) {
       setInput("");
@@ -158,7 +183,7 @@ export function FloatingAIChat() {
       const res = await fetch(`${API_BASE}/chat/${currentTeamId}/sessions/${activeSessionId}/query/`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...auth },
-        body: JSON.stringify({ message: text, mode: "ask" }),
+        body: JSON.stringify({ message: text, mode }),
       });
 
       if (!res.ok) throw new Error("Failed to send");
@@ -195,7 +220,7 @@ export function FloatingAIChat() {
     } finally {
       setIsStreaming(false);
     }
-  }, [input, currentTeamId, activeSessionId, isStreaming]);
+  }, [input, currentTeamId, activeSessionId, isStreaming, mode, capabilities?.research_mode_available]);
 
   const handleCreateSession = async () => {
     if (!currentTeamId) return;
@@ -257,6 +282,9 @@ export function FloatingAIChat() {
                 <X size={16} />
               </button>
             </div>
+          </div>
+          <div className="px-3 pt-3">
+            <ChatModeSegmentedControl value={mode} onChange={setMode} capabilities={capabilities} />
           </div>
 
           <div className="flex flex-1 overflow-hidden">
