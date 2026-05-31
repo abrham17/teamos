@@ -1,14 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MessageCircle, X, Send, Bot, User, Maximize2, Minimize2, Loader2, Plus, Layout, Mic, MicOff } from "lucide-react";
+import { MessageCircle, X, Send, Bot, User, Maximize2, Minimize2, Loader2, Plus, Layout, Mic, MicOff, Globe2 } from "lucide-react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
 import { ChatMessageContent } from "./ChatMessageContent";
 import { cn } from "@/lib/utils";
 import { motion } from "motion/react";
 import type { ChatCapabilities } from "@/components/chat/chatTypes";
-import { ChatModeSegmentedControl, type ChatMode } from "@/components/chat/ChatModeSegmentedControl";
 
 type ChatSession = {
   id: string;
@@ -40,7 +39,7 @@ export function FloatingAIChat() {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [capabilities, setCapabilities] = useState<ChatCapabilities | null>(null);
-  const [mode, setMode] = useState<ChatMode>("ask");
+  const [researchRequested, setResearchRequested] = useState(false);
 
   const [isRecording, setIsRecording] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -74,8 +73,8 @@ export function FloatingAIChat() {
       .then((data) => {
         if (cancelled) return;
         setCapabilities(data);
-        if (mode === "research" && !data.research_mode_available) {
-          setMode("ask");
+        if (!data.research_mode_available) {
+          setResearchRequested(false);
         }
       })
       .catch((err) => {
@@ -84,7 +83,7 @@ export function FloatingAIChat() {
     return () => {
       cancelled = true;
     };
-  }, [currentTeamId, isOpen, mode]);
+  }, [currentTeamId, isOpen]);
 
   // Fetch messages for active session
   useEffect(() => {
@@ -165,7 +164,7 @@ export function FloatingAIChat() {
   const handleSend = useCallback(async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text || !currentTeamId || !activeSessionId || isStreaming) return;
-    if (mode === "research" && !capabilities?.research_mode_available) return;
+    if (researchRequested && !capabilities?.research_mode_available) return;
 
     if (!overrideText) {
       setInput("");
@@ -183,7 +182,7 @@ export function FloatingAIChat() {
       const res = await fetch(`${API_BASE}/chat/${currentTeamId}/sessions/${activeSessionId}/query/`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...auth },
-        body: JSON.stringify({ message: text, mode }),
+        body: JSON.stringify({ message: text, research: researchRequested }),
       });
 
       if (!res.ok) throw new Error("Failed to send");
@@ -220,7 +219,7 @@ export function FloatingAIChat() {
     } finally {
       setIsStreaming(false);
     }
-  }, [input, currentTeamId, activeSessionId, isStreaming, mode, capabilities?.research_mode_available]);
+  }, [input, currentTeamId, activeSessionId, isStreaming, researchRequested, capabilities?.research_mode_available]);
 
   const handleCreateSession = async () => {
     if (!currentTeamId) return;
@@ -283,10 +282,6 @@ export function FloatingAIChat() {
               </button>
             </div>
           </div>
-          <div className="px-3 pt-3">
-            <ChatModeSegmentedControl value={mode} onChange={setMode} capabilities={capabilities} />
-          </div>
-
           <div className="flex flex-1 overflow-hidden">
             {/* Sidebar (Sessions) */}
             {showSidebar && (
@@ -414,6 +409,22 @@ export function FloatingAIChat() {
                   <div className="absolute right-2 top-1.5 flex items-center gap-1">
                     <button
                       type="button"
+                      onClick={() => setResearchRequested((prev) => !prev)}
+                      disabled={!capabilities?.research_mode_available}
+                      title={researchRequested ? "Research on" : "Research off"}
+                      aria-label={researchRequested ? "Disable research" : "Enable research"}
+                      className={cn(
+                        "p-2 rounded-xl transition-all border border-transparent",
+                        researchRequested
+                          ? "text-[var(--accent)] bg-[var(--accent)]/10 hover:bg-[var(--accent)]/15 border-[var(--accent)]/20"
+                          : "text-[var(--text-dim)] hover:text-white hover:bg-white/5",
+                        !capabilities?.research_mode_available && "opacity-35 cursor-not-allowed"
+                      )}
+                    >
+                      <Globe2 size={16} />
+                    </button>
+                    <button
+                      type="button"
                       onClick={toggleRecording}
                       title={isRecording ? "Stop recording speech" : "Start recording speech"}
                       aria-label={isRecording ? "Stop recording speech" : "Start recording speech"}
@@ -437,6 +448,11 @@ export function FloatingAIChat() {
                     </button>
                   </div>
                 </div>
+                {researchRequested && capabilities?.research_quota && (
+                  <p className="mt-2 text-center text-[11px] text-[var(--text-dim)]">
+                    Research ready: {capabilities.research_quota.remaining} of {capabilities.research_quota.limit} searches left
+                  </p>
+                )}
 
                 {/* Starter Prompts */}
                 {!hasMessages && (

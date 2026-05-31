@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, BrainCircuit, Search, BookOpen, Target, ArrowUp, Mic, MicOff } from "lucide-react";
+import { Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, BrainCircuit, Search, BookOpen, Target, ArrowUp, Mic, MicOff, Globe2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { ChatCitationList } from "@/components/chat/ChatCitationList";
@@ -19,8 +19,6 @@ import { ICONSCOUT } from "@/lib/iconscoutAssets";
 import { PlanReviewPanel, type ReviewMutation, type ReviewPlanPreview } from "@/components/chat/PlanReviewPanel";
 import { QuestionCard } from "@/components/chat/QuestionCard";
 import { ProactiveSuggestions } from "@/components/chat/ProactiveSuggestions";
-import { ChatModeSegmentedControl, type ChatMode } from "@/components/chat/ChatModeSegmentedControl";
-
 type SessionDetailResponse = { messages?: ChatMessage[] };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
@@ -61,7 +59,7 @@ export function ChatInterface() {
   const [sessionReady, setSessionReady] = useState(false);
   const [strategy, setStrategy] = useState<AgentStrategy | null>(null);
   const [capabilities, setCapabilities] = useState<ChatCapabilities | null>(null);
-  const [mode, setMode] = useState<ChatMode>("ask");
+  const [researchRequested, setResearchRequested] = useState(false);
 
   // Review states
   const [isReviewOpen, setIsReviewOpen] = useState(false);
@@ -275,8 +273,8 @@ export function ChatInterface() {
       .then((data) => {
         if (cancelled) return;
         setCapabilities(data);
-        if (mode === "research" && !data.research_mode_available) {
-          setMode("ask");
+        if (!data.research_mode_available) {
+          setResearchRequested(false);
         }
       })
       .catch((err) => {
@@ -287,7 +285,7 @@ export function ChatInterface() {
     return () => {
       cancelled = true;
     };
-  }, [currentTeamId, mode]);
+  }, [currentTeamId]);
 
 
   useEffect(() => {
@@ -323,13 +321,13 @@ export function ChatInterface() {
     async (userMsg: string) => {
       const trimmed = userMsg.trim();
       if (!trimmed || !currentTeamId || !activeSessionId || isStreaming) return;
-      if (mode === "research" && !capabilities?.research_mode_available) {
+      if (researchRequested && !capabilities?.research_mode_available) {
         toastError("Research mode is not available for this team.");
         return;
       }
 
       setIsStreaming(true);
-      setStatus(mode === "research" ? "Searching external sources..." : "Analyzing mission...");
+      setStatus(researchRequested ? "Searching external sources..." : "Analyzing mission...");
       setStrategy(null);
       
       const userMsgObj: ChatMessage = { role: "user", content: trimmed, id: `u-${Date.now()}` };
@@ -358,7 +356,7 @@ export function ChatInterface() {
             method: "POST",
             headers: { "Content-Type": "application/json", ...auth },
             credentials: "include",
-            body: JSON.stringify({ message: trimmed, mode }),
+            body: JSON.stringify({ message: trimmed, research: researchRequested }),
             signal: abortControllerRef.current.signal,
           },
         );
@@ -689,7 +687,7 @@ export function ChatInterface() {
         toastError("Failed to connect to AI server.");
       }
     },
-    [activeSessionId, capabilities?.research_mode_available, currentTeamId, isStreaming, mode, toastError],
+    [activeSessionId, capabilities?.research_mode_available, currentTeamId, isStreaming, researchRequested, toastError],
   );
 
   const handleNewChat = async () => {
@@ -1039,25 +1037,6 @@ export function ChatInterface() {
 
               {/* Textarea Input Card */}
               <div className="w-full max-w-3xl relative">
-                <div className="mb-3 flex flex-col gap-2">
-                  <ChatModeSegmentedControl
-                    value={mode}
-                    onChange={setMode}
-                    capabilities={capabilities}
-                  />
-                  {mode === "research" && capabilities?.research_quota && (
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2 text-[11px] text-[var(--text-dim)]">
-                      <span>
-                        Research quota: {capabilities.research_quota.remaining} of {capabilities.research_quota.limit} remaining
-                      </span>
-                      {capabilities.research_quota.reason && (
-                        <span className="text-amber-300">
-                          {capabilities.research_quota.reason}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
                 {strategy && hasMessages && (
                   <motion.div
                     initial={{ opacity: 0, y: 4 }}
@@ -1118,6 +1097,23 @@ export function ChatInterface() {
                   )}
 
                   <div className="absolute right-2.5 bottom-2.5 flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setResearchRequested((prev) => !prev)}
+                      disabled={!capabilities?.research_mode_available}
+                      title={researchRequested ? "Research on" : "Research off"}
+                      aria-label={researchRequested ? "Disable research" : "Enable research"}
+                      className={cn(
+                        "h-10 w-10 flex items-center justify-center rounded-full transition-all border border-transparent",
+                        researchRequested
+                          ? "text-[var(--accent)] bg-[var(--accent)]/10 hover:bg-[var(--accent)]/15 border-[var(--accent)]/20"
+                          : "text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-white/5",
+                        !capabilities?.research_mode_available && "opacity-35 cursor-not-allowed"
+                      )}
+                    >
+                      <Globe2 className="h-4.5 w-4.5" />
+                    </button>
+
                     {/* Voice Mic Input */}
                     <button
                       type="button"
@@ -1155,6 +1151,11 @@ export function ChatInterface() {
                 </div>
                 {!hasMessages && (
                   <p className="text-center text-[11px] text-[var(--text-dim)] mt-2">Press Enter to send · Shift+Enter for newline</p>
+                )}
+                {researchRequested && capabilities?.research_quota && (
+                  <p className="text-center text-[11px] text-[var(--text-dim)] mt-1">
+                    Research ready: {capabilities.research_quota.remaining} of {capabilities.research_quota.limit} searches left
+                  </p>
                 )}
               </div>
 
