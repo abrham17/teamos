@@ -186,3 +186,88 @@ def autonomous_schedule_auditor(self):
 
     return {"healed_conflicts": healed_count}
 
+
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    max_retries=2,
+)
+def sync_task_to_calendar_async(self, task_id: str):
+    """Async wrapper for Google Calendar sync on task create/update."""
+    from .models import Task
+    from .integration_hooks import sync_task_to_calendar
+
+    try:
+        task = Task.objects.select_related("project", "assignee", "project__team").get(id=task_id)
+    except Task.DoesNotExist:
+        logger.warning("sync_task_to_calendar_async: task %s not found", task_id)
+        return
+
+    try:
+        result = sync_task_to_calendar(task)
+        if result:
+            logger.info("Calendar sync for task %s: %s", task_id, result.status)
+    except Exception as exc:
+        logger.exception("sync_task_to_calendar_async failed for task %s", task_id)
+        raise
+
+
+@shared_task
+def daily_overdue_notifications():
+    """Scan all teams for overdue tasks/milestones and create notifications."""
+    from accounts.models import Team
+    from .integration_hooks import scan_overdue_and_notify
+
+    total = {"overdue_tasks": 0, "missed_milestones": 0, "due_today": 0}
+    for team in Team.objects.all():
+        try:
+            counts = scan_overdue_and_notify(str(team.id))
+            for key in total:
+                total[key] += counts.get(key, 0)
+        except Exception:
+            logger.exception("Overdue scan failed for team %s", team.id)
+
+    logger.info("Daily overdue scan complete: %s", total)
+    return total
+
+
+@shared_task
+def milestone_approach_notifications():
+    """Notify project members when milestones are 3 days away."""
+    from accounts.models import Team
+    from .integration_hooks import scan_milestone_approaching
+
+    total = 0
+    for team in Team.objects.all():
+        try:
+            total += scan_milestone_approaching(str(team.id))
+        except Exception:
+            logger.exception("Milestone approach scan failed for team %s", team.id)
+
+    logger.info("Milestone approach scan complete: %d milestones", total)
+    return total
+
+
+@shared_task
+def daily_task_digest():
+    """Send Gmail daily digest to users with Google connected."""
+    from integrations.models import UserIntegration
+    from .integration_hooks import send_daily_digest
+
+    sent = 0
+    integrations = UserIntegration.objects.filter(
+        provider="google", status="connected"
+    ).select_related("user")
+
+    for integration in integrations:
+        try:
+            if send_daily_digest(str(integration.user_id), str(integration.user.teams.first().id)):
+                sent += 1
+        except Exception:
+            logger.exception("Daily digest failed for user %s", integration.user_id)
+
+    logger.info("Daily digest sent to %d users", sent)
+    return sent
+

@@ -29,6 +29,14 @@ from .views import (
     NotificationListView,
     TaskCommentListView,
     PlanningTaskDecomposeDailyView,
+    CanvasLayoutView,
+    CanvasEntitySearchView,
+    CanvasAIAssistView,
+    CanvasTemplateListView,
+    CanvasTemplateDetailView,
+    CanvasTemplateApplyView,
+    ProjectIntegrationConfigView,
+    IntegrationActionListView,
 )
 
 urlpatterns = [
@@ -75,4 +83,12 @@ urlpatterns = [
         "<uuid:team_id>/projects/<uuid:project_id>/tasks/<uuid:task_id>/decompose-daily/",
         PlanningTaskDecomposeDailyView.as_view(),
     ),
+    path("<uuid:team_id>/projects/<uuid:project_id>/canvas/", CanvasLayoutView.as_view()),
+    path("<uuid:team_id>/projects/<uuid:project_id>/canvas/entity-search/", CanvasEntitySearchView.as_view()),
+    path("<uuid:team_id>/projects/<uuid:project_id>/canvas/ai-assist/", CanvasAIAssistView.as_view()),
+    path("<uuid:team_id>/projects/<uuid:project_id>/canvas/apply-template/<uuid:template_id>/", CanvasTemplateApplyView.as_view()),
+    path("<uuid:team_id>/canvas-templates/", CanvasTemplateListView.as_view()),
+    path("<uuid:team_id>/canvas-templates/<uuid:template_id>/", CanvasTemplateDetailView.as_view()),
+    path("<uuid:team_id>/projects/<uuid:project_id>/integrations/", ProjectIntegrationConfigView.as_view()),
+    path("<uuid:team_id>/projects/<uuid:project_id>/integration-actions/", IntegrationActionListView.as_view()),
 ]

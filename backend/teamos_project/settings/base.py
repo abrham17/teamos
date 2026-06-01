@@ -213,6 +213,22 @@ CELERY_BEAT_SCHEDULE = {
         "task": "chat.tasks.prune_expired_agent_memories",
         "schedule": crontab(hour="3", minute="30"),
     },
+    "daily-overdue-notifications": {
+        "task": "planning.tasks.daily_overdue_notifications",
+        "schedule": crontab(hour="8", minute="0"),
+    },
+    "milestone-approach-notifications": {
+        "task": "planning.tasks.milestone_approach_notifications",
+        "schedule": crontab(hour="8", minute="30"),
+    },
+    "daily-task-digest": {
+        "task": "planning.tasks.daily_task_digest",
+        "schedule": crontab(hour="7", minute="0"),
+    },
+    "autonomous-schedule-auditor": {
+        "task": "planning.tasks.autonomous_schedule_auditor",
+        "schedule": crontab(hour="*/2"),  # every 2 hours
+    },
 }
 
 # --- External APIs ---

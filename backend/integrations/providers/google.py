@@ -59,6 +59,8 @@ class GoogleProvider(ExternalToolProvider):
             ToolSchema(p, "docs_get_document", "Read a Google Doc's content.", {"type": "object", "properties": {"document_id": {"type": "string"}}, "required": ["document_id"]}),
             ToolSchema(p, "calendar_list_events", "List upcoming Google Calendar events.", {"type": "object", "properties": {"max_results": {"type": "integer", "default": 10}, "calendar_id": {"type": "string", "default": "primary"}}}),
             ToolSchema(p, "calendar_create_event", "Create a Google Calendar event.", {"type": "object", "properties": {"summary": {"type": "string"}, "start": {"type": "string"}, "end": {"type": "string"}, "description": {"type": "string"}, "attendees": {"type": "array", "items": {"type": "string"}}}, "required": ["summary", "start", "end"]}),
+            ToolSchema(p, "calendar_update_event", "Update an existing Google Calendar event.", {"type": "object", "properties": {"event_id": {"type": "string"}, "summary": {"type": "string"}, "start": {"type": "string"}, "end": {"type": "string"}, "description": {"type": "string"}}, "required": ["event_id"]}),
+            ToolSchema(p, "calendar_delete_event", "Delete a Google Calendar event.", {"type": "object", "properties": {"event_id": {"type": "string"}}, "required": ["event_id"]}),
         ]
 
     def execute_tool(self, tool_name, arguments):
@@ -133,3 +135,29 @@ class GoogleProvider(ExternalToolProvider):
         resp.raise_for_status()
         d = resp.json()
         return self.ok({"id": d["id"], "url": d.get("htmlLink")})
+
+    def _tool_calendar_update_event(self, a):
+        event = {}
+        if a.get("summary"):
+            event["summary"] = a["summary"]
+        if a.get("start"):
+            event["start"] = {"dateTime": a["start"]}
+        if a.get("end"):
+            event["end"] = {"dateTime": a["end"]}
+        if a.get("description"):
+            event["description"] = a["description"]
+        resp = requests.put(
+            f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{a['event_id']}",
+            headers=self._headers(), json=event, timeout=15,
+        )
+        resp.raise_for_status()
+        d = resp.json()
+        return self.ok({"id": d["id"], "url": d.get("htmlLink")})
+
+    def _tool_calendar_delete_event(self, a):
+        resp = requests.delete(
+            f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{a['event_id']}",
+            headers=self._headers(), timeout=15,
+        )
+        resp.raise_for_status()
+        return self.ok({"deleted": True, "event_id": a["event_id"]})

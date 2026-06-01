@@ -41,7 +41,7 @@ export function IntegrationSourcePicker({
     setIsSearching(true);
     setSearchError(null);
     try {
-      const endpoint = `/api/integrations/${provider}/search/?q=${encodeURIComponent(searchQuery)}`;
+      const endpoint = `/integrations/${provider}/search/?q=${encodeURIComponent(searchQuery)}`;
       const results = await api.get<SourceResult[]>(endpoint);
       setSearchResults(Array.isArray(results) ? results : []);
     } catch (error) {

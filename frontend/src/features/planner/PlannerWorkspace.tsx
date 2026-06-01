@@ -13,6 +13,7 @@ import { TeamPanel } from "./components/TeamPanel";
 import { PlanHistoryPanel } from "./components/PlanHistoryPanel";
 import { WorkloadPanel } from "./components/WorkloadPanel";
 import { AIPlannerOverlay } from "./components/AIPlannerOverlay";
+import { CanvasWorkspace } from "./components/canvas";
 import { usePlannerData } from "./hooks/usePlannerData";
 import { usePlannerCalendar } from "./hooks/usePlannerCalendar";
 import { useMultiplayer } from "./hooks/useMultiplayer";
@@ -23,7 +24,7 @@ import { AddTaskModal } from "./components/AddTaskModal";
 import { AddMilestoneModal } from "./components/AddMilestoneModal";
 import { AddMemberModal } from "./components/AddMemberModal";
 
-type PlannerView = "overview" | "calendar" | "activity" | "board" | "timeline" | "team" | "history" | "workload";
+type PlannerView = "overview" | "canvas" | "calendar" | "activity" | "board" | "timeline" | "team" | "history" | "workload";
 
 export function PlannerWorkspace() {
   const { currentTeamId, zenMode, setZenMode } = useWikiStore();
@@ -36,7 +37,7 @@ export function PlannerWorkspace() {
   const [query, setQuery] = useState("");
   const [isAIOverlayOpen, setIsAIOverlayOpen] = useState(false);
   const [aiMode, setAiMode] = useState<"create" | "manage">("create");
-  const [activeView, setActiveView] = useState<PlannerView>("overview");
+  const [activeView, setActiveView] = useState<PlannerView>("canvas");
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -241,6 +242,7 @@ export function PlannerWorkspace() {
         <div className="h-14 border-b border-[var(--border-subtle)] px-6 flex items-center justify-between bg-[var(--surface-1)] shrink-0">
           <div className="flex items-center gap-0">
             <ViewTab active={activeView === "overview"} onClick={() => setActiveView("overview")} label="Overview" />
+            <ViewTab active={activeView === "canvas"} onClick={() => setActiveView("canvas")} label="Canvas" />
             <ViewTab active={activeView === "board"} onClick={() => setActiveView("board")} label="Board" />
             <ViewTab active={activeView === "calendar"} onClick={() => setActiveView("calendar")} label="Calendar" />
             <ViewTab active={activeView === "timeline"} onClick={() => setActiveView("timeline")} label="Timeline" />
@@ -298,6 +300,8 @@ export function PlannerWorkspace() {
               onDeleteProject={handleDeleteProject}
               onDeleteTask={handleDeleteTask}
             />
+          ) : activeView === "canvas" ? (
+            <CanvasWorkspace projectId={activeProjectId} />
           ) : activeView === "board" ? (
             <BoardPanel 
               tasks={activeProject?.tasks || []} 

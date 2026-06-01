@@ -327,8 +327,14 @@ class TaskComment(models.Model):
 class Notification(models.Model):
     NOTIFICATION_TYPES = [
         ("task_overdue", "Task Overdue"),
+        ("task_due_today", "Task Due Today"),
+        ("task_assigned", "Task Assigned"),
+        ("task_completed", "Task Completed"),
         ("milestone_missed", "Milestone Missed"),
+        ("milestone_approaching", "Milestone Approaching"),
+        ("milestone_reached", "Milestone Reached"),
         ("conflict_detected", "Conflict Detected"),
+        ("integration_synced", "Integration Synced"),
         ("mention", "Mention"),
     ]
 
@@ -347,3 +353,103 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"[{self.user.email}] {self.title}"
+
+
+class CanvasLayout(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.OneToOneField(Project, on_delete=models.CASCADE, related_name="canvas")
+    nodes = models.JSONField(default=list)
+    edges = models.JSONField(default=list)
+    viewport = models.JSONField(default=dict)
+    updated_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="updated_canvases"
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Canvas Layout"
+
+    def __str__(self):
+        return f"Canvas for {self.project.name}"
+
+
+class IntegrationAction(models.Model):
+    ACTION_CHOICES = [
+        ("calendar_create", "Calendar Event Created"),
+        ("calendar_update", "Calendar Event Updated"),
+        ("calendar_delete", "Calendar Event Deleted"),
+        ("slack_notify", "Slack Message Sent"),
+        ("github_issue", "GitHub Issue Created"),
+        ("jira_issue", "Jira Issue Created"),
+        ("linear_issue", "Linear Issue Created"),
+        ("notion_page", "Notion Page Created"),
+        ("gmail_reminder", "Gmail Reminder Sent"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="integration_actions")
+    entity_type = models.CharField(max_length=20)
+    entity_id = models.UUIDField()
+    action = models.CharField(max_length=30, choices=ACTION_CHOICES)
+    provider = models.CharField(max_length=30)
+    external_ref = models.CharField(max_length=500, blank=True)
+    status = models.CharField(max_length=20, default="pending")
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["entity_type", "entity_id", "action"]),
+        ]
+
+    def __str__(self):
+        return f"{self.action} on {self.entity_type} {self.entity_id}"
+
+
+class CanvasTemplate(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team = models.ForeignKey(
+        "accounts.Team", on_delete=models.CASCADE, related_name="canvas_templates"
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    nodes = models.JSONField(default=list)
+    edges = models.JSONField(default=list)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_canvas_templates"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Canvas Template"
+
+    def __str__(self):
+        return f"[{self.team.name}] {self.name}"
+
+
+class ProjectIntegrationConfig(models.Model):
+    project = models.OneToOneField(
+        Project, on_delete=models.CASCADE, related_name="integration_config"
+    )
+    auto_calendar_sync = models.BooleanField(default=True)
+    auto_slack_notify = models.BooleanField(default=False)
+    auto_github_issues = models.BooleanField(default=False)
+    auto_jira_issues = models.BooleanField(default=False)
+    auto_linear_issues = models.BooleanField(default=False)
+    slack_channel = models.CharField(max_length=100, blank=True)
+    github_repo = models.CharField(max_length=200, blank=True)
+    jira_project_key = models.CharField(max_length=20, blank=True)
+    linear_team_id = models.CharField(max_length=50, blank=True)
+    notify_on_assign = models.BooleanField(default=True)
+    notify_on_overdue = models.BooleanField(default=True)
+    notify_on_complete = models.BooleanField(default=False)
+    notify_on_milestone = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "Project Integration Config"
+
+    def __str__(self):
+        return f"Integration config for {self.project.name}"

@@ -2,7 +2,10 @@ from rest_framework import serializers
 
 from accounts.models import TeamMember
 
-from .models import Milestone, PlanChunk, Project, Task, TaskComment, Notification, ProjectMember
+from .models import (
+    Milestone, PlanChunk, Project, Task, TaskComment, Notification, ProjectMember,
+    CanvasLayout, CanvasTemplate, IntegrationAction, ProjectIntegrationConfig,
+)
 
 
 class TaskSerializer(serializers.ModelSerializer):
@@ -211,3 +214,52 @@ class NotificationSerializer(serializers.ModelSerializer):
         model = Notification
         fields = ["id", "user_id", "team_id", "notification_type", "title", "message", "link", "is_read", "created_at"]
         read_only_fields = ["id", "user_id", "team_id", "created_at"]
+
+
+class CanvasLayoutSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CanvasLayout
+        fields = ["id", "project_id", "nodes", "edges", "viewport", "updated_by_id", "updated_at"]
+        read_only_fields = ["id", "project_id", "updated_by_id", "updated_at"]
+
+
+class CanvasLayoutWriteSerializer(serializers.Serializer):
+    nodes = serializers.ListField(child=serializers.DictField(), required=False)
+    edges = serializers.ListField(child=serializers.DictField(), required=False)
+    viewport = serializers.DictField(required=False)
+
+
+class CanvasTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CanvasTemplate
+        fields = ["id", "team_id", "name", "description", "nodes", "edges", "created_by_id", "created_at", "updated_at"]
+        read_only_fields = ["id", "team_id", "created_by_id", "created_at", "updated_at"]
+
+
+class CanvasTemplateWriteSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=200)
+    description = serializers.CharField(required=False, allow_blank=True)
+    nodes = serializers.ListField(child=serializers.DictField())
+    edges = serializers.ListField(child=serializers.DictField())
+
+
+class IntegrationActionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IntegrationAction
+        fields = [
+            "id", "project_id", "entity_type", "entity_id", "action",
+            "provider", "external_ref", "status", "error_message", "created_at",
+        ]
+        read_only_fields = fields
+
+
+class ProjectIntegrationConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProjectIntegrationConfig
+        fields = [
+            "project_id",
+            "auto_calendar_sync", "auto_slack_notify", "auto_github_issues",
+            "auto_jira_issues", "auto_linear_issues",
+            "slack_channel", "github_repo", "jira_project_key", "linear_team_id",
+            "notify_on_assign", "notify_on_overdue", "notify_on_complete", "notify_on_milestone",
+        ]

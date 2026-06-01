@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import queue
 import threading
@@ -1191,6 +1192,12 @@ class NotificationListView(APIView):
         from .models import Notification
 
         unread_only = request.query_params.get("unread_only", "").lower() == "true"
+        unread_count = request.query_params.get("unread_count", "").lower() == "true"
+
+        if unread_count:
+            count = Notification.objects.filter(user=request.user, team_id=team_id, is_read=False).count()
+            return ok({"count": count})
+
         qs = Notification.objects.filter(user=request.user, team_id=team_id)
         if unread_only:
             qs = qs.filter(is_read=False)
@@ -1270,3 +1277,397 @@ class PlanningTaskDecomposeDailyView(APIView):
         except Exception as e:
             logger.exception("Decomposition failed")
             return fail(str(e), status_code=500)
+
+
+class CanvasLayoutView(APIView):
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
+    def get(self, request, team_id, project_id):
+        from .models import CanvasLayout
+        from .serializers import CanvasLayoutSerializer
+
+        project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
+        if not project:
+            return fail("Project not found.", status_code=404, code="project_not_found")
+
+        try:
+            canvas = CanvasLayout.objects.get(project=project)
+        except CanvasLayout.DoesNotExist:
+            canvas = self._auto_generate_canvas(project)
+
+        return ok(CanvasLayoutSerializer(canvas).data)
+
+    def put(self, request, team_id, project_id):
+        from .models import CanvasLayout
+        from .serializers import CanvasLayoutSerializer, CanvasLayoutWriteSerializer
+
+        project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
+        if not project:
+            return fail("Project not found.", status_code=404, code="project_not_found")
+
+        ser = CanvasLayoutWriteSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+
+        canvas, _ = CanvasLayout.objects.get_or_create(project=project)
+        if "nodes" in data:
+            canvas.nodes = data["nodes"]
+        if "edges" in data:
+            canvas.edges = data["edges"]
+        if "viewport" in data:
+            canvas.viewport = data["viewport"]
+        canvas.updated_by = request.user
+        canvas.save()
+
+        return ok(CanvasLayoutSerializer(canvas).data)
+
+    def patch(self, request, team_id, project_id):
+        from .models import CanvasLayout
+        from .serializers import CanvasLayoutSerializer
+
+        project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
+        if not project:
+            return fail("Project not found.", status_code=404, code="project_not_found")
+
+        canvas, _ = CanvasLayout.objects.get_or_create(project=project)
+
+        incoming_nodes = request.data.get("nodes")
+        incoming_edges = request.data.get("edges")
+        incoming_viewport = request.data.get("viewport")
+
+        if incoming_nodes is not None:
+            existing_map = {n["id"]: n for n in canvas.nodes}
+            for node in incoming_nodes:
+                existing_map[node["id"]] = {**existing_map.get(node["id"], {}), **node}
+            canvas.nodes = list(existing_map.values())
+
+        if incoming_edges is not None:
+            canvas.edges = incoming_edges
+
+        if incoming_viewport is not None:
+            canvas.viewport = {**canvas.viewport, **incoming_viewport}
+
+        canvas.updated_by = request.user
+        canvas.save()
+
+        return ok(CanvasLayoutSerializer(canvas).data)
+
+    def _auto_generate_canvas(self, project):
+        from .models import CanvasLayout, ProjectMember
+
+        nodes = []
+        edges = []
+
+        members = ProjectMember.objects.filter(project=project).select_related("user")
+        milestones = Milestone.objects.filter(project=project).order_by("order_index")
+        tasks = Task.objects.filter(project=project).order_by("order_index")
+
+        y_offset = 100
+        for member in members:
+            nodes.append({
+                "id": f"member_{member.id}",
+                "type": "member",
+                "ref_id": str(member.user_id),
+                "x": 100,
+                "y": y_offset,
+                "meta": {"role": member.role},
+            })
+            y_offset += 180
+
+        y_offset = 100
+        for milestone in milestones:
+            nodes.append({
+                "id": f"milestone_{milestone.id}",
+                "type": "milestone",
+                "ref_id": str(milestone.id),
+                "x": 500,
+                "y": y_offset,
+                "meta": {},
+            })
+            y_offset += 180
+
+        y_offset = 100
+        for task in tasks:
+            nodes.append({
+                "id": f"task_{task.id}",
+                "type": "task",
+                "ref_id": str(task.id),
+                "x": 900,
+                "y": y_offset,
+                "meta": {},
+            })
+            for dep in task.dependencies.all():
+                edges.append({
+                    "id": f"edge_{dep.id}_{task.id}",
+                    "source": f"task_{dep.id}",
+                    "target": f"task_{task.id}",
+                })
+            if task.parent_task:
+                edges.append({
+                    "id": f"parent_{task.parent_task.id}_{task.id}",
+                    "source": f"task_{task.parent_task.id}",
+                    "target": f"task_{task.id}",
+                })
+            y_offset += 180
+
+        canvas = CanvasLayout.objects.create(
+            project=project,
+            nodes=nodes,
+            edges=edges,
+            viewport={"zoom": 0.82, "panX": 40, "panY": 30},
+        )
+        return canvas
+
+
+class ProjectIntegrationConfigView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def get(self, request, team_id, project_id):
+        from .models import ProjectIntegrationConfig
+        from .serializers import ProjectIntegrationConfigSerializer
+
+        project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
+        if not project:
+            return fail("Project not found.", status_code=404, code="project_not_found")
+
+        config, _ = ProjectIntegrationConfig.objects.get_or_create(project=project)
+        return ok(ProjectIntegrationConfigSerializer(config).data)
+
+    def put(self, request, team_id, project_id):
+        from .models import ProjectIntegrationConfig
+        from .serializers import ProjectIntegrationConfigSerializer
+
+        project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
+        if not project:
+            return fail("Project not found.", status_code=404, code="project_not_found")
+
+        config, _ = ProjectIntegrationConfig.objects.get_or_create(project=project)
+        ser = ProjectIntegrationConfigSerializer(config, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return ok(ser.data)
+
+
+class IntegrationActionListView(APIView):
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
+    def get(self, request, team_id, project_id):
+        from .models import IntegrationAction
+        from .serializers import IntegrationActionSerializer
+
+        project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
+        if not project:
+            return fail("Project not found.", status_code=404, code="project_not_found")
+
+        qs = IntegrationAction.objects.filter(project=project)[:50]
+        return ok(IntegrationActionSerializer(qs, many=True).data)
+
+
+class CanvasEntitySearchView(APIView):
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
+    def get(self, request, team_id, project_id):
+        from .models import Project, Task, Milestone, ProjectMember
+        from .serializers import TaskSerializer, MilestoneSerializer, ProjectMemberSerializer
+
+        project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
+        if not project:
+            return fail("Project not found.", status_code=404)
+
+        q = request.query_params.get("q", "").strip().lower()
+        kind = request.query_params.get("kind", "").strip()
+
+        results = {}
+
+        if not kind or kind == "task":
+            tasks = Task.objects.filter(project=project)
+            if q:
+                tasks = tasks.filter(title__icontains=q)
+            results["tasks"] = TaskSerializer(tasks[:20], many=True).data
+
+        if not kind or kind == "milestone":
+            milestones = Milestone.objects.filter(project=project)
+            if q:
+                milestones = milestones.filter(title__icontains=q)
+            results["milestones"] = MilestoneSerializer(milestones[:20], many=True).data
+
+        if not kind or kind == "member":
+            members = ProjectMember.objects.filter(project=project).select_related("user")
+            if q:
+                members = members.filter(user__email__icontains=q) | members.filter(role__icontains=q)
+            results["members"] = ProjectMemberSerializer(members[:20], many=True).data
+
+        if not kind or kind == "wiki":
+            wiki_pages = project.related_wiki_pages.all()
+            if q:
+                wiki_pages = wiki_pages.filter(title__icontains=q)
+            from wiki.serializers import WikiPageListSerializer
+            results["wiki"] = WikiPageListSerializer(wiki_pages[:20], many=True).data
+
+        return ok(results)
+
+
+class CanvasTemplateListView(APIView):
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
+    def get(self, request, team_id):
+        from .models import CanvasTemplate
+        from .serializers import CanvasTemplateSerializer
+
+        templates = CanvasTemplate.objects.filter(team_id=team_id)
+        return ok(CanvasTemplateSerializer(templates, many=True).data)
+
+    def post(self, request, team_id):
+        from .models import CanvasTemplate
+        from .serializers import CanvasTemplateWriteSerializer, CanvasTemplateSerializer
+
+        ser = CanvasTemplateWriteSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        template = CanvasTemplate.objects.create(
+            team_id=team_id,
+            created_by=request.user,
+            **ser.validated_data,
+        )
+        return ok(CanvasTemplateSerializer(template).data, status_code=201)
+
+
+class CanvasTemplateDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
+    def delete(self, request, team_id, template_id):
+        from .models import CanvasTemplate
+
+        try:
+            template = CanvasTemplate.objects.get(id=template_id, team_id=team_id)
+        except CanvasTemplate.DoesNotExist:
+            return fail("Template not found.", status_code=404)
+
+        template.delete()
+        return ok({"deleted": True})
+
+
+class CanvasTemplateApplyView(APIView):
+    permission_classes = [IsAuthenticated, CanEditPlans]
+
+    def post(self, request, team_id, project_id, template_id):
+        from .models import CanvasTemplate, CanvasLayout
+        from .serializers import CanvasLayoutSerializer
+
+        project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
+        if not project:
+            return fail("Project not found.", status_code=404)
+
+        try:
+            template = CanvasTemplate.objects.get(id=template_id, team_id=team_id)
+        except CanvasTemplate.DoesNotExist:
+            return fail("Template not found.", status_code=404)
+
+        canvas, _ = CanvasLayout.objects.get_or_create(project=project)
+
+        base_x = int(request.data.get("offset_x", 0))
+        base_y = int(request.data.get("offset_y", 0))
+
+        new_nodes = []
+        node_id_map: dict[str, str] = {}
+        for n in template.nodes:
+            old_id = n["id"]
+            new_id = f"node_{uuid.uuid4().hex[:12]}"
+            node_id_map[old_id] = new_id
+            new_nodes.append({
+                **n,
+                "id": new_id,
+                "x": n["x"] + base_x,
+                "y": n["y"] + base_y,
+            })
+
+        new_edges = []
+        for e in template.edges:
+            new_edges.append({
+                "id": f"edge_{uuid.uuid4().hex[:12]}",
+                "source": node_id_map.get(e["source"], e["source"]),
+                "target": node_id_map.get(e["target"], e["target"]),
+            })
+
+        canvas.nodes = canvas.nodes + new_nodes
+        canvas.edges = canvas.edges + new_edges
+        canvas.updated_by = request.user
+        canvas.save()
+
+        return ok(CanvasLayoutSerializer(canvas).data)
+
+
+class CanvasAIAssistView(APIView):
+    permission_classes = [IsAuthenticated, IsTeamMember]
+
+    def post(self, request, team_id, project_id):
+        from .models import Project, CanvasLayout, Task, Milestone, ProjectMember
+        from .serializers import CanvasLayoutSerializer
+
+        project = get_project_or_none(team_id=str(team_id), project_id=str(project_id))
+        if not project:
+            return fail("Project not found.", status_code=404)
+
+        prompt = request.data.get("prompt", "").strip()
+        if not prompt:
+            return fail("prompt required.", status_code=400)
+
+        canvas, _ = CanvasLayout.objects.get_or_create(project=project)
+
+        tasks = Task.objects.filter(project=project).values("id", "title", "status", "priority")
+        milestones = Milestone.objects.filter(project=project).values("id", "title", "status")
+        members = ProjectMember.objects.filter(project=project).select_related("user")
+
+        context = {
+            "project_name": project.name,
+            "prompt": prompt,
+            "current_nodes": canvas.nodes,
+            "current_edges": canvas.edges,
+            "tasks": list(tasks),
+            "milestones": list(milestones),
+            "members": [
+                {"id": str(m.user_id), "email": m.user.email, "role": m.role}
+                for m in members
+            ],
+        }
+
+        system_prompt = (
+            "You are a canvas layout AI for a project planning tool. "
+            "Given the current canvas state and a user request, generate a new set of canvas nodes and edges. "
+            "Respond ONLY with valid JSON in this format: "
+            '{"nodes": [{"id": "unique_id", "type": "task|milestone|member|wiki|trigger|output", "ref_id": null, "x": number, "y": number, "meta": {"name": "..."}}], '
+            '"edges": [{"id": "edge_id", "source": "source_node_id", "target": "target_node_id"}], '
+            '"message": "brief explanation of changes"}'
+        )
+
+        try:
+            from openai import OpenAI
+        except ImportError:
+            from integrations.llm import get_completion
+
+            result_text = get_completion(system_prompt + "\n\nContext:\n" + json.dumps(context, default=str))
+            result = json.loads(result_text)
+        else:
+            client = OpenAI()
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": json.dumps(context, default=str)},
+                ],
+                response_format={"type": "json_object"},
+            )
+            result = json.loads(resp.choices[0].message.content or "{}")
+
+        if "nodes" in result:
+            canvas.nodes = result["nodes"]
+        if "edges" in result:
+            canvas.edges = result["edges"]
+        canvas.updated_by = request.user
+        canvas.save()
+
+        response_data = CanvasLayoutSerializer(canvas).data
+        if "message" in result:
+            response_data = {**response_data, "ai_message": result["message"]}
+
+        return ok(response_data)
