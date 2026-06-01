@@ -30,15 +30,45 @@ export function PaddleProvider({ children }: { children: React.ReactNode }) {
   const [paddle, setPaddle] = useState<PaddleInstance | null>(null);
   const [isReady, setIsReady] = useState(false);
 
-  // You need to set this in your .env.local
+  // Paddle client token from environment
   const clientToken = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN || "";
   const isSandbox = process.env.NEXT_PUBLIC_PADDLE_SANDBOX === "true";
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && clientToken) {
       const win = window as WindowWithPaddle;
       if (win.Paddle && !paddle) {
         const p = win.Paddle;
+        
+        try {
+          // Set environment first before initialization
+          p.Environment.set(isSandbox ? 'sandbox' : 'production');
+          
+          p.Initialize({ 
+            token: clientToken,
+            eventCallback: (data: unknown) => {
+              console.log("Paddle Event:", data);
+            }
+          });
+          setPaddle(p);
+          setIsReady(true);
+        } catch (error) {
+          console.error("Failed to initialize Paddle:", error);
+          setIsReady(false);
+        }
+      }
+    } else if (!clientToken) {
+      console.warn("NEXT_PUBLIC_PADDLE_CLIENT_TOKEN is not set. Paddle billing will be disabled.");
+      setIsReady(false);
+    }
+  }, [clientToken, isSandbox, paddle]);
+
+  const handleLoad = () => {
+    const win = window as WindowWithPaddle;
+    if (win.Paddle && clientToken) {
+      const p = win.Paddle;
+      try {
+        p.Environment.set(isSandbox ? 'sandbox' : 'production');
         p.Initialize({ 
           token: clientToken,
           eventCallback: (data: unknown) => {
@@ -47,20 +77,10 @@ export function PaddleProvider({ children }: { children: React.ReactNode }) {
         });
         setPaddle(p);
         setIsReady(true);
+      } catch (error) {
+        console.error("Failed to initialize Paddle in handleLoad:", error);
+        setIsReady(false);
       }
-    }
-  }, [clientToken, paddle]);
-
-  const handleLoad = () => {
-    const win = window as WindowWithPaddle;
-    if (win.Paddle) {
-      const p = win.Paddle;
-      p.Environment.set(isSandbox ? 'sandbox' : 'production');
-      p.Initialize({ 
-        token: clientToken,
-      });
-      setPaddle(p);
-      setIsReady(true);
     }
   };
 

@@ -1,3 +1,5 @@
+// Base URL for API calls. Should NOT include /api path — paths passed to api.* should include /api
+// Example: NEXT_PUBLIC_API_URL=http://localhost:8000, then call api.get("/api/integrations/")
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://api.team-os.tech";
 
 
