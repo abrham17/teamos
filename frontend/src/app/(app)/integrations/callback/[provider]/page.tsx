@@ -38,9 +38,10 @@ export default function OAuthCallbackPage() {
         setTimeout(() => {
           router.push("/settings?tab=integrations");
         }, 2500);
-      } catch (err: any) {
+      } catch (err: unknown) {
         setStatus("error");
-        setErrorMsg(err.message || "Failed to finalize OAuth authorization.");
+        const msg = err instanceof Error ? err.message : String(err ?? "Failed to finalize OAuth authorization.");
+        setErrorMsg(msg || "Failed to finalize OAuth authorization.");
       }
     };
 

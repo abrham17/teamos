@@ -340,8 +340,9 @@ export function IntegrationsSettings({ teamId }: IntegrationsSettingsProps) {
           success(`${providerKey} connected! AI agent tools are now available.`);
         }
       }, 800);
-    } catch (e: any) {
-      showError(e.message || "Failed to start OAuth flow.");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e ?? "Failed to start OAuth flow.");
+      showError(msg || "Failed to start OAuth flow.");
       setConnecting(null);
     }
   };
@@ -351,8 +352,9 @@ export function IntegrationsSettings({ teamId }: IntegrationsSettingsProps) {
       await api.delete(`/api/integrations/${providerKey}/disconnect/`);
       setIntegrations((prev) => prev.filter((i) => i.provider !== providerKey));
       success(`${providerKey} disconnected.`);
-    } catch (e: any) {
-      showError(e.message || "Failed to disconnect.");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e ?? "Failed to disconnect.");
+      showError(msg || "Failed to disconnect.");
     }
   };
 
@@ -477,8 +479,8 @@ export function IntegrationsSettings({ teamId }: IntegrationsSettingsProps) {
           <Zap className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-[12px] font-semibold text-emerald-400">AI Agent Tools Active</p>
-            <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-              Your agent can now use tools from connected services. Just ask — e.g. "Search my GitHub issues" or "Create a Notion page".
+              <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+              Your agent can now use tools from connected services. Just ask — e.g. &quot;Search my GitHub issues&quot; or &quot;Create a Notion page&quot;.
             </p>
           </div>
         </div>
