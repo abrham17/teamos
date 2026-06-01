@@ -580,12 +580,14 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
         projectMembers={projectDetail?.members || []}
       />
 
-      <WorkloadDrawer
-        isOpen={activeDrawer === "workload"}
-        onClose={() => setActiveDrawer(null)}
-        project={projectDetail!}
-        teamMembers={teamMembers}
-      />
+      {projectDetail && (
+        <WorkloadDrawer
+          isOpen={activeDrawer === "workload"}
+          onClose={() => setActiveDrawer(null)}
+          project={projectDetail}
+          teamMembers={teamMembers}
+        />
+      )}
 
       {projectId && (
         <HistoryDrawer
