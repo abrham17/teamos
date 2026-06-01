@@ -58,6 +58,7 @@ interface AuditLog {
 
 interface IntegrationsSettingsProps {
   teamId: string;
+  myRole?: "editor" | "owner" | "viewer" | undefined;
 }
 
 // ─── Provider Icons ────────────────────────────────────────────────────────────
@@ -277,8 +278,12 @@ function AuditLogRow({ log }: { log: AuditLog }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export function IntegrationsSettings({ teamId }: IntegrationsSettingsProps) {
+export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsProps) {
   const { success, error: showError } = useToast();
+
+  // Mark props as used to avoid unused variable warnings in some lint configs
+  void teamId;
+  void myRole;
 
   const [providers, setProviders] = useState<Provider[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
