@@ -11,7 +11,8 @@ export default function OAuthCallbackPage() {
   const router = useRouter();
 
   const provider = params?.provider as string;
-  const code = searchParams.get("code");
+  const [fragmentParams, setFragmentParams] = useState<URLSearchParams | null>(null);
+  const code = searchParams.get("code") || fragmentParams?.get("token") || fragmentParams?.get("code");
   const state = searchParams.get("state");
 
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
@@ -19,7 +20,14 @@ export default function OAuthCallbackPage() {
   const callDone = useRef(false);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+    setFragmentParams(hash ? new URLSearchParams(hash) : new URLSearchParams());
+  }, []);
+
+  useEffect(() => {
     if (callDone.current) return;
+    if (provider === "trello" && fragmentParams === null) return;
     if (!provider || !code || !state) {
       setStatus("error");
       setErrorMsg("Missing required OAuth callback parameters.");
@@ -46,7 +54,7 @@ export default function OAuthCallbackPage() {
     };
 
     completeCallback();
-  }, [provider, code, state, router]);
+  }, [provider, code, state, router, fragmentParams]);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,rgba(16,185,129,0.05),transparent_50%),radial-gradient(ellipse_at_bottom,rgba(99,102,241,0.05),transparent_50%)] flex items-center justify-center p-4">

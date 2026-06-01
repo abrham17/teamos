@@ -129,15 +129,15 @@ export function IntegrationSourcePicker({
               }`}
             >
               <p className="font-medium text-[var(--text-primary)]">{source.name}</p>
-              <p className="text-sm text-[var(--text-muted)] truncate">{source.url || "No public URL returned"}</p>
+              <p className="text-sm text-[var(--text-muted)] truncate">{source.url || 'No public URL returned'}</p>
             </div>
           ))}
         </div>
       )}
 
       {searchResults.length === 0 && searchQuery && !isSearching && (
-        <p className="text-center text-[var(--text-muted)] py-4">
-          No results found for "{searchQuery}"
+        <p className={'text-center text-[var(--text-muted)] py-4'}>
+          No results found for {searchQuery}
         </p>
       )}
 

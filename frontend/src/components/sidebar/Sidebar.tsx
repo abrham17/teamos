@@ -411,7 +411,6 @@ export function Sidebar() {
           </div>
         )}
         {NAV_ITEMS.map((item) => {
-          const active = isActive(item.href);
           // Cast item to support badge property if needed or access it directly
           const badge = (item as typeof item & { badge?: string }).badge;
           return (
