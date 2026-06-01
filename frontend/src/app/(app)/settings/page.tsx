@@ -97,9 +97,13 @@ export default function SettingsPage() {
     const bp = sp.get("billing_plan");
     const seats = sp.get("seats");
     const usage = sp.get("usage");
+    const tab = sp.get("tab");
     if (bp === "team" || bp === "pro" || bp === "enterprise" || bp === "free") {
       if (bp !== "free") setBillingCheckoutPrefs((prev) => ({ ...prev, plan_key: bp }));
       setActiveTab("billing");
+    }
+    if (tab === "integrations") {
+      setActiveTab("integrations");
     }
     if (seats && !Number.isNaN(Number(seats))) setBillingCheckoutPrefs((prev) => ({ ...prev, seat_count: Math.max(1, Number(seats)) }));
     if (usage === "low" || usage === "standard" || usage === "high") setBillingCheckoutPrefs((prev) => ({ ...prev, usage_tier: usage }));

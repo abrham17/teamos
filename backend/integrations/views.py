@@ -9,6 +9,7 @@ from teamos_project.api_response import ok, fail
 from integrations.oauth import generate_auth_url, handle_callback
 from integrations.services import list_user_integrations, disconnect_integration, get_audit_logs
 from integrations.tool_registry import get_user_tools, get_connected_providers_context
+from integrations.tool_executor import execute_external_tool
 from integrations.provider_factory import list_providers
 
 logger = logging.getLogger(__name__)
@@ -105,3 +106,81 @@ class IntegrationAuditLogsView(APIView):
         limit = min(int(request.query_params.get("limit", 50)), 200)
         logs = get_audit_logs(str(request.user.id), limit=limit)
         return ok(logs)
+
+
+class IntegrationProviderSearchView(APIView):
+    """GET /api/integrations/<provider>/search/?q=... – normalized source search for ingest pickers."""
+    permission_classes = [IsAuthenticated]
+
+    TOOL_BY_PROVIDER = {
+        "github": "ext_github_search_repositories",
+        "notion": "ext_notion_search_pages",
+        "google": "ext_google_drive_search_files",
+        "slack": "ext_slack_search_messages",
+        "dropbox": "ext_dropbox_search_files",
+    }
+
+    def get(self, request, provider):
+        provider = (provider or "").strip().lower()
+        query = (request.query_params.get("q") or "").strip()
+        if not query:
+            return ok([])
+
+        tool_name = self.TOOL_BY_PROVIDER.get(provider)
+        if not tool_name:
+            return fail("Search is not supported for this provider.", status_code=400, code="unsupported_provider_search")
+
+        result = execute_external_tool(str(request.user.id), tool_name, self._arguments(provider, query))
+        if not result or not result.get("ok"):
+            return fail(result.get("error", "Search failed."), status_code=400, code="provider_search_failed")
+
+        return ok(self._normalize(provider, result.get("result") or []))
+
+    def _arguments(self, provider: str, query: str) -> dict:
+        if provider == "github":
+            return {"query": query, "per_page": 12}
+        if provider == "notion":
+            return {"query": query, "page_size": 12}
+        if provider == "google":
+            escaped = query.replace("'", "\\'")
+            return {"query": f"name contains '{escaped}' or fullText contains '{escaped}'", "page_size": 12}
+        if provider == "slack":
+            return {"query": query, "count": 12}
+        if provider == "dropbox":
+            return {"query": query, "max_results": 12}
+        return {"query": query}
+
+    def _normalize(self, provider: str, items) -> list[dict]:
+        normalized = []
+        if not isinstance(items, list):
+            return normalized
+
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+            source_id = item.get("id") or item.get("path") or item.get("full_name") or item.get("ts") or str(index)
+            name = (
+                item.get("name")
+                or item.get("title")
+                or item.get("full_name")
+                or item.get("text")
+                or item.get("path")
+                or source_id
+            )
+            url = item.get("url") or item.get("webViewLink") or self._fallback_url(provider, item)
+            normalized.append({
+                "id": str(source_id),
+                "name": str(name or source_id),
+                "url": url,
+                "metadata": item,
+            })
+        return normalized
+
+    def _fallback_url(self, provider: str, item: dict) -> str:
+        if provider == "dropbox" and item.get("path"):
+            return "https://www.dropbox.com/home" + str(item["path"])
+        if provider == "slack":
+            channel = item.get("channel") or "search"
+            ts = item.get("ts") or ""
+            return f"https://slack.com/app_redirect?channel={channel}&message_ts={ts}"
+        return ""

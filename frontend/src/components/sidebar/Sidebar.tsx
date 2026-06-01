@@ -23,6 +23,7 @@ import {
   Check,
   Sun,
   Moon,
+  Plug,
 } from "lucide-react";
 
 interface Team {
@@ -43,6 +44,7 @@ const NAV_ITEMS = [
   { href: "/graph", icon: Share2, label: "Graph" },
   { href: "/chat", icon: MessageSquare, label: "Chat", badge: "3" },
   { href: "/ingest", icon: Upload, label: "Ingest" },
+  { href: "/integrations", icon: Plug, label: "Integrations" },
   { href: "/analytics", icon: BarChart3, label: "Analytics" },
 ];
 

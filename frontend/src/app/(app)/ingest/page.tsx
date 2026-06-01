@@ -11,12 +11,17 @@ import {
   Clock, 
   AlertCircle,
   Plus,
-  ArrowRight
+  ArrowRight,
+  Code2,
+  MessageSquare,
+  HardDrive,
+  Package,
 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LottiePlayer } from "@/components/ui/LottiePlayer";
 import { ICONSCOUT } from "@/lib/iconscoutAssets";
+import { IntegrationSourcePicker } from "@/components/ingest/IntegrationSourcePicker";
 
 interface IngestJob {
   id: string;
@@ -31,17 +36,63 @@ interface IngestJob {
   created_at: string;
 }
 
+interface Integration {
+  provider: string;
+  display_name: string;
+  status: "connected" | "disconnected" | "error";
+}
+
+const INTEGRATION_SOURCES = [
+  {
+    key: "github",
+    label: "GitHub",
+    icon: Code2,
+    placeholder: "Search repositories, e.g. teamos docs",
+    helper: "Import repository URLs into the same pipeline used for crawled sources.",
+  },
+  {
+    key: "notion",
+    label: "Notion",
+    icon: FileText,
+    placeholder: "Search pages or databases",
+    helper: "Find Notion pages you have granted to TeamOS and import their public source URL.",
+  },
+  {
+    key: "google",
+    label: "Google Drive",
+    icon: HardDrive,
+    placeholder: "Search Drive files",
+    helper: "Search Drive by name or content, then import the selected file link.",
+  },
+  {
+    key: "slack",
+    label: "Slack",
+    icon: MessageSquare,
+    placeholder: "Search messages or channels",
+    helper: "Search Slack results from your connected workspace.",
+  },
+  {
+    key: "dropbox",
+    label: "Dropbox",
+    icon: Package,
+    placeholder: "Search Dropbox files",
+    helper: "Search Dropbox and import links for selected files.",
+  },
+] as const;
+
 export default function IngestPage() {
   const { currentTeamId } = useWikiStore();
   const { success, error: toastError } = useToast();
   
   const [jobs, setJobs] = useState<IngestJob[]>([]);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [sourceIngesting, setSourceIngesting] = useState(false);
   const [autoApproveIngest, setAutoApproveIngest] = useState(true);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<"file" | "url">("file");
+  const [activeTab, setActiveTab] = useState<string>("file");
   
   // URL input state
   const [url, setUrl] = useState("");
@@ -59,6 +110,13 @@ export default function IngestPage() {
     const interval = setInterval(fetchJobs, 5000);
     return () => clearInterval(interval);
   }, [currentTeamId, fetchJobs]);
+
+  useEffect(() => {
+    api
+      .get<Integration[]>("/api/integrations/")
+      .then((data) => setIntegrations(Array.isArray(data) ? data : []))
+      .catch(() => setIntegrations([]));
+  }, []);
 
   useEffect(() => {
     if (!currentTeamId) return;
@@ -143,6 +201,34 @@ export default function IngestPage() {
     }
   };
 
+  const handleIntegrationImport = async (sourceUrl: string, metadata?: Record<string, unknown>) => {
+    if (!sourceUrl.trim() || !currentTeamId) return;
+
+    setSourceIngesting(true);
+    try {
+      await api.post(`/ingest/${currentTeamId}/url/`, {
+        url: sourceUrl,
+        auto_approve: autoApproveIngest,
+        metadata,
+      });
+      success("Source submitted! Processing started.");
+      fetchJobs();
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "Failed to import source.");
+    } finally {
+      setSourceIngesting(false);
+    }
+  };
+
+  const handleConnectIntegration = async (provider: string) => {
+    try {
+      const data = await api.post<{ authorization_url: string }>("/api/integrations/connect/", { provider });
+      window.open(data.authorization_url, `oauth_${provider}`, "width=600,height=700,scrollbars=yes,resizable=yes");
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "Failed to start OAuth flow.");
+    }
+  };
+
   if (!currentTeamId) return <div className="p-8">Select a team first</div>;
 
   return (
@@ -179,10 +265,10 @@ export default function IngestPage() {
           <div className="md:col-span-2 flex flex-col gap-6">
             
             {/* Tabs */}
-            <div className="flex border-b border-[var(--border-subtle)] gap-6">
+            <div className="flex border-b border-[var(--border-subtle)] gap-3 overflow-x-auto">
               <button 
                 onClick={() => setActiveTab("file")}
-                className={`pb-3 text-sm font-medium transition-colors relative ${
+                className={`pb-3 text-sm font-medium transition-colors relative whitespace-nowrap ${
                   activeTab === "file" ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 }`}
               >
@@ -191,13 +277,29 @@ export default function IngestPage() {
               </button>
               <button 
                 onClick={() => setActiveTab("url")}
-                className={`pb-3 text-sm font-medium transition-colors relative ${
+                className={`pb-3 text-sm font-medium transition-colors relative whitespace-nowrap ${
                   activeTab === "url" ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 }`}
               >
                 Crawl Website
                 {activeTab === "url" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--accent)]" />}
               </button>
+              {INTEGRATION_SOURCES.map((source) => {
+                const Icon = source.icon;
+                return (
+                  <button
+                    key={source.key}
+                    onClick={() => setActiveTab(source.key)}
+                    className={`flex items-center gap-1.5 pb-3 text-sm font-medium transition-colors relative whitespace-nowrap ${
+                      activeTab === source.key ? "text-[var(--accent)]" : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {source.label}
+                    {activeTab === source.key && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--accent)]" />}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Ingest Form */}
@@ -231,7 +333,7 @@ export default function IngestPage() {
                     Supports Markdown, PDF, DOCX and TXT (Max 50MB)
                   </p>
                 </div>
-              ) : (
+              ) : activeTab === "url" ? (
                 <form onSubmit={handleUrlSubmit} className="flex flex-col gap-4">
                   <div className="relative">
                     <Globe className="absolute left-4 top-4 w-5 h-5 text-[var(--text-muted)]" />
@@ -267,6 +369,24 @@ export default function IngestPage() {
                     )}
                   </button>
                 </form>
+              ) : (
+                (() => {
+                  const source = INTEGRATION_SOURCES.find((item) => item.key === activeTab);
+                  if (!source) return null;
+                  const integration = integrations.find((item) => item.provider === source.key);
+                  return (
+                    <IntegrationSourcePicker
+                      provider={source.key}
+                      providerName={source.label}
+                      isConnected={integration?.status === "connected"}
+                      onConnect={() => handleConnectIntegration(source.key)}
+                      onSelectSource={handleIntegrationImport}
+                      isIngesting={sourceIngesting}
+                      searchPlaceholder={source.placeholder}
+                      helperText={source.helper}
+                    />
+                  );
+                })()
               )}
             </div>
           </div>

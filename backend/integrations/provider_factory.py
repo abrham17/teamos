@@ -57,6 +57,10 @@ def list_providers() -> list[dict]:
     result = []
     for key, cls in PROVIDER_REGISTRY.items():
         meta = PROVIDER_META.get(key, {})
+        try:
+            tool_count = len(cls(access_token="").get_tools())
+        except Exception:
+            tool_count = 0
         result.append({
             "key": key,
             "display_name": meta.get("display_name", cls.DISPLAY_NAME),
@@ -65,5 +69,6 @@ def list_providers() -> list[dict]:
             "icon": meta.get("icon", key),
             "scopes": cls.SCOPES,
             "supports_refresh": cls.SUPPORTS_REFRESH,
+            "tool_count": tool_count,
         })
     return result

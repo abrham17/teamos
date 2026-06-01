@@ -30,6 +30,7 @@ interface Provider {
   icon: string;
   scopes: string[];
   supports_refresh: boolean;
+  tool_count?: number;
 }
 
 interface Integration {
@@ -54,6 +55,19 @@ interface AuditLog {
   success: boolean;
   latency_ms: number;
   timestamp: string;
+}
+
+interface ToolInfo {
+  name: string;
+  description: string;
+  provider: string;
+}
+
+interface OpenAIToolInfo {
+  function?: {
+    name?: string;
+    description?: string;
+  };
 }
 
 interface IntegrationsSettingsProps {
@@ -113,12 +127,16 @@ function StatusPill({ status }: { status: Integration["status"] }) {
 function ProviderCard({
   provider,
   integration,
+  tools,
+  logs,
   onConnect,
   onDisconnect,
   connecting,
 }: {
   provider: Provider;
   integration: Integration | undefined;
+  tools: ToolInfo[];
+  logs: AuditLog[];
   onConnect: (key: string) => void;
   onDisconnect: (key: string) => void;
   connecting: boolean;
@@ -126,6 +144,9 @@ function ProviderCard({
   const [expanded, setExpanded] = useState(false);
   const isConnected = integration?.status === "connected";
   const icon = PROVIDER_ICONS[provider.key] ?? "🔌";
+  const providerTools = tools.filter((t) => t.provider === provider.key);
+  const toolCount = providerTools.length || provider.tool_count || 0;
+  const providerLogs = logs.filter((l) => l.provider === provider.key).slice(0, 5);
 
   return (
     <div
@@ -155,6 +176,11 @@ function ProviderCard({
               {provider.display_name}
             </span>
             {integration && <StatusPill status={integration.status} />}
+            {toolCount > 0 && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20">
+                {toolCount} tools
+              </span>
+            )}
           </div>
           {isConnected && integration?.external_user_email ? (
             <p className="text-[11px] text-[var(--text-muted)] mt-0.5 truncate">
@@ -251,6 +277,44 @@ function ProviderCard({
               </div>
             )}
           </div>
+
+          {/* Tools List */}
+          {providerTools.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">
+                Available Tools ({providerTools.length})
+              </p>
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {providerTools.map((tool) => (
+                  <div key={tool.name} className="flex items-start gap-2 py-1.5 border-b border-[var(--border-subtle)] last:border-0">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-mono text-[var(--text-primary)] truncate">{tool.name}</p>
+                      <p className="text-[10px] text-[var(--text-muted)] truncate">{tool.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recent Executions */}
+          {providerLogs.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">
+                Recent Executions
+              </p>
+              <div className="space-y-1">
+                {providerLogs.map((log, i) => (
+                  <div key={i} className="flex items-center gap-2 py-1 text-[10px]">
+                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${log.success ? "bg-emerald-400" : "bg-rose-400"}`} />
+                    <span className="flex-1 font-mono text-[var(--text-secondary)] truncate">{log.tool}</span>
+                    <span className="text-[var(--text-muted)] flex-shrink-0">{log.latency_ms}ms</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -276,6 +340,25 @@ function AuditLogRow({ log }: { log: AuditLog }) {
   );
 }
 
+function normalizeTools(rawTools: Array<ToolInfo | OpenAIToolInfo>): ToolInfo[] {
+  return rawTools
+    .map((tool) => {
+      if ("provider" in tool && tool.provider) return tool;
+
+      const toolFunction = "function" in tool ? tool.function : undefined;
+      const functionName = toolFunction?.name || "";
+      const match = functionName.match(/^ext_([^_]+)_(.+)$/);
+      if (!match) return null;
+
+      return {
+        provider: match[1],
+        name: match[2],
+        description: (toolFunction?.description || "").replace(/^\[[^\]]+\]\s*/, ""),
+      };
+    })
+    .filter((tool): tool is ToolInfo => Boolean(tool));
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsProps) {
@@ -288,6 +371,7 @@ export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsPro
   const [providers, setProviders] = useState<Provider[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [tools, setTools] = useState<ToolInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState(false);
@@ -296,12 +380,16 @@ export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsPro
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [provList, intList] = await Promise.all([
+      const [provList, intList, toolsData, logsData] = await Promise.all([
         api.get<Provider[]>("/api/integrations/providers/"),
         api.get<Integration[]>("/api/integrations/"),
+        api.get<{ tools: Array<ToolInfo | OpenAIToolInfo> }>("/api/integrations/tools/").catch(() => ({ tools: [] })),
+        api.get<AuditLog[]>("/api/integrations/logs/?limit=30").catch(() => []),
       ]);
       setProviders(Array.isArray(provList) ? provList : []);
       setIntegrations(Array.isArray(intList) ? intList : []);
+      setTools(Array.isArray(toolsData?.tools) ? normalizeTools(toolsData.tools) : []);
+      setAuditLogs(Array.isArray(logsData) ? logsData : []);
     } catch {
       // Silently degrade
     } finally {
@@ -469,6 +557,8 @@ export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsPro
                 key={provider.key}
                 provider={provider}
                 integration={integration}
+                tools={tools}
+                logs={auditLogs}
                 onConnect={handleConnect}
                 onDisconnect={handleDisconnect}
                 connecting={connecting === provider.key}
