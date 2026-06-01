@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, type ReactNode, type MouseEvent, type TouchEvent } from "react";
+import { type ReactNode, type MouseEvent, type TouchEvent } from "react";
 
 interface CanvasSurfaceProps {
   zoom: number;

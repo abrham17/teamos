@@ -7,8 +7,6 @@ interface CanvasMinimapProps {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
   viewport: CanvasViewport;
-  canvasWidth: number;
-  canvasHeight: number;
   onNavigate: (panX: number, panY: number) => void;
 }
 
@@ -22,7 +20,7 @@ const NODE_COLORS: Record<string, string> = {
   output: "#f87171",
 };
 
-export function CanvasMinimap({ nodes, edges, viewport, canvasWidth, canvasHeight, onNavigate }: CanvasMinimapProps) {
+export function CanvasMinimap({ nodes, edges, viewport, onNavigate }: CanvasMinimapProps) {
   const bounds = useMemo(() => {
     if (nodes.length === 0) return { minX: 0, minY: 0, maxX: 1600, maxY: 1200, width: 1600, height: 1200 };
     const xs = nodes.map((n) => n.x);

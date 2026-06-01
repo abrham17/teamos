@@ -5,7 +5,7 @@ import { useWikiStore } from "@/stores/useWikiStore";
 import { useCanvas } from "../../hooks/useCanvas";
 import { useCanvasSync } from "../../hooks/useCanvasSync";
 import { useMultiplayer } from "../../hooks/useMultiplayer";
-import { planAssistStream, getPlannerCalendarFeed, getPlannerActivity, getTeamMembers } from "../../api";
+import { getPlannerCalendarFeed, getPlannerActivity, getTeamMembers } from "../../api";
 import { getIntegrationActions } from "../../canvasApi";
 import type { IntegrationAction } from "../../canvasApi";
 import { CanvasSurface } from "./CanvasSurface";
@@ -325,7 +325,7 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
     }
   }, [canvas]);
 
-  const handleTouchEnd = useCallback((e: TouchEvent<HTMLDivElement>) => {
+  const handleTouchEnd = useCallback(() => {
     canvas.endPan();
   }, [canvas]);
 
@@ -513,8 +513,6 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
           nodes={canvas.nodes}
           edges={canvas.edges}
           viewport={canvas.viewport}
-          canvasWidth={3200}
-          canvasHeight={2000}
           onNavigate={handlePanTo}
         />
       )}

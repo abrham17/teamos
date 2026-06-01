@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { X, Save, Trash2, Calendar, User, Flag, Clock, Link2, Unlink } from "lucide-react";
 import type { CanvasNode } from "../../canvasApi";
 import { EntityLinkDialog } from "./EntityLinkDialog";
-import { useWikiStore } from "@/stores/useWikiStore";
 
 interface NodeDetailPanelProps {
   node: CanvasNode | null;
@@ -25,23 +24,24 @@ const NODE_COLORS: Record<string, string> = {
 };
 
 export function NodeDetailPanel({ node, onClose, onUpdate, onDelete, teamId, projectId }: NodeDetailPanelProps) {
-  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [formData, setFormData] = useState<Record<string, string>>({});
   const [hasChanges, setHasChanges] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
 
   useEffect(() => {
     if (node) {
+      const m = node.meta || {};
       setFormData({
-        name: node.meta?.name || "",
-        description: node.meta?.description || "",
-        status: node.meta?.status || "",
-        priority: node.meta?.priority || "",
-        assignee: node.meta?.assignee || "",
-        start_date: node.meta?.start_date || "",
-        end_date: node.meta?.end_date || "",
-        target_date: node.meta?.target_date || "",
-        role: node.meta?.role || "",
-        email: node.meta?.email || "",
+        name: String(m.name || ""),
+        description: String(m.description || ""),
+        status: String(m.status || ""),
+        priority: String(m.priority || ""),
+        assignee: String(m.assignee || ""),
+        start_date: String(m.start_date || ""),
+        end_date: String(m.end_date || ""),
+        target_date: String(m.target_date || ""),
+        role: String(m.role || ""),
+        email: String(m.email || ""),
       });
       setHasChanges(false);
     }

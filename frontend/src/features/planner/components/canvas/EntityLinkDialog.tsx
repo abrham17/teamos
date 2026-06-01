@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "@/lib/api";
 import { X, Search } from "lucide-react";
 import type { CanvasNode } from "../../canvasApi";
@@ -35,7 +35,7 @@ export function EntityLinkDialog({ node, teamId, projectId, onLink, onClose }: E
   const [loading, setLoading] = useState(false);
   const [selectedKind, setSelectedKind] = useState<string>("");
 
-  const linkableKinds = LINKABLE_TYPES[node.type] || [];
+  const linkableKinds = useMemo(() => LINKABLE_TYPES[node.type] || [], [node.type]);
 
   const search = useCallback(async (q: string, kind: string) => {
     setLoading(true);
@@ -61,7 +61,9 @@ export function EntityLinkDialog({ node, teamId, projectId, onLink, onClose }: E
   }, [linkableKinds, search]);
 
   useEffect(() => {
-    const timeout = setTimeout(() => search(query, selectedKind), 300);
+    const timeout = setTimeout(() => {
+      if (selectedKind) search(query, selectedKind);
+    }, 300);
     return () => clearTimeout(timeout);
   }, [query, selectedKind, search]);
 
