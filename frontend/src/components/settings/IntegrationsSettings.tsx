@@ -381,10 +381,10 @@ export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsPro
     setLoading(true);
     try {
       const [provList, intList, toolsData, logsData] = await Promise.all([
-        api.get<Provider[]>("/api/integrations/providers/"),
-        api.get<Integration[]>("/api/integrations/"),
-        api.get<{ tools: Array<ToolInfo | OpenAIToolInfo> }>("/api/integrations/tools/").catch(() => ({ tools: [] })),
-        api.get<AuditLog[]>("/api/integrations/logs/?limit=30").catch(() => []),
+        api.get<Provider[]>("/integrations/providers/"),
+        api.get<Integration[]>("/integrations/"),
+        api.get<{ tools: Array<ToolInfo | OpenAIToolInfo> }>("/integrations/tools/").catch(() => ({ tools: [] })),
+        api.get<AuditLog[]>("/integrations/logs/?limit=30").catch(() => []),
       ]);
       setProviders(Array.isArray(provList) ? provList : []);
       setIntegrations(Array.isArray(intList) ? intList : []);
@@ -399,7 +399,7 @@ export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsPro
 
   const loadAuditLogs = useCallback(async () => {
     try {
-      const logs = await api.get<AuditLog[]>("/api/integrations/logs/?limit=30");
+      const logs = await api.get<AuditLog[]>("/integrations/logs/?limit=30");
       setAuditLogs(Array.isArray(logs) ? logs : []);
     } catch {}
   }, []);
@@ -415,7 +415,7 @@ export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsPro
   const handleConnect = async (providerKey: string) => {
     setConnecting(providerKey);
     try {
-      const data = await api.post<{ authorization_url: string }>("/api/integrations/connect/", {
+      const data = await api.post<{ authorization_url: string }>("/integrations/connect/", {
         provider: providerKey,
       });
       // Open OAuth popup
@@ -442,7 +442,7 @@ export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsPro
 
   const handleDisconnect = async (providerKey: string) => {
     try {
-      await api.delete(`/api/integrations/${providerKey}/disconnect/`);
+      await api.delete(`/integrations/${providerKey}/disconnect/`);
       setIntegrations((prev) => prev.filter((i) => i.provider !== providerKey));
       success(`${providerKey} disconnected.`);
     } catch (e: unknown) {
