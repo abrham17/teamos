@@ -2,692 +2,530 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Plus,
-  Trash2,
-  RefreshCw,
   CheckCircle2,
   XCircle,
-  Eye,
-  EyeOff,
   Loader2,
   Plug,
   AlertTriangle,
+  ExternalLink,
+  Trash2,
+  RefreshCw,
+  Activity,
   ChevronDown,
-  ChevronUp,
-  GitBranch,
-  MessageCircle,
-  Layout,
-  BookOpen,
-  HardDrive,
-  CalendarDays,
+  ChevronRight,
+  Zap,
+  Shield,
+  Link2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
 
-interface MCPServer {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Provider {
+  key: string;
+  display_name: string;
+  category: string;
+  color: string;
+  icon: string;
+  scopes: string[];
+  supports_refresh: boolean;
+}
+
+interface Integration {
   id: string;
-  name: string;
-  url: string;
-  enabled: boolean;
-  capabilities: string[];
+  provider: string;
+  display_name: string;
+  category: string;
+  color: string;
+  icon: string;
+  status: "connected" | "disconnected" | "error";
+  external_user_name: string;
+  external_user_email: string;
+  scopes: string[];
   has_token: boolean;
-  created_at: string;
-  updated_at: string;
+  connected_at: string;
+  last_used_at: string | null;
+}
+
+interface AuditLog {
+  provider: string;
+  tool: string;
+  success: boolean;
+  latency_ms: number;
+  timestamp: string;
 }
 
 interface IntegrationsSettingsProps {
   teamId: string;
-  myRole?: "owner" | "editor" | "viewer";
 }
 
-const PRESET_INTEGRATIONS = [
-  {
-    key: "github",
-    label: "GitHub",
-    Icon: GitBranch,
-    iconColor: "#4078c0",
-    description: "Access repositories, issues, pull requests, and code search.",
-    defaultPort: 9091,
-  },
-  {
-    key: "slack",
-    label: "Slack",
-    Icon: MessageCircle,
-    iconColor: "#7c3aed",
-    description: "Send messages, read channels, and interact with workspaces.",
-    defaultPort: 9092,
-  },
-  {
-    key: "trello",
-    label: "Trello",
-    Icon: Layout,
-    iconColor: "#0079bf",
-    description: "Manage boards, cards, and lists in your Trello workspace.",
-    defaultPort: 9093,
-  },
-  {
-    key: "notion",
-    label: "Notion",
-    Icon: BookOpen,
-    iconColor: "#6b7280",
-    description: "Read and write pages, databases, and blocks in Notion.",
-    defaultPort: 9094,
-  },
-  {
-    key: "gdrive",
-    label: "Google Drive",
-    Icon: HardDrive,
-    iconColor: "#4285f4",
-    description: "Browse, read, and upload files in your Google Drive.",
-    defaultPort: 9095,
-  },
-  {
-    key: "gcalendar",
-    label: "Google Calendar",
-    Icon: CalendarDays,
-    iconColor: "#0f9d58",
-    description: "Create, update, and list events in Google Calendar.",
-    defaultPort: 9096,
-  },
-] as const;
+// ─── Provider Icons ────────────────────────────────────────────────────────────
 
-type PresetKey = (typeof PRESET_INTEGRATIONS)[number]["key"];
+const PROVIDER_ICONS: Record<string, string> = {
+  github: "⚙",
+  gitlab: "🦊",
+  notion: "📄",
+  slack: "💬",
+  google: "🔍",
+  discord: "🎮",
+  jira: "📋",
+  linear: "◆",
+  trello: "🗂",
+  dropbox: "📦",
+  hubspot: "🧲",
+};
 
-function ServerIcon({ name }: { name: string }) {
-  const preset = PRESET_INTEGRATIONS.find((p) => p.key === name.toLowerCase() as PresetKey);
-  if (!preset) return <Plug className="w-5 h-5 text-[var(--text-muted)]" />;
-  const { Icon } = preset;
-  return <Icon className="w-5 h-5" style={{ color: preset.iconColor }} />;
-}
+const CATEGORY_LABELS: Record<string, string> = {
+  development: "Development",
+  knowledge: "Knowledge",
+  communication: "Communication",
+  productivity: "Productivity",
+  project: "Project Management",
+  storage: "Storage",
+  crm: "CRM",
+  other: "Other",
+};
 
-function StatusBadge({ enabled, synced }: { enabled: boolean; synced?: boolean }) {
-  if (!enabled)
+// ─── Sub-Components ───────────────────────────────────────────────────────────
+
+function StatusPill({ status }: { status: Integration["status"] }) {
+  if (status === "connected")
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--bg-800)] text-[var(--text-muted)] uppercase tracking-wide">
-        <XCircle className="w-3 h-3" /> Disabled
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 uppercase tracking-widest">
+        <CheckCircle2 className="w-2.5 h-2.5" /> Live
       </span>
     );
-  if (synced)
+  if (status === "error")
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 uppercase tracking-wide">
-        <CheckCircle2 className="w-3 h-3" /> Active
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20 uppercase tracking-widest">
+        <AlertTriangle className="w-2.5 h-2.5" /> Error
       </span>
     );
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 uppercase tracking-wide">
-      <AlertTriangle className="w-3 h-3" /> Not Synced
+    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--bg-700)] text-[var(--text-muted)] border border-[var(--border-subtle)] uppercase tracking-widest">
+      <XCircle className="w-2.5 h-2.5" /> Off
     </span>
   );
 }
 
-function AddServerModal({
-  onClose,
-  onSave,
-  teamId,
+function ProviderCard({
+  provider,
+  integration,
+  onConnect,
+  onDisconnect,
+  connecting,
 }: {
-  onClose: () => void;
-  onSave: (server: MCPServer) => void;
-  teamId: string;
+  provider: Provider;
+  integration: Integration | undefined;
+  onConnect: (key: string) => void;
+  onDisconnect: (key: string) => void;
+  connecting: boolean;
 }) {
-  const { error: showError } = useToast();
-  const [name, setName] = useState("");
-  const [url, setUrl] = useState("");
-  const [token, setToken] = useState("");
-  const [showToken, setShowToken] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const preset = PRESET_INTEGRATIONS.find((p) => p.key === name as PresetKey);
-
-  const handleSelectPreset = (key: PresetKey) => {
-    const p = PRESET_INTEGRATIONS.find((pr) => pr.key === key);
-    if (p) {
-      setName(p.key);
-      setUrl(`http://localhost:${p.defaultPort}`);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!name.trim() || !url.trim()) {
-      showError("Name and URL are required.");
-      return;
-    }
-    setSaving(true);
-    try {
-      const server = await api.post<MCPServer>(`/api/chat/${teamId}/mcp-servers/`, {
-        name: name.trim(),
-        url: url.trim(),
-        auth_token: token.trim(),
-        enabled: true,
-      });
-      onSave(server);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to add integration.";
-      showError(msg);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-[var(--bg-800)] border border-[var(--border-strong)] rounded-2xl overflow-hidden shadow-2xl">
-        <div className="px-6 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between">
-          <h3 className="text-[15px] font-semibold text-[var(--text-primary)]">
-            Add MCP Integration
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-            aria-label="Close modal"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div className="p-6 space-y-4">
-          {/* Quick-select presets */}
-          <div>
-            <p className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">
-              Quick Add
-            </p>
-            <div className="grid grid-cols-4 gap-2">
-              {PRESET_INTEGRATIONS.map((p) => {
-                const { Icon } = p;
-                const selected = name === p.key;
-                return (
-                  <button
-                    key={p.key}
-                    onClick={() => handleSelectPreset(p.key)}
-                    className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border transition-all cursor-pointer ${
-                      selected
-                        ? "border-[var(--accent)] bg-[var(--accent)]/10"
-                        : "border-[var(--border-subtle)] hover:border-[var(--border-strong)]"
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" style={{ color: p.iconColor }} />
-                    <span className="text-[10px] font-medium text-[var(--text-secondary)]">
-                      {p.label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div>
-              <label className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
-                Name
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. github, slack, notion"
-                className="mt-1 w-full px-3 py-2 bg-[var(--bg-900)] border border-[var(--border-subtle)] text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/60 rounded-xl transition-colors placeholder:text-[var(--text-muted)]"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
-                Gateway URL
-              </label>
-              <input
-                type="text"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="http://localhost:9091"
-                className="mt-1 w-full px-3 py-2 bg-[var(--bg-900)] border border-[var(--border-subtle)] text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/60 rounded-xl transition-colors placeholder:text-[var(--text-muted)]"
-              />
-              {preset && (
-                <p className="mt-1 text-[11px] text-[var(--text-muted)]">{preset.description}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
-                Auth Token{" "}
-                <span className="normal-case font-normal">(optional)</span>
-              </label>
-              <div className="relative mt-1">
-                <input
-                  type={showToken ? "text" : "password"}
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  placeholder="Bearer token or API key"
-                  className="w-full px-3 py-2 pr-10 bg-[var(--bg-900)] border border-[var(--border-subtle)] text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/60 rounded-xl transition-colors placeholder:text-[var(--text-muted)]"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowToken(!showToken)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-                  aria-label={showToken ? "Hide token" : "Show token"}
-                >
-                  {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="px-6 py-4 border-t border-[var(--border-subtle)] flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-[13px] border border-[var(--border-subtle)] rounded-xl hover:bg-[var(--bg-700)] transition-colors cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving || !name.trim() || !url.trim()}
-            className="px-4 py-2 text-[13px] bg-[var(--accent)] text-white rounded-xl hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center gap-2 cursor-pointer"
-          >
-            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            {saving ? "Saving…" : "Save Integration"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ServerRow({
-  server,
-  teamId,
-  onDelete,
-  onUpdate,
-}: {
-  server: MCPServer;
-  teamId: string;
-  onDelete: (id: string) => void;
-  onUpdate: (updated: MCPServer) => void;
-}) {
-  const { success, error: showError } = useToast();
   const [expanded, setExpanded] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [toggling, setToggling] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [editToken, setEditToken] = useState("");
-  const [showToken, setShowToken] = useState(false);
-  const [savingToken, setSavingToken] = useState(false);
-
-  interface SyncResult {
-    status: string;
-    tools_count: number;
-    tools: string[];
-  }
-
-  const handleSync = async () => {
-    setSyncing(true);
-    try {
-      const result = await api.post<SyncResult>(
-        `/api/chat/${teamId}/mcp-servers/${server.id}/sync/`,
-        {}
-      );
-      onUpdate({ ...server, capabilities: result.tools });
-      success(`Synced ${result.tools_count} tools from ${server.name}.`);
-    } catch {
-      showError(`Failed to sync ${server.name}. Is the gateway running?`);
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  const handleToggle = async () => {
-    setToggling(true);
-    try {
-      const updated = await api.patch<MCPServer>(`/api/chat/${teamId}/mcp-servers/${server.id}/`, {
-        enabled: !server.enabled,
-      });
-      onUpdate(updated);
-      success(`${server.name} ${!server.enabled ? "enabled" : "disabled"}.`);
-    } catch {
-      showError("Failed to update integration.");
-    } finally {
-      setToggling(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      await api.delete(`/api/chat/${teamId}/mcp-servers/${server.id}/`);
-      onDelete(server.id);
-      success(`${server.name} integration removed.`);
-    } catch {
-      showError("Failed to remove integration.");
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleSaveToken = async () => {
-    if (!editToken.trim()) return;
-    setSavingToken(true);
-    try {
-      const updated = await api.patch<MCPServer>(`/api/chat/${teamId}/mcp-servers/${server.id}/`, {
-        auth_token: editToken.trim(),
-      });
-      onUpdate(updated);
-      setEditToken("");
-      success("Token updated.");
-    } catch {
-      showError("Failed to update token.");
-    } finally {
-      setSavingToken(false);
-    }
-  };
-
-  const isSynced = server.capabilities.length > 0;
+  const isConnected = integration?.status === "connected";
+  const icon = PROVIDER_ICONS[provider.key] ?? "🔌";
 
   return (
-    <div className="border border-[var(--border-subtle)] rounded-xl overflow-hidden transition-all">
-      {/* Header row */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-[var(--surface-1)]">
-        <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center bg-[var(--bg-900)]">
-          <ServerIcon name={server.name} />
+    <div
+      className={`rounded-2xl border transition-all duration-200 overflow-hidden group ${
+        isConnected
+          ? "border-emerald-500/25 bg-emerald-500/3 shadow-sm shadow-emerald-500/5"
+          : "border-[var(--border-subtle)] bg-[var(--surface-1)] hover:border-[var(--border-strong)]"
+      }`}
+    >
+      {/* Card Header */}
+      <div className="flex items-center gap-3 p-4">
+        {/* Icon */}
+        <div
+          className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-lg border"
+          style={{
+            backgroundColor: provider.color + "18",
+            borderColor: provider.color + "30",
+          }}
+        >
+          {icon}
         </div>
 
+        {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[13px] font-semibold text-[var(--text-primary)] capitalize">
-              {server.name}
+            <span className="text-[13px] font-semibold text-[var(--text-primary)]">
+              {provider.display_name}
             </span>
-            <StatusBadge enabled={server.enabled} synced={isSynced} />
+            {integration && <StatusPill status={integration.status} />}
           </div>
-          <p className="text-[11px] text-[var(--text-muted)] truncate mt-0.5">{server.url}</p>
+          {isConnected && integration?.external_user_email ? (
+            <p className="text-[11px] text-[var(--text-muted)] mt-0.5 truncate">
+              {integration.external_user_email}
+            </p>
+          ) : (
+            <p className="text-[11px] text-[var(--text-muted)] mt-0.5 capitalize">
+              {CATEGORY_LABELS[provider.category] ?? provider.category}
+            </p>
+          )}
         </div>
 
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {/* Sync */}
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            title="Sync tools from gateway"
-            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-800)] transition-colors cursor-pointer disabled:opacity-50"
-            aria-label="Sync integration"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
-          </button>
-
-          {/* Toggle enable/disable */}
-          <button
-            onClick={handleToggle}
-            disabled={toggling}
-            title={server.enabled ? "Disable" : "Enable"}
-            className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer disabled:opacity-50 ${
-              server.enabled ? "bg-emerald-500" : "bg-[var(--bg-700)]"
-            }`}
-            aria-label={server.enabled ? "Disable integration" : "Enable integration"}
-          >
-            <span
-              className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                server.enabled ? "translate-x-4" : "translate-x-0.5"
-              }`}
-            />
-          </button>
-
-          {/* Expand details */}
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-800)] transition-colors cursor-pointer"
-            aria-label={expanded ? "Collapse" : "Expand"}
-          >
-            {expanded ? (
-              <ChevronUp className="w-3.5 h-3.5" />
-            ) : (
-              <ChevronDown className="w-3.5 h-3.5" />
-            )}
-          </button>
-
-          {/* Delete */}
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer disabled:opacity-50"
-            aria-label="Remove integration"
-          >
-            {deleting ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="w-3.5 h-3.5" />
-            )}
-          </button>
+        {/* Actions */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {isConnected ? (
+            <>
+              <button
+                onClick={() => setExpanded((e) => !e)}
+                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-800)] transition-all cursor-pointer"
+                aria-label="Expand details"
+              >
+                {expanded ? (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5" />
+                )}
+              </button>
+              <button
+                onClick={() => onDisconnect(provider.key)}
+                disabled={connecting}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-rose-400 border border-rose-500/20 rounded-xl hover:bg-rose-500/10 hover:border-rose-500/40 transition-all disabled:opacity-40 cursor-pointer"
+              >
+                <Trash2 className="w-3 h-3" /> Disconnect
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => onConnect(provider.key)}
+              disabled={connecting}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-xl border transition-all disabled:opacity-40 cursor-pointer"
+              style={{
+                backgroundColor: provider.color + "15",
+                borderColor: provider.color + "30",
+                color: provider.color,
+              }}
+            >
+              {connecting ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Link2 className="w-3 h-3" />
+              )}
+              {connecting ? "Opening…" : "Connect"}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Expanded detail panel */}
-      {expanded && (
+      {/* Expanded details */}
+      {expanded && isConnected && integration && (
         <div className="border-t border-[var(--border-subtle)] px-4 py-3 bg-[var(--bg-950)] space-y-3">
-          {/* Discovered tools */}
-          {isSynced && (
-            <div>
-              <p className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1.5">
-                Discovered Tools ({server.capabilities.length})
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {server.capabilities.map((tool) => (
-                  <span
-                    key={tool}
-                    className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-[var(--bg-800)] text-[var(--text-secondary)] border border-[var(--border-subtle)]"
-                  >
-                    {tool}
-                  </span>
-                ))}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+            {integration.external_user_name && (
+              <div>
+                <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Account</p>
+                <p className="text-[12px] text-[var(--text-primary)] mt-0.5">{integration.external_user_name}</p>
               </div>
-            </div>
-          )}
-
-          {/* Token update */}
-          <div>
-            <p className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1.5">
-              {server.has_token ? "Rotate Auth Token" : "Add Auth Token"}
-            </p>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <input
-                  type={showToken ? "text" : "password"}
-                  value={editToken}
-                  onChange={(e) => setEditToken(e.target.value)}
-                  placeholder={
-                    server.has_token ? "Enter new token to rotate…" : "Paste token here…"
-                  }
-                  className="w-full px-3 py-1.5 pr-9 bg-[var(--bg-900)] border border-[var(--border-subtle)] text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]/60 rounded-lg transition-colors placeholder:text-[var(--text-muted)]"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowToken(!showToken)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
-                  aria-label={showToken ? "Hide token" : "Show token"}
-                >
-                  {showToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
+            )}
+            {integration.connected_at && (
+              <div>
+                <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Connected</p>
+                <p className="text-[12px] text-[var(--text-primary)] mt-0.5">
+                  {new Date(integration.connected_at).toLocaleDateString()}
+                </p>
               </div>
-              <button
-                onClick={handleSaveToken}
-                disabled={savingToken || !editToken.trim()}
-                className="px-3 py-1.5 text-[12px] bg-[var(--accent)] text-white rounded-lg hover:opacity-90 disabled:opacity-40 transition-opacity flex items-center gap-1.5 cursor-pointer"
-              >
-                {savingToken ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                Save
-              </button>
-            </div>
+            )}
+            {integration.last_used_at && (
+              <div>
+                <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Last Used</p>
+                <p className="text-[12px] text-[var(--text-primary)] mt-0.5">
+                  {new Date(integration.last_used_at).toLocaleDateString()}
+                </p>
+              </div>
+            )}
+            {integration.scopes?.length > 0 && (
+              <div className="col-span-2">
+                <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">Authorized Scopes</p>
+                <div className="flex flex-wrap gap-1">
+                  {integration.scopes.map((s) => (
+                    <span key={s} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--bg-800)] text-[var(--text-muted)] border border-[var(--border-subtle)]">
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-
-          {/* Meta */}
-          <p className="text-[10px] text-[var(--text-muted)]">
-            Added {new Date(server.created_at).toLocaleDateString()} · Last updated{" "}
-            {new Date(server.updated_at).toLocaleDateString()}
-          </p>
         </div>
       )}
     </div>
   );
 }
 
-export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsProps) {
-  const [servers, setServers] = useState<MCPServer[]>([]);
+function AuditLogRow({ log }: { log: AuditLog }) {
+  return (
+    <div className="flex items-center gap-3 py-2 border-b border-[var(--border-subtle)] last:border-0">
+      <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${log.success ? "bg-emerald-400" : "bg-rose-400"}`} />
+      <span
+        className="text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md border text-center w-16 flex-shrink-0 capitalize"
+        style={{ borderColor: "var(--border-subtle)", color: "var(--text-muted)" }}
+      >
+        {log.provider}
+      </span>
+      <span className="flex-1 text-[12px] text-[var(--text-secondary)] font-mono truncate">{log.tool}</span>
+      <span className="text-[11px] text-[var(--text-muted)] flex-shrink-0">{log.latency_ms}ms</span>
+      <span className="text-[10px] text-[var(--text-muted)] flex-shrink-0 hidden sm:block">
+        {new Date(log.timestamp).toLocaleTimeString()}
+      </span>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export function IntegrationsSettings({ teamId }: IntegrationsSettingsProps) {
+  const { success, error: showError } = useToast();
+
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [showLogs, setShowLogs] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string>("all");
 
-  const isOwner = myRole === "owner";
-
-  const loadServers = useCallback(async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.get<MCPServer[]>(`/api/chat/${teamId}/mcp-servers/`);
-      setServers(Array.isArray(data) ? data : []);
+      const [provList, intList] = await Promise.all([
+        api.get<Provider[]>("/api/integrations/providers/"),
+        api.get<Integration[]>("/api/integrations/"),
+      ]);
+      setProviders(Array.isArray(provList) ? provList : []);
+      setIntegrations(Array.isArray(intList) ? intList : []);
     } catch {
-      // Non-owners will get 403 — silently ignore
+      // Silently degrade
     } finally {
       setLoading(false);
     }
-  }, [teamId]);
+  }, []);
+
+  const loadAuditLogs = useCallback(async () => {
+    try {
+      const logs = await api.get<AuditLog[]>("/api/integrations/logs/?limit=30");
+      setAuditLogs(Array.isArray(logs) ? logs : []);
+    } catch {}
+  }, []);
 
   useEffect(() => {
-    if (teamId && isOwner) loadServers();
-    else setLoading(false);
-  }, [teamId, isOwner, loadServers]);
+    loadData();
+  }, [loadData]);
 
-  const handleDelete = (id: string) => setServers((prev) => prev.filter((s) => s.id !== id));
-  const handleUpdate = (updated: MCPServer) =>
-    setServers((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
-  const handleAdd = (server: MCPServer) => {
-    setServers((prev) => [...prev, server]);
-    setShowAddModal(false);
+  useEffect(() => {
+    if (showLogs) loadAuditLogs();
+  }, [showLogs, loadAuditLogs]);
+
+  const handleConnect = async (providerKey: string) => {
+    setConnecting(providerKey);
+    try {
+      const data = await api.post<{ authorization_url: string }>("/api/integrations/connect/", {
+        provider: providerKey,
+      });
+      // Open OAuth popup
+      const popup = window.open(
+        data.authorization_url,
+        `oauth_${providerKey}`,
+        "width=600,height=700,scrollbars=yes,resizable=yes"
+      );
+      // Poll until popup closes, then refresh
+      const poll = setInterval(() => {
+        if (popup?.closed) {
+          clearInterval(poll);
+          setConnecting(null);
+          loadData();
+          success(`${providerKey} connected! AI agent tools are now available.`);
+        }
+      }, 800);
+    } catch (e: any) {
+      showError(e.message || "Failed to start OAuth flow.");
+      setConnecting(null);
+    }
   };
 
-  if (!isOwner) {
+  const handleDisconnect = async (providerKey: string) => {
+    try {
+      await api.delete(`/api/integrations/${providerKey}/disconnect/`);
+      setIntegrations((prev) => prev.filter((i) => i.provider !== providerKey));
+      success(`${providerKey} disconnected.`);
+    } catch (e: any) {
+      showError(e.message || "Failed to disconnect.");
+    }
+  };
+
+  // Group providers by category
+  const categories = ["all", ...new Set(providers.map((p) => p.category))];
+  const filteredProviders =
+    activeCategory === "all"
+      ? providers
+      : providers.filter((p) => p.category === activeCategory);
+
+  const connectedCount = integrations.filter((i) => i.status === "connected").length;
+
+  if (loading) {
     return (
-      <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-1)] p-8 text-center max-w-xl">
-        <Plug className="w-8 h-8 text-[var(--text-muted)] mx-auto mb-3" />
-        <h3 className="text-base font-semibold text-[var(--text-primary)]">Integrations</h3>
-        <p className="text-sm text-[var(--text-muted)] mt-2">
-          Only team owners can manage MCP integrations.
-        </p>
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-6 h-6 animate-spin text-[var(--accent)]" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6 max-w-2xl">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">
-            MCP Integrations
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Integrations</h2>
+            {connectedCount > 0 && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20">
+                {connectedCount} active
+              </span>
+            )}
+          </div>
           <p className="text-[12px] text-[var(--text-muted)] mt-0.5">
-            Connect external tools via Model Context Protocol gateways. The AI agent will use these
-            tools automatically.
+            Connect external services. Your AI agent gains native tools automatically.
           </p>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-3 py-2 text-[12px] font-semibold bg-[var(--accent)] text-white rounded-xl hover:opacity-90 transition-opacity cursor-pointer"
+          onClick={loadData}
+          className="p-2 rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-800)] transition-all cursor-pointer"
+          aria-label="Refresh integrations"
         >
-          <Plus className="w-3.5 h-3.5" />
-          Add Integration
+          <RefreshCw className="w-4 h-4" />
         </button>
       </div>
 
-      {/* Preset info cards */}
-      <div className="grid grid-cols-2 gap-3">
-        {PRESET_INTEGRATIONS.map((p) => {
-          const { Icon } = p;
-          const registered = servers.find((s) => s.name === p.key);
-          return (
-            <div
-              key={p.key}
-              className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${
-                registered
-                  ? "border-emerald-500/30 bg-emerald-500/5"
-                  : "border-[var(--border-subtle)] bg-[var(--surface-1)]"
-              }`}
-            >
-              <div className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center bg-[var(--bg-900)]">
-                <Icon className="w-4 h-4" style={{ color: p.iconColor }} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[12px] font-semibold text-[var(--text-primary)]">
-                    {p.label}
-                  </span>
-                  {registered && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
-                </div>
-                <p className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-relaxed">
-                  {p.description}
-                </p>
-              </div>
-            </div>
-          );
-        })}
+      {/* ── Stats Strip ── */}
+      {connectedCount > 0 && (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] px-4 py-3">
+            <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Connected</p>
+            <p className="text-xl font-bold text-emerald-400 mt-0.5">{connectedCount}</p>
+          </div>
+          <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] px-4 py-3">
+            <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Available</p>
+            <p className="text-xl font-bold text-[var(--text-primary)] mt-0.5">{providers.length}</p>
+          </div>
+          <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] px-4 py-3">
+            <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">Protocol</p>
+            <p className="text-[13px] font-bold text-[var(--accent)] mt-1">OAuth 2.0</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Security Note ── */}
+      <div className="flex items-start gap-3 p-3 rounded-xl border border-indigo-500/20 bg-indigo-500/5">
+        <Shield className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-[12px] font-semibold text-indigo-400">Secure OAuth 2.0 · Encrypted at rest</p>
+          <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+            Credentials are encrypted with AES-256 Fernet. TeamOS never stores plain-text secrets.
+          </p>
+        </div>
       </div>
 
-      {/* Registered servers list */}
-      <div>
-        <h3 className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3">
-          Registered Servers ({servers.length})
-        </h3>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-10">
-            <Loader2 className="w-5 h-5 animate-spin text-[var(--text-muted)]" />
-          </div>
-        ) : servers.length === 0 ? (
-          <div className="border border-dashed border-[var(--border-subtle)] rounded-xl p-8 text-center">
-            <Plug className="w-7 h-7 text-[var(--text-muted)] mx-auto mb-2" />
-            <p className="text-[13px] text-[var(--text-secondary)] font-medium">
-              No integrations yet
-            </p>
-            <p className="text-[12px] text-[var(--text-muted)] mt-1">
-              Add a GitHub, Slack, Trello, Notion, Google Drive, or Google Calendar gateway to get started.
-            </p>
+      {/* ── Category Tabs ── */}
+      {categories.length > 2 && (
+        <div className="flex gap-1.5 flex-wrap">
+          {categories.map((cat) => (
             <button
-              onClick={() => setShowAddModal(true)}
-              className="mt-3 px-3 py-1.5 text-[12px] font-semibold text-[var(--accent)] border border-[var(--accent)]/30 rounded-lg hover:bg-[var(--accent)]/10 transition-colors cursor-pointer"
+              key={cat}
+              onClick={() => setActiveCategory(cat)}
+              className={`px-3 py-1 text-[11px] font-semibold rounded-lg border transition-all cursor-pointer capitalize ${
+                activeCategory === cat
+                  ? "bg-[var(--accent)] border-[var(--accent)] text-white"
+                  : "border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+              }`}
             >
-              + Add your first integration
+              {cat === "all" ? "All" : CATEGORY_LABELS[cat] ?? cat}
             </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Provider Grid ── */}
+      <div className="space-y-2">
+        {filteredProviders.length === 0 ? (
+          <div className="border border-dashed border-[var(--border-subtle)] rounded-2xl p-8 text-center">
+            <Plug className="w-7 h-7 text-[var(--text-muted)] mx-auto mb-2" />
+            <p className="text-[13px] text-[var(--text-secondary)] font-medium">No providers in this category</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {servers.map((server) => (
-              <ServerRow
-                key={server.id}
-                server={server}
-                teamId={teamId}
-                onDelete={handleDelete}
-                onUpdate={handleUpdate}
+          filteredProviders.map((provider) => {
+            const integration = integrations.find((i) => i.provider === provider.key);
+            return (
+              <ProviderCard
+                key={provider.key}
+                provider={provider}
+                integration={integration}
+                onConnect={handleConnect}
+                onDisconnect={handleDisconnect}
+                connecting={connecting === provider.key}
               />
-            ))}
+            );
+          })
+        )}
+      </div>
+
+      {/* ── Agent Context Note ── */}
+      {connectedCount > 0 && (
+        <div className="flex items-start gap-3 p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+          <Zap className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-[12px] font-semibold text-emerald-400">AI Agent Tools Active</p>
+            <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+              Your agent can now use tools from connected services. Just ask — e.g. "Search my GitHub issues" or "Create a Notion page".
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Audit Logs Toggle ── */}
+      <div>
+        <button
+          onClick={() => setShowLogs((s) => !s)}
+          className="flex items-center gap-2 text-[12px] font-semibold text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+        >
+          <Activity className="w-3.5 h-3.5" />
+          Tool Execution Logs
+          {showLogs ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        </button>
+
+        {showLogs && (
+          <div className="mt-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-1)] overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border-subtle)] bg-[var(--bg-950)]">
+              <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+                Recent Executions
+              </span>
+              <button onClick={loadAuditLogs} className="p-1 rounded-lg hover:bg-[var(--bg-800)] transition-all cursor-pointer">
+                <RefreshCw className="w-3 h-3 text-[var(--text-muted)]" />
+              </button>
+            </div>
+            <div className="px-4 py-1 max-h-56 overflow-y-auto">
+              {auditLogs.length === 0 ? (
+                <p className="text-[12px] text-[var(--text-muted)] text-center py-4">No executions recorded yet.</p>
+              ) : (
+                auditLogs.map((log, i) => <AuditLogRow key={i} log={log} />)
+              )}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Architecture note */}
-      <div className="flex gap-3 p-3 rounded-xl border border-amber-500/20 bg-amber-500/5">
-        <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+      {/* ── MCP Legacy Note ── */}
+      <div className="flex items-start gap-3 p-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-950)]">
+        <ExternalLink className="w-4 h-4 text-[var(--text-muted)] flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-[12px] font-semibold text-amber-400">Gateway Required</p>
-          <p className="text-[11px] text-[var(--text-muted)] mt-0.5 leading-relaxed">
-            Each integration requires a running MCP HTTP gateway. The gateway bridges the agent to
-            external APIs. See{" "}
-            <span className="font-mono text-[10px] bg-[var(--bg-800)] px-1 rounded">
-              MCP_INTEGRATION_PLAN.md
-            </span>{" "}
-            for setup instructions.
+          <p className="text-[11px] font-semibold text-[var(--text-secondary)]">MCP Servers</p>
+          <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+            For self-hosted MCP gateway integrations, ask a team owner to configure them in MCP settings.
           </p>
         </div>
       </div>
-
-      {showAddModal && (
-        <AddServerModal
-          teamId={teamId}
-          onClose={() => setShowAddModal(false)}
-          onSave={handleAdd}
-        />
-      )}
     </div>
   );
 }

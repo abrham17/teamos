@@ -15,6 +15,7 @@ urlpatterns = [
     path("api/analytics/", include("product_analytics.urls")),
     path("api/planning/", include("planning.urls")),
     path("api/admin/", include("admin_api.urls")),
+    path("api/integrations/", include("integrations.urls")),
 ]
 
 if settings.DEBUG:

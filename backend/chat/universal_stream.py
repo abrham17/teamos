@@ -140,10 +140,16 @@ def iter_universal_intelligence_events(
     # CASE D: Research Specialist (External source-backed lookup)
     if research_mode:
         tools_list = orchestrator.get_tools(AgentRole.RESEARCH)
-        tool_schemas = openai_tool_schemas(tools_list, team_id=str(team.id))
+        tool_schemas = openai_tool_schemas(tools_list, team_id=str(team.id), user_id=str(user.id))
         tool_schemas = select_relevant_tools(prompt, tool_schemas, max_tools=8)
 
         sys_prompt = orchestrator.get_system_prompt(AgentRole.RESEARCH)
+        try:
+            from integrations.tool_registry import get_connected_providers_context
+            sys_prompt += get_connected_providers_context(str(user.id))
+        except Exception:
+            pass
+
         config = AgentConfig(
             system_prefix=sys_prompt,
             tools=tool_schemas,
@@ -163,10 +169,16 @@ def iter_universal_intelligence_events(
 
     # CASE C: Operational Specialist (Tool-using loop)
     tools_list = orchestrator.get_tools(classification.primary_agent)
-    tool_schemas = openai_tool_schemas(tools_list, team_id=str(team.id))
+    tool_schemas = openai_tool_schemas(tools_list, team_id=str(team.id), user_id=str(user.id))
     tool_schemas = select_relevant_tools(prompt, tool_schemas, max_tools=12)
     
     sys_prompt = orchestrator.get_system_prompt(classification.primary_agent)
+    try:
+        from integrations.tool_registry import get_connected_providers_context
+        sys_prompt += get_connected_providers_context(str(user.id))
+    except Exception:
+        pass
+
     try:
         from django.core.cache import cache
         directives = cache.get(f"behavior_directives:{str(team.id)}")

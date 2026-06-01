@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "llm_orchestrator",
     "admin_api",
     "research",
+    "integrations",
 ]
 
 MIDDLEWARE = [

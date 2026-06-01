@@ -55,6 +55,7 @@ def openai_tool_schemas(
     whitelist: list[str] | None = None,
     *,
     team_id: str | None = None,
+    user_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """
     OpenAI-compatible `tools` list for chat.completions.
@@ -341,12 +342,21 @@ def openai_tool_schemas(
         except Exception:
             logger.exception("Failed to fetch MCP tool schemas for team %s", team_id)
 
+    # Dynamic OAuth Integration tools
+    if user_id:
+        try:
+            from integrations.tool_registry import get_user_tools
+            ext_tools = get_user_tools(user_id)
+            all_tools.extend(ext_tools)
+        except Exception:
+            logger.exception("Failed to fetch external integration tools for user %s", user_id)
+
     if whitelist is not None:
         whitelist_set = set(whitelist)
-        # Keep whitelisted static tools + all MCP tools
+        # Keep whitelisted static tools + all MCP tools + all external OAuth tools
         return [
             t for t in all_tools 
-            if t["function"]["name"] in whitelist_set or t["function"]["name"].startswith("mcp_")
+            if t["function"]["name"] in whitelist_set or t["function"]["name"].startswith("mcp_") or t["function"]["name"].startswith("ext_")
         ]
     return all_tools
 
@@ -1069,6 +1079,18 @@ def execute_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, Any]:
     Uses O(1) registry lookup instead of if/elif chain (Phase 4.1).
     Routes mcp_* prefixed tools to external MCP servers (Phase 2).
     """
+    # Route ext_* prefixed tools to external integration platform
+    if name.startswith("ext_"):
+        try:
+            from integrations.tool_executor import execute_external_tool
+            args = _parse_args(arguments)
+            result = execute_external_tool(str(ctx.user.id), name, args)
+            if result is not None:
+                return result
+        except Exception as e:
+            logger.exception("External tool execution failed for %s", name)
+            return {"ok": False, "error": f"External tool error: {e}", "tool": name}
+
     # Phase 2: Route MCP tool calls to external servers
     if name.startswith("mcp_"):
         try:

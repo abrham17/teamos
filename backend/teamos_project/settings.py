@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'admin_api',
     'planning',
     'research',
+    'integrations.apps.IntegrationsConfig',
 ]
 
 MIDDLEWARE = [

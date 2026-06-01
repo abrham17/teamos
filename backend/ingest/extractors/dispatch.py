@@ -62,10 +62,18 @@ def extract_plain_text(job: "IngestJob", source_text: str = "") -> str:
             raise ValueError(f"Missing staging content for source_type={st}. (Dyno isolation issue?)")
 
         if st == "pdf":
+            from ingest.extractors import surya_api
+            surya_text = surya_api.extract_via_surya_api(data, "pdf")
+            if surya_text:
+                return surya_text
             return pdf_text.extract_pdf_text(data)
         if st == "docx":
             return docx_text.extract_docx_text(data)
         if st == "image":
+            from ingest.extractors import surya_api
+            surya_text = surya_api.extract_via_surya_api(data, "image")
+            if surya_text:
+                return surya_text
             return image_ocr.extract_image_ocr(data)
         return code_zip.extract_code_zip(data)
 
