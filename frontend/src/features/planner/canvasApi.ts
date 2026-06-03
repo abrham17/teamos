@@ -13,6 +13,7 @@ export interface CanvasEdge {
   id: string;
   source: string;
   target: string;
+  label?: string;
 }
 
 export interface CanvasViewport {

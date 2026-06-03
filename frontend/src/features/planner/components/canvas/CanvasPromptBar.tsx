@@ -3,10 +3,11 @@
 import { useState } from "react";
 
 interface CanvasPromptBarProps {
-  onGenerate: (prompt: string) => void;
+  onGenerate: (prompt: string, contextNodeIds?: string[]) => void;
   isLoading: boolean;
   statusText: string;
   nodeCount: number;
+  selectedNodes?: Array<{ id: string; type: string; meta?: any }>;
 }
 
 const SAMPLE_PROMPTS = [
@@ -15,17 +16,73 @@ const SAMPLE_PROMPTS = [
   { label: "Onboarding Workflow", text: "Design an employee onboarding flow with HR team member, IT member, wiki pages for policies and tools, and sequential tasks for account setup, intro meetings, and first-week review." },
 ];
 
-export function CanvasPromptBar({ onGenerate, isLoading, statusText, nodeCount }: CanvasPromptBarProps) {
+export function CanvasPromptBar({
+  onGenerate,
+  isLoading,
+  statusText,
+  nodeCount,
+  selectedNodes = [],
+}: CanvasPromptBarProps) {
   const [prompt, setPrompt] = useState("");
 
-  const handleSubmit = () => {
-    if (!prompt.trim() || isLoading) return;
-    onGenerate(prompt);
-    setPrompt("");
+  const handleSubmit = (overridePrompt?: string) => {
+    const textToSend = overridePrompt || prompt;
+    if (!textToSend.trim() || isLoading) return;
+    
+    // Pass selected node IDs as contextual scope
+    onGenerate(textToSend, selectedNodes.map(n => n.id));
+    if (!overridePrompt) {
+      setPrompt("");
+    }
+  };
+
+  const handleChipAction = (action: string) => {
+    if (selectedNodes.length > 0) {
+      const selectedNames = selectedNodes.map(n => n.meta?.name || n.type).join(", ");
+      handleSubmit(`${action} for selected nodes: ${selectedNames}`);
+    } else {
+      handleSubmit(`${action} for the entire plan canvas`);
+    }
   };
 
   return (
     <footer className="px-5 py-3 bg-[rgba(8,8,12,0.95)] backdrop-blur-[20px] border-t border-[rgba(255,255,255,0.07)] z-30 shrink-0">
+      {/* Context Action Chips (Resolve conflicts, Assess risks, Verify dependencies) */}
+      <div className="flex gap-2 mb-2 flex-wrap items-center">
+        {selectedNodes.length > 0 && (
+          <div className="text-[10px] bg-[#8b7ff4]/10 border border-[#8b7ff4]/30 rounded-lg px-2.5 py-1 text-[#8b7ff4] flex items-center gap-1.5 font-semibold mr-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#8b7ff4] animate-pulse" />
+            {selectedNodes.length} selected ({selectedNodes[0].meta?.name || selectedNodes[0].type})
+          </div>
+        )}
+
+        <button
+          onClick={() => handleChipAction("Assess risks & dependencies")}
+          disabled={isLoading}
+          className="bg-[#181824] hover:bg-[#252538] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-1 cursor-pointer text-[#eeeef2] text-[10px] font-bold transition-all flex items-center gap-1 disabled:opacity-40"
+        >
+          🛡️ Assess risks
+        </button>
+
+        <button
+          onClick={() => handleChipAction("Resolve schedule conflicts")}
+          disabled={isLoading}
+          className="bg-[#181824] hover:bg-[#252538] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-1 cursor-pointer text-[#eeeef2] text-[10px] font-bold transition-all flex items-center gap-1 disabled:opacity-40"
+        >
+          ⚡ Resolve conflicts
+        </button>
+
+        {nodeCount > 0 && (
+          <button
+            onClick={() => handleChipAction("Simulate execution paths")}
+            disabled={isLoading}
+            className="bg-[#181824] hover:bg-[#252538] border border-[rgba(255,255,255,0.08)] rounded-lg px-3 py-1 cursor-pointer text-[#eeeef2] text-[10px] font-bold transition-all flex items-center gap-1 disabled:opacity-40"
+          >
+            📊 Simulate paths
+          </button>
+        )}
+      </div>
+
       {nodeCount === 0 && !isLoading && (
         <div className="flex gap-2 mb-2.5 flex-wrap">
           {SAMPLE_PROMPTS.map((p, i) => (
@@ -49,11 +106,11 @@ export function CanvasPromptBar({ onGenerate, isLoading, statusText, nodeCount }
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
           disabled={isLoading}
-          placeholder={isLoading ? statusText : "Describe your project workflow — AI will generate the canvas..."}
+          placeholder={isLoading ? statusText : selectedNodes.length > 0 ? `Apply change to selected nodes (e.g. "expand into subtasks")...` : "Describe your project workflow — AI will generate the canvas..."}
           className="flex-1 bg-transparent border-none outline-none text-[12.5px] text-[#eeeef2] min-w-0 placeholder:text-[#62627a]"
         />
         <button
-          onClick={handleSubmit}
+          onClick={() => handleSubmit()}
           disabled={isLoading || !prompt.trim()}
           className="border-none rounded-full px-4 py-1.5 cursor-pointer text-white text-[12px] font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
           style={{
@@ -67,7 +124,7 @@ export function CanvasPromptBar({ onGenerate, isLoading, statusText, nodeCount }
       </div>
 
       <div className="mt-2 flex gap-4 text-[10px] text-[#62627a] pl-1">
-        <span>Drag canvas to pan · Scroll to zoom · Ctrl+click multi-select · Ctrl+G group · Delete to remove · Ctrl+Z undo · Ctrl+M toggle minimap</span>
+        <span>Right-click for menu · Ctrl+click multi-select · Ctrl+G group · Ctrl+D duplicate · Ctrl+L auto-layout · Delete to remove · Ctrl+Z undo · Ctrl+M minimap</span>
       </div>
     </footer>
   );

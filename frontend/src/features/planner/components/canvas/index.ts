@@ -9,3 +9,4 @@ export { IntegrationActionToast } from "./IntegrationActionToast";
 export { EntityLinkDialog } from "./EntityLinkDialog";
 export { SaveTemplateDialog } from "./SaveTemplateDialog";
 export { LoadTemplateDialog } from "./LoadTemplateDialog";
+export { CanvasContextMenu } from "./CanvasContextMenu";

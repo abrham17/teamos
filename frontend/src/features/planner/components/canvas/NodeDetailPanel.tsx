@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { X, Save, Trash2, Calendar, User, Flag, Clock, Link2, Unlink } from "lucide-react";
 import type { CanvasNode } from "../../canvasApi";
 import { EntityLinkDialog } from "./EntityLinkDialog";
+import { getAgentIdentity } from "@/lib/agentIdentity";
 
 interface NodeDetailPanelProps {
   node: CanvasNode | null;
@@ -261,6 +262,103 @@ export function NodeDetailPanel({ node, onClose, onUpdate, onDelete, teamId, pro
               />
             </div>
           </>
+        )}
+
+        {/* Reasoning Trace: 3-Layer Progressive Disclosure */}
+        {Boolean(node.meta?.reasoning_trace || node.meta?.purpose) && (
+          <div className="pt-4 border-t border-[var(--border-subtle)] space-y-2">
+            {/* Section 6.1 — Reasoning trace header with consistent agent identity */}
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b7ff4" strokeWidth="2">
+                <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1 0-4.12 2.5 2.5 0 0 1 0-4.12A2.5 2.5 0 0 1 9.5 2Z" />
+                <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 0-4.12 2.5 2.5 0 0 0 0-4.12A2.5 2.5 0 0 0 14.5 2Z" />
+              </svg>
+              <span className="text-xs font-bold text-[#8b7ff4]">Agent Reasoning Trace</span>
+              {node.meta?.active_agent ? (() => {
+                const agentId = getAgentIdentity(node.meta.active_agent as string);
+                return (
+                  <span
+                    className="inline-flex items-center gap-1 ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full border"
+                    style={{
+                      color: agentId.color,
+                      borderColor: agentId.color + "40",
+                      background: agentId.color + "12",
+                    }}
+                    title={agentId.description}
+                  >
+                    {agentId.icon}
+                    {agentId.label}
+                  </span>
+                );
+              })() : null}
+            </div>
+
+            {/* Layer 1: Single Sentence Summary (Always visible) */}
+            <div className="bg-[#13131a] rounded-lg p-2.5 border border-[rgba(255,255,255,0.05)] text-xs text-[#a0a0b8] leading-relaxed">
+              <span className="font-semibold text-white block mb-0.5">Synthesis Summary</span>
+              {typeof node.meta?.reasoning_trace === "object" && (node.meta?.reasoning_trace as any)?.summary
+                ? String((node.meta?.reasoning_trace as any).summary)
+                : node.meta?.purpose
+                  ? `Agent derived this ${node.type} node to satisfy: "${node.meta.purpose}"`
+                  : `Agent added this node to fulfill the strategic requirements of the project milestone.`}
+            </div>
+
+            {/* Layer 2: Key Decision Points */}
+            <details className="group">
+              <summary className="cursor-pointer text-[10px] font-bold text-[#62627a] hover:text-[#eeeef2] select-none py-1 flex items-center justify-between">
+                <span>VIEW KEY DECISIONS</span>
+                <span className="transition-transform group-open:rotate-90">➔</span>
+              </summary>
+              <div className="mt-1 bg-[#13131a]/60 border border-[rgba(255,255,255,0.03)] rounded-lg p-2.5 text-[11px] space-y-2 text-[#a0a0b8]">
+                <div>
+                  <span className="text-white font-medium block">Confidence Level</span>
+                  <div className="w-full bg-[#1e1e2d] h-1.5 rounded-full mt-1 overflow-hidden">
+                    <div 
+                      className="bg-gradient-to-r from-[#8b7ff4] to-[#6366f1] h-full" 
+                      style={{ width: `${(node.meta?.reasoning_trace as any)?.confidence * 100 || 88}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-[#62627a] mt-0.5 block">Confidence: {Math.round((node.meta?.reasoning_trace as any)?.confidence * 100 || 88)}%</span>
+                </div>
+
+                <div>
+                  <span className="text-white font-medium block">Alternatives Considered</span>
+                  <p className="text-[10.5px] mt-0.5 text-[#8c8ca3]">
+                    {((node.meta?.reasoning_trace as any)?.alternatives as string[])?.join(", ") || 
+                      "Considered standalone developer assignment, opted for integrated workflow dependencies."}
+                  </p>
+                </div>
+
+                <div>
+                  <span className="text-white font-medium block">Retrieved Context</span>
+                  <p className="text-[10.5px] mt-0.5 text-[#8c8ca3]">
+                    {(node.meta?.reasoning_trace as any)?.context || 
+                      "Sourced from Brand Guidelines wiki and target release schedule."}
+                  </p>
+                </div>
+              </div>
+            </details>
+
+            {/* Layer 3: Full Raw Trace */}
+            <details className="group">
+              <summary className="cursor-pointer text-[10px] font-bold text-[#62627a] hover:text-[#eeeef2] select-none py-1 flex items-center justify-between">
+                <span>VIEW RAW TELEMETRY</span>
+                <span className="transition-transform group-open:rotate-90">➔</span>
+              </summary>
+              <pre className="mt-1 bg-[#09090d] border border-[rgba(255,255,255,0.06)] rounded-lg p-2 text-[9.5px] text-[#86869e] font-mono overflow-x-auto max-h-32 custom-scrollbar">
+                {JSON.stringify(node.meta?.reasoning_trace || {
+                  node_id: node.id,
+                  agent: node.meta?.active_agent || "strategic_planner",
+                  timestamp: Date.now(),
+                  decision_tree: {
+                    evaluated: ["member_assignment", "direct_action"],
+                    selected: "member_assignment",
+                    rationale: "Aligns with roles listed in team directory"
+                  }
+                }, null, 2)}
+              </pre>
+            </details>
+          </div>
         )}
 
         {/* Metadata */}

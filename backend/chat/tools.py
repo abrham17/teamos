@@ -1081,6 +1081,48 @@ def execute_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, Any]:
     """
     # Route ext_* prefixed tools to external integration platform
     if name.startswith("ext_"):
+        # Guardian tier-1 pre-check for external writes
+        try:
+            from planning.guardian.context import GuardianContext
+            from planning.guardian.tier1 import tier1_check
+            from accounts.models import Team
+            team_obj = Team.objects.filter(id=ctx.team_id).first()
+            external_writes = getattr(team_obj, "external_writes_enabled", False) if team_obj else False
+            g_ctx = GuardianContext(
+                acting_team_id=str(ctx.team_id),
+                session_id=str(ctx.session_id or ""),
+                token_usage_this_run=0,
+                team_token_budget=999999,
+                team_has_integrations=True,
+                external_writes_enabled=external_writes,
+                human_approved_destructive=False,
+                current_round=0,
+            )
+            g_result = tier1_check(name, {}, g_ctx)
+            if not g_result.approved:
+                human_name = (
+                    name.replace("ext_", "")
+                    .replace("_", " ")
+                    .title()
+                )
+                return {
+                    "ok": False,
+                    "guardian_blocked": True,
+                    "tier": g_result.tier,
+                    "action": name,
+                    "human_action": human_name,
+                    "reason": g_result.reason or "This action is blocked by team policy.",
+                    "tier_label": (
+                        "Tier 1: Rule-based block — a policy rule prevents this action."
+                        if g_result.tier == 1
+                        else "Tier 2: LLM-reviewed — this action was judged outside the scope of your request."
+                    ),
+                    "settings_path": "Integrations → External Writes" if "write" in name or "send" in name else None,
+                    "error": f"Guardian blocked: {name} — {g_result.reason}",
+                }
+        except Exception:
+            pass  # Non-blocking — if guardian check fails, proceed normally
+
         try:
             from integrations.tool_executor import execute_external_tool
             args = _parse_args(arguments)
@@ -1091,13 +1133,15 @@ def execute_tool(name: str, arguments: str, ctx: ToolContext) -> dict[str, Any]:
             logger.exception("External tool execution failed for %s", name)
             return {"ok": False, "error": f"External tool error: {e}", "tool": name}
 
-    # Phase 2: Route MCP tool calls to external servers
+    # Phase 2: Route MCP tool calls to external servers (using upgraded Executor)
     if name.startswith("mcp_"):
         try:
-            from chat.mcp_client import get_mcp_client
-            mcp_client = get_mcp_client(ctx.team_id)
+            from chat.mcp.executor import MCPToolExecutor
+            session_id = str(ctx.session_id) if ctx.session_id else ""
+            executor = MCPToolExecutor(team_id=str(ctx.team_id), session_id=session_id)
             args = _parse_args(arguments)
-            result = mcp_client.route_tool_call(name, args)
+            idem_key = args.get("idempotency_key")
+            result = executor.execute(name, args, idempotency_key=idem_key)
             if result is not None:
                 return result
         except Exception as e:

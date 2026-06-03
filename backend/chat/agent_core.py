@@ -28,6 +28,7 @@ from chat.models import ChatSession
 from chat.tools import ToolContext
 from chat.working_memory import WorkingMemory
 from llm_orchestrator.orchestrator import llm_call
+from langsmith import traceable
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,7 @@ class AgentCore:
         self.preloaded_rag = preloaded_rag  # P1.3: avoid redundant RAG search
         self._research_citations: list[dict[str, Any]] = []
 
+    @traceable(name="AgentCore.run", run_type="chain")
     def run(
         self,
         context_str: str,
@@ -210,6 +212,17 @@ class AgentCore:
                     if self.config.mode == "research":
                         yield from self._emit_research_tool_result(name, arguments, result)
                     yield _sse("tool_result", {"name": name, "ok": result.get("ok"), "result": truncated_result})
+                    if result.get("guardian_blocked"):
+                        yield _sse("guardian_block", {
+                            "id": f"gb-{name}-{id(result)}",
+                            "action": name,
+                            "human_action": result.get("human_action"),
+                            "reason": result.get("reason", "Action blocked by Guardian policy."),
+                            "tier": result.get("tier", 1),
+                            "tier_label": result.get("tier_label"),
+                            "settings_path": result.get("settings_path"),
+                            "rephrase_suggestion": result.get("rephrase_suggestion"),
+                        })
                     self.working_memory.track_tool_call(name, {}, bool(result.get("ok")))
                     messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(truncated_result)})
             else:
@@ -223,6 +236,17 @@ class AgentCore:
                     if self.config.mode == "research":
                         yield from self._emit_research_tool_result(name, arguments, result)
                     yield _sse("tool_result", {"name": name, "ok": result.get("ok"), "result": truncated_result})
+                    if result.get("guardian_blocked"):
+                        yield _sse("guardian_block", {
+                            "id": f"gb-{name}-{id(result)}",
+                            "action": name,
+                            "human_action": result.get("human_action"),
+                            "reason": result.get("reason", "Action blocked by Guardian policy."),
+                            "tier": result.get("tier", 1),
+                            "tier_label": result.get("tier_label"),
+                            "settings_path": result.get("settings_path"),
+                            "rephrase_suggestion": result.get("rephrase_suggestion"),
+                        })
                     self.working_memory.track_tool_call(name, {}, bool(result.get("ok")))
                     messages.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(truncated_result)})
 
@@ -441,6 +465,7 @@ class AgentCore:
             merged.append(citation)
         return merged
 
+    @traceable(name="AgentCore._execute_tool", run_type="tool")
     def _execute_tool(self, name: str, arguments: str) -> dict[str, Any]:
         """Execute a tool with timeout protection."""
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:

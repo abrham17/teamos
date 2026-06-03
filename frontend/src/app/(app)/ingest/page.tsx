@@ -413,13 +413,15 @@ export default function IngestPage() {
           </div>
         </div>
 
-        {/* Recent Jobs */}
+        {/* Recent Jobs — live pipeline cards */}
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-[var(--text-primary)]">Ingestion History</h3>
-            <button onClick={fetchJobs} className="text-xs text-[var(--accent)] hover:underline">Refresh List</button>
+            <h3 className="text-lg font-bold text-[var(--text-primary)]">Ingestion Pipeline</h3>
+            <button onClick={fetchJobs} className="text-xs text-[var(--accent)] hover:underline flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" /> Refresh
+            </button>
           </div>
-          
+
           {jobs.length === 0 ? (
             <div className="border border-dashed border-[var(--border-subtle)] rounded-2xl">
               <EmptyState
@@ -431,52 +433,10 @@ export default function IngestPage() {
               />
             </div>
           ) : (
-            <div className="bg-white/[0.02] border border-[var(--border-subtle)] rounded-2xl overflow-hidden shadow-md backdrop-blur-md">
-              <table className="w-full text-left">
-                <thead className="bg-white/[0.01] border-b border-[var(--border-subtle)]">
-                  <tr>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">Source</th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">Type</th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">Status</th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">Stage</th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-[var(--text-dim)]">Date</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border-subtle)]">
-                  {jobs.map(job => (
-                    <tr key={job.id} className="hover:bg-[var(--bg-800)] transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-lg ${job.source_type === 'url' ? 'bg-blue-500/10 text-blue-500' : 'bg-amber-500/10 text-amber-500'}`}>
-                            {job.source_type === 'url' ? <Globe className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                          </div>
-                          <span className="text-sm font-medium text-[var(--text-primary)] truncate max-w-[240px]">
-                            {job.source_filename || job.source_url || "Unknown Source"}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-xs text-[var(--text-muted)] uppercase">{job.source_type}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <StatusBadge status={job.status} />
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-xs text-[var(--text-primary)] capitalize">{job.ingest_stage || "queued"}</div>
-                        {job.ingest_stage_detail && (
-                          <div className="text-[10px] text-[var(--text-muted)]">{job.ingest_stage_detail}</div>
-                        )}
-                        {job.error ? (
-                          <div className="mt-1 max-w-xs text-[10px] text-[var(--danger)]">{job.error}</div>
-                        ) : null}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-[var(--text-muted)]">
-                        {new Date(job.created_at).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="flex flex-col gap-4">
+              {jobs.map((job) => (
+                <IngestJobCard key={job.id} job={job} />
+              ))}
             </div>
           )}
         </div>
@@ -486,13 +446,213 @@ export default function IngestPage() {
   );
 }
 
+/* ─────────────────────────────────────────────────────
+   Pipeline stages definition
+   ───────────────────────────────────────────────────── */
+const PIPELINE_STAGES: { key: string; label: string; description: string; color: string }[] = [
+  { key: "queued",        label: "Queued",          description: "Waiting in queue for a worker",          color: "#6b7280" },
+  { key: "extracting",   label: "Extracting",       description: "Pulling text and structure from source",  color: "#3b82f6" },
+  { key: "governance",   label: "Governance Review",description: "AI checking for contradictions & quality",color: "#f59e0b" },
+  { key: "materializing",label: "Materializing",    description: "Writing new or updated wiki content",     color: "#8b7ff4" },
+  { key: "vectorizing",  label: "Vectorizing",      description: "Encoding chunks into semantic vectors",   color: "#06b6d4" },
+  { key: "graph_sync",   label: "Graph Sync",       description: "Linking knowledge into the graph",        color: "#10b981" },
+  { key: "completed",    label: "Complete",         description: "All stages finished successfully",        color: "#10b981" },
+];
+
+function stageIndex(stage?: string): number {
+  const idx = PIPELINE_STAGES.findIndex((s) => s.key === stage);
+  return idx === -1 ? 0 : idx;
+}
+
+function IngestJobCard({ job }: { job: IngestJob }) {
+  const [expanded, setExpanded] = useState(job.status === "running" || job.status === "review_required");
+  const currentIdx = stageIndex(job.ingest_stage);
+  const isActive = job.status === "running" || job.status === "pending";
+  const hasProblem = job.status === "failed" || job.status === "review_required";
+
+  return (
+    <div
+      className={`rounded-2xl border transition-all overflow-hidden ${
+        isActive
+          ? "border-[var(--accent)]/30 bg-[var(--bg-800)] shadow-lg"
+          : hasProblem
+          ? "border-amber-500/20 bg-amber-500/5"
+          : "border-[var(--border-subtle)] bg-[var(--bg-800)]"
+      }`}
+    >
+      {/* Card header */}
+      <button
+        className="w-full flex items-center gap-4 px-5 py-4 text-left"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        {/* Source type icon */}
+        <div
+          className={`p-2 rounded-lg shrink-0 ${
+            job.source_type === "url" || job.source_type === "youtube"
+              ? "bg-blue-500/10 text-blue-400"
+              : job.source_type === "pdf"
+              ? "bg-red-500/10 text-red-400"
+              : "bg-amber-500/10 text-amber-400"
+          }`}
+        >
+          {job.source_type === "url" || job.source_type === "youtube" ? (
+            <Globe className="w-4 h-4" />
+          ) : (
+            <FileText className="w-4 h-4" />
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-[var(--text-primary)] truncate">
+            {job.source_filename || job.source_url || "Unknown Source"}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-[10px] uppercase tracking-widest text-[var(--text-dim)]">{job.source_type}</span>
+            <span className="text-[var(--text-dim)]">·</span>
+            <span className="text-[10px] text-[var(--text-dim)]">{new Date(job.created_at).toLocaleString()}</span>
+          </div>
+        </div>
+
+        {/* Status badge */}
+        <StatusBadge status={job.status} />
+
+        <ChevronDown
+          className={`w-4 h-4 text-[var(--text-muted)] transition-transform shrink-0 ${expanded ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {/* Expanded pipeline */}
+      {expanded && (
+        <div className="px-5 pb-5 animate-in fade-in slide-in-from-top-2 duration-200">
+          {/* Review required conflict panel */}
+          {job.status === "review_required" && (
+            <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+              <div className="flex items-center gap-2 text-amber-300 font-semibold text-sm mb-2">
+                <AlertCircle className="w-4 h-4" />
+                Governance Review Required
+              </div>
+              <p className="text-xs text-amber-200/80 leading-relaxed">
+                {job.ingest_stage_detail ||
+                  "This document may contradict existing knowledge. Review the proposed changes in the Wiki changeset panel before approving."}
+              </p>
+              <div className="flex gap-2 mt-3">
+                <button className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-black font-bold hover:bg-amber-400 transition-all">
+                  Review Changeset →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Error panel */}
+          {job.status === "failed" && job.error && (
+            <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4">
+              <div className="flex items-center gap-2 text-red-300 font-semibold text-sm mb-1">
+                <AlertCircle className="w-4 h-4" /> Pipeline Failed
+              </div>
+              <p className="text-xs text-red-200/80 font-mono">{job.error}</p>
+            </div>
+          )}
+
+          {/* Vertical pipeline */}
+          <div className="relative pl-4">
+            {PIPELINE_STAGES.map((stage, idx) => {
+              const isDone = idx < currentIdx || job.status === "done";
+              const isCurrent = idx === currentIdx && job.status !== "done";
+              const isPending = idx > currentIdx;
+
+              return (
+                <div key={stage.key} className="flex gap-4 relative">
+                  {/* Connector line */}
+                  {idx < PIPELINE_STAGES.length - 1 && (
+                    <div
+                      className="absolute left-[11px] top-[24px] bottom-0 w-[2px] transition-all duration-500"
+                      style={{
+                        background: isDone
+                          ? stage.color
+                          : "rgba(255,255,255,0.06)",
+                        height: "calc(100% - 4px)",
+                      }}
+                    />
+                  )}
+
+                  {/* Stage dot */}
+                  <div className="relative z-10 mt-[6px] shrink-0">
+                    <div
+                      className={`w-[22px] h-[22px] rounded-full flex items-center justify-center transition-all duration-500 ${
+                        isCurrent ? "ring-4 ring-offset-1 ring-offset-[var(--bg-800)]" : ""
+                      }`}
+                      style={{
+                        background: isDone
+                          ? stage.color
+                          : isCurrent
+                          ? stage.color + "40"
+                          : "rgba(255,255,255,0.05)",
+                        borderWidth: 2,
+                        borderStyle: "solid",
+                        borderColor: isDone || isCurrent ? stage.color : "rgba(255,255,255,0.08)",
+                      }}
+                    >
+                      {isDone ? (
+                        <CheckCircle2 size={11} style={{ color: "#fff" }} />
+                      ) : isCurrent ? (
+                        <div
+                          className="w-2 h-2 rounded-full animate-pulse"
+                          style={{ background: stage.color }}
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* Stage label + detail */}
+                  <div className={`pb-5 flex-1 ${isPending ? "opacity-30" : ""}`}>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-xs font-semibold ${
+                          isCurrent ? "text-white" : isDone ? "text-[var(--text-secondary)]" : "text-[var(--text-dim)]"
+                        }`}
+                      >
+                        {stage.label}
+                      </span>
+                      {isCurrent && isActive && (
+                        <span
+                          className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded animate-pulse"
+                          style={{ background: stage.color + "25", color: stage.color }}
+                        >
+                          In Progress
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-[var(--text-dim)] mt-0.5">
+                      {isCurrent && job.ingest_stage_detail ? job.ingest_stage_detail : stage.description}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* eslint-disable @typescript-eslint/no-unused-vars */
+function ChevronDown({ className }: { className?: string }) {
+  return (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
 function StatusBadge({ status }: { status: IngestJob["status"] }) {
   const styles: Record<IngestJob["status"], string> = {
-    pending: "bg-gray-500/10 text-gray-500",
-    running: "bg-blue-500/10 text-blue-500 animate-pulse",
+    pending: "bg-gray-500/10 text-gray-400",
+    running: "bg-blue-500/10 text-blue-400 animate-pulse",
     done: "bg-[var(--success-bg)] text-[var(--success)]",
     failed: "bg-[var(--danger-bg)] text-[var(--danger)]",
-    review_required: "bg-amber-500/10 text-amber-500",
+    review_required: "bg-amber-500/10 text-amber-400",
   };
 
   const icons: Record<IngestJob["status"], ReactNode> = {
@@ -503,12 +663,21 @@ function StatusBadge({ status }: { status: IngestJob["status"] }) {
     review_required: <AlertCircle className="h-3 w-3" />,
   };
 
+  const labels: Record<IngestJob["status"], string> = {
+    pending: "Queued",
+    running: "Running",
+    done: "Done",
+    failed: "Failed",
+    review_required: "Review",
+  };
+
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${styles[status]}`}
     >
       {icons[status]}
-      {status === "review_required" ? "review" : status}
+      {labels[status]}
     </span>
   );
 }
+

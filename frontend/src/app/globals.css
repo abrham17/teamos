@@ -306,6 +306,22 @@
   100% { transform: translateX(200%); }
 }
 
+/* Section 6.3 — Canvas settled animation keyframes */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* Section 7 — Mobile scrollbar-none utility */
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
+
 /* Graph page — ambient orbs (home-hero energy, behind Cytoscape) */
 .graph-ambient-orb {
   display: none;

@@ -15,6 +15,7 @@ interface CanvasState {
   edges: CanvasEdge[];
   viewport: CanvasViewport;
   selectedNodeIds: string[];
+  selectedEdgeId: string | null;
   isDragging: boolean;
   isPanning: boolean;
 }
@@ -28,6 +29,7 @@ export function useCanvas(initialNodes: CanvasNode[] = [], initialEdges: CanvasE
     edges: initialEdges,
     viewport: DEFAULT_VIEWPORT,
     selectedNodeIds: [],
+    selectedEdgeId: null,
     isDragging: false,
     isPanning: false,
   });
@@ -38,7 +40,7 @@ export function useCanvas(initialNodes: CanvasNode[] = [], initialEdges: CanvasE
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
   const [connectionMousePos, setConnectionMousePos] = useState<{ x: number; y: number } | null>(null);
 
-  const dragRef = useRef<{ nodeId: string; startX: number; startY: number } | null>(null);
+  const dragRef = useRef<{ nodeId: string; startX: number; startY: number; startNodes: {id: string; x: number; y: number}[] } | null>(null);
   const panRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
 
   const pushUndo = useCallback(() => {
@@ -89,26 +91,31 @@ export function useCanvas(initialNodes: CanvasNode[] = [], initialEdges: CanvasE
 
   const selectNode = useCallback((nodeId: string | null, multi: boolean = false) => {
     setState((s) => {
-      if (!nodeId) return { ...s, selectedNodeIds: [] };
+      if (!nodeId) return { ...s, selectedNodeIds: [], selectedEdgeId: null };
       if (multi) {
         const exists = s.selectedNodeIds.includes(nodeId);
         return {
           ...s,
+          selectedEdgeId: null,
           selectedNodeIds: exists
             ? s.selectedNodeIds.filter((id) => id !== nodeId)
             : [...s.selectedNodeIds, nodeId],
         };
       }
-      return { ...s, selectedNodeIds: [nodeId] };
+      return { ...s, selectedNodeIds: [nodeId], selectedEdgeId: null };
     });
   }, []);
 
+  const selectEdge = useCallback((edgeId: string | null) => {
+    setState((s) => ({ ...s, selectedEdgeId: edgeId, selectedNodeIds: [] }));
+  }, []);
+
   const selectAll = useCallback(() => {
-    setState((s) => ({ ...s, selectedNodeIds: s.nodes.map((n) => n.id) }));
+    setState((s) => ({ ...s, selectedNodeIds: s.nodes.map((n) => n.id), selectedEdgeId: null }));
   }, []);
 
   const clearSelection = useCallback(() => {
-    setState((s) => ({ ...s, selectedNodeIds: [] }));
+    setState((s) => ({ ...s, selectedNodeIds: [], selectedEdgeId: null }));
   }, []);
 
   const updateNode = useCallback((nodeId: string, updates: Partial<CanvasNode>) => {
@@ -116,6 +123,33 @@ export function useCanvas(initialNodes: CanvasNode[] = [], initialEdges: CanvasE
     setState((s) => ({
       ...s,
       nodes: s.nodes.map((n) => (n.id === nodeId ? { ...n, ...updates } : n)),
+    }));
+  }, [pushUndo]);
+
+  const updateEdge = useCallback((edgeId: string, updates: Partial<CanvasEdge>) => {
+    pushUndo();
+    setState((s) => ({
+      ...s,
+      edges: s.edges.map((e) => (e.id === edgeId ? { ...e, ...updates } : e)),
+    }));
+  }, [pushUndo]);
+
+  const duplicateNode = useCallback((nodeId: string) => {
+    pushUndo();
+    setState((s) => {
+      const node = s.nodes.find((n) => n.id === nodeId);
+      if (!node) return s;
+      const newId = `node_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const dup: CanvasNode = { ...node, id: newId, x: node.x + 40, y: node.y + 40 };
+      return { ...s, nodes: [...s.nodes, dup], selectedNodeIds: [newId] };
+    });
+  }, [pushUndo]);
+
+  const changeNodeType = useCallback((nodeId: string, newType: CanvasNodeType) => {
+    pushUndo();
+    setState((s) => ({
+      ...s,
+      nodes: s.nodes.map((n) => (n.id === nodeId ? { ...n, type: newType } : n)),
     }));
   }, [pushUndo]);
 
@@ -140,6 +174,15 @@ export function useCanvas(initialNodes: CanvasNode[] = [], initialEdges: CanvasE
         selectedNodeIds: [],
       };
     });
+  }, [pushUndo]);
+
+  const deleteSelectedEdge = useCallback(() => {
+    pushUndo();
+    setState((s) => ({
+      ...s,
+      edges: s.edges.filter((e) => e.id !== s.selectedEdgeId),
+      selectedEdgeId: null,
+    }));
   }, [pushUndo]);
 
   const groupNodes = useCallback(() => {
@@ -212,26 +255,39 @@ export function useCanvas(initialNodes: CanvasNode[] = [], initialEdges: CanvasE
   }, [pushUndo]);
 
   const startDrag = useCallback((nodeId: string, clientX: number, clientY: number) => {
-    dragRef.current = { nodeId, startX: clientX, startY: clientY };
-    setState((s) => ({
-      ...s,
-      isDragging: true,
-      selectedNodeIds: s.selectedNodeIds.includes(nodeId) ? s.selectedNodeIds : [nodeId],
-    }));
+    setState((s) => {
+      const selectedSet = s.selectedNodeIds.includes(nodeId) ? new Set(s.selectedNodeIds) : new Set([nodeId]);
+      const startNodes = s.nodes
+        .filter((n) => selectedSet.has(n.id))
+        .map((n) => ({ id: n.id, x: n.x, y: n.y }));
+      dragRef.current = { nodeId, startX: clientX, startY: clientY, startNodes };
+      return {
+        ...s,
+        isDragging: true,
+        selectedNodeIds: selectedSet.has(nodeId) ? s.selectedNodeIds : [nodeId],
+      };
+    });
   }, []);
 
   const onDragMove = useCallback((clientX: number, clientY: number, zoom: number) => {
     if (!dragRef.current) return;
     const dx = (clientX - dragRef.current.startX) / zoom;
     const dy = (clientY - dragRef.current.startY) / zoom;
-    setState((s) => ({
-      ...s,
-      nodes: s.nodes.map((n) =>
-        n.id === dragRef.current!.nodeId
-          ? { ...n, x: Math.max(0, n.x + dx), y: Math.max(0, n.y + dy) }
-          : n,
-      ),
-    }));
+    const selectedSet = new Set([dragRef.current.nodeId]);
+    setState((s) => {
+      const multiDrag = s.selectedNodeIds.length > 1 && s.selectedNodeIds.includes(dragRef.current!.nodeId);
+      const moveIds = multiDrag ? new Set(s.selectedNodeIds) : selectedSet;
+      const startNodes = dragRef.current!.startNodes;
+      return {
+        ...s,
+        nodes: s.nodes.map((n) => {
+          if (!moveIds.has(n.id)) return n;
+          const start = startNodes.find((sn) => sn.id === n.id);
+          if (!start) return n;
+          return { ...n, x: Math.max(0, start.x + dx), y: Math.max(0, start.y + dy) };
+        }),
+      };
+    });
     dragRef.current.startX = clientX;
     dragRef.current.startY = clientY;
   }, []);
@@ -274,6 +330,39 @@ export function useCanvas(initialNodes: CanvasNode[] = [], initialEdges: CanvasE
   const zoomFit = useCallback(() => {
     setState((s) => ({ ...s, viewport: DEFAULT_VIEWPORT }));
   }, []);
+
+  const zoomToNode = useCallback((nodeId: string) => {
+    setState((s) => {
+      const node = s.nodes.find((n) => n.id === nodeId);
+      if (!node) return s;
+      const padding = 300;
+      return {
+        ...s,
+        viewport: {
+          zoom: 1,
+          panX: -(node.x - padding) * 1,
+          panY: -(node.y - padding) * 1,
+        },
+      };
+    });
+  }, []);
+
+  const autoLayout = useCallback(() => {
+    pushUndo();
+    setState((s) => {
+      const cols = Math.ceil(Math.sqrt(s.nodes.length));
+      const gapX = 340;
+      const gapY = 220;
+      return {
+        ...s,
+        nodes: s.nodes.map((n, i) => ({
+          ...n,
+          x: 60 + (i % cols) * gapX,
+          y: 60 + Math.floor(i / cols) * gapY,
+        })),
+      };
+    });
+  }, [pushUndo]);
 
   const loadCanvas = useCallback((data: { nodes: CanvasNode[]; edges: CanvasEdge[]; viewport?: CanvasViewport }) => {
     setState((s) => ({
@@ -322,11 +411,16 @@ export function useCanvas(initialNodes: CanvasNode[] = [], initialEdges: CanvasE
     setEdges,
     setViewport,
     selectNode,
+    selectEdge,
     selectAll,
     clearSelection,
     updateNode,
+    updateEdge,
+    duplicateNode,
+    changeNodeType,
     deleteNode,
     deleteSelectedNodes,
+    deleteSelectedEdge,
     addNode,
     addEdge,
     removeEdge,
@@ -341,6 +435,8 @@ export function useCanvas(initialNodes: CanvasNode[] = [], initialEdges: CanvasE
     zoomIn,
     zoomOut,
     zoomFit,
+    zoomToNode,
+    autoLayout,
     loadCanvas,
     startConnect,
     updateConnectPos,

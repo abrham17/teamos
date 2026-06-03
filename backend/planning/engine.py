@@ -757,3 +757,88 @@ class PlanningEngine:
             except Exception:
                 logger.exception("Reindex failed")
                 yield _sse("agent_result", {"name": "plan_reindex", "ok": False, "result": {"error": "reindex_failed"}})
+
+def run_db_mutation_stage_langgraph(
+    plan: dict,
+    team_id: str,
+    session_id: str,
+    user: User,
+    thread_id: str = None
+) -> dict:
+    from django.db import transaction
+    from planning.services import create_project, create_task, create_milestone
+    from accounts.models import Team
+
+    team = Team.objects.get(id=team_id)
+    valid_user_ids = _team_user_ids(team)
+    
+    with transaction.atomic():
+        project_obj = create_project(
+            team_id=team_id,
+            user=user,
+            payload={
+                "name": plan.get("projectName", "New Project"),
+                "description": plan.get("description", ""),
+                "status": "active",
+            },
+        )
+        if thread_id:
+            project_obj.langgraph_thread_id = thread_id
+            project_obj.save(update_fields=["langgraph_thread_id"])
+            
+        _apply_project_members(
+            project=project_obj,
+            members_data=plan.get("members", []),
+            valid_user_ids=valid_user_ids,
+        )
+        
+        index_to_task = {}
+        deferred_deps = {}
+        
+        for idx, t_data in enumerate(plan.get("tasks", [])):
+            payload = {
+                "title": t_data.get("title", "Untitled Task"),
+                "description": t_data.get("description", ""),
+                "status": t_data.get("status", "todo"),
+                "priority": t_data.get("priority", "medium"),
+                "assignee_id": _resolve_team_user_id(t_data, valid_user_ids),
+                "start_date": _sanitize_date(t_data.get("startDate") or t_data.get("start_date")),
+                "end_date": _sanitize_date(t_data.get("endDate") or t_data.get("end_date")),
+                "order_index": t_data.get("order_index", idx),
+            }
+            if not payload["assignee_id"]:
+                payload.pop("assignee_id")
+                
+            task = create_task(project=project_obj, user=user, payload=payload)
+            index_to_task[idx] = task
+            
+            raw_dep_ids = t_data.get("dependency_ids") or t_data.get("_inferred_deps")
+            if raw_dep_ids:
+                deferred_deps[idx] = raw_dep_ids
+                
+        for task_idx, raw_dep_ids in deferred_deps.items():
+            task = index_to_task.get(task_idx)
+            if not task:
+                continue
+            resolved_uuids = []
+            dep_list = raw_dep_ids if isinstance(raw_dep_ids, list) else [raw_dep_ids]
+            for d in dep_list:
+                d_str = str(d).strip()
+                if d_str.lstrip("-").isdigit():
+                    up_idx = int(d_str)
+                    upstream_task = index_to_task.get(up_idx)
+                    if upstream_task and str(upstream_task.id) != str(task.id):
+                        resolved_uuids.append(str(upstream_task.id))
+            if resolved_uuids:
+                task.dependencies.set(resolved_uuids)
+
+        for idx, m_data in enumerate(plan.get("milestones", [])):
+            payload = {
+                "title": m_data.get("title", "Untitled"),
+                "description": m_data.get("description", ""),
+                "target_date": _sanitize_date(m_data.get("date") or m_data.get("target_date")),
+                "order_index": idx,
+            }
+            create_milestone(project=project_obj, user=user, payload=payload)
+
+    return {"project_id": str(project_obj.id)}

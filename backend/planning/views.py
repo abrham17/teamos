@@ -684,6 +684,62 @@ class PlanningAssistStreamView(APIView):
                 logger.exception("AI Architect chat stream failed")
                 yield f"event: agent_error\ndata: {_json.dumps({'detail': str(e)})}\n\n"
 
+        def _langgraph_planner_sse_sync():
+            from planning.agents.graph import build_planning_graph
+            from planning.agents.checkpointer import get_checkpointer
+            import uuid
+            
+            thread_id = str(uuid.uuid4())
+            config = {
+                "configurable": {
+                    "thread_id": thread_id,
+                    "team_id": str(team_id)
+                }
+            }
+            
+            # Take a snapshot of available MCP servers at start of run
+            try:
+                from chat.mcp.registry import get_mcp_registry
+                from chat.mcp.health import is_server_available
+                registry = get_mcp_registry()
+                available_servers = []
+                for t_def in registry.get_tools_for_team(str(team_id)):
+                    if is_server_available(t_def.server_id) and t_def.server_name not in available_servers:
+                        available_servers.append(t_def.server_name)
+            except Exception:
+                available_servers = []
+
+            initial_state = {
+                "user_prompt": prompt,
+                "team_id": str(team_id),
+                "session_id": str(request.user.id),
+                "project_id": project_id,
+                "messages": chat_history or [],
+                "memory_refs": [],
+                "token_usage": {},
+                "retry_count": 0,
+                "mcp_available_servers": available_servers,
+                "mcp_tools_used": [],
+            }
+            
+            try:
+                checkpointer = get_checkpointer()
+                graph = build_planning_graph(checkpointer)
+                
+                for event in graph.stream(initial_state, config, stream_mode="updates"):
+                    node_name = list(event.keys())[0]
+                    node_output = list(event.values())[0]
+                    
+                    yield f"data: {_json.dumps({'stage': node_name, 'data': node_output})}\n\n"
+                    
+                    state = graph.get_state(config)
+                    if state.next == ("human_review",):
+                        yield f"data: {_json.dumps({'stage': 'awaiting_approval', 'thread_id': thread_id, 'plan': state.values.get('final_plan', {})})}\n\n"
+                        break
+            except Exception as e:
+                logger.exception("LangGraph planner stream failed")
+                yield f"event: agent_error\ndata: {_json.dumps({'detail': str(e)})}\n\n"
+
         _stream_done = object()
         _heartbeat = object()
 
@@ -705,8 +761,15 @@ class PlanningAssistStreamView(APIView):
                         for sse_line in _chat_sse_sync():
                             out_q.put(sse_line)
                     else:
-                        for sse_line in _planner_sse_sync():
-                            out_q.put(sse_line)
+                        from django.conf import settings
+                        USE_LANGGRAPH = getattr(settings, "PLANNING_USE_LANGGRAPH", False)
+                        user_plan = getattr(request.user.current_team, "plan", "pro") if hasattr(request.user, "current_team") and request.user.current_team else "pro"
+                        if USE_LANGGRAPH and user_plan in ["pro", "enterprise"]:
+                            for sse_line in _langgraph_planner_sse_sync():
+                                out_q.put(sse_line)
+                        else:
+                            for sse_line in _planner_sse_sync():
+                                out_q.put(sse_line)
                 except Exception:
                     logger.exception("Planner SSE producer thread failed")
                 finally:

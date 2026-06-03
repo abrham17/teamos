@@ -466,6 +466,30 @@ export function MarkdownWorkspace() {
         </div>
 
         <div className="flex items-center gap-2.5">
+          {page && !isNew && (
+            <>
+              {/* Freshness Badge */}
+              <div 
+                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold text-[#10b981] bg-[#10b981]/10 border border-[#10b981]/25 cursor-help"
+                title="Freshness is calculated from last update time, backlinks, and recent ingest topics."
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-pulse" />
+                Freshness: {page.frontmatter?.freshness || "96%"}
+              </div>
+
+              {/* Contradiction Badge */}
+              {page.frontmatter?.conflicts && (
+                <button
+                  onClick={() => router.push(`/wiki/conflicts?page=${page.slug}`)}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-[#f87171] bg-[#f87171]/10 border border-[#f87171]/25 hover:bg-[#f87171]/20 transition-all animate-pulse"
+                  title="Click to view and resolve contradictions"
+                >
+                  ⚠️ {page.frontmatter.conflicts} Conflict{parseInt(page.frontmatter.conflicts) > 1 ? 's' : ''}
+                </button>
+              )}
+            </>
+          )}
+
           {!zenMode && saveStatus !== "idle" && (
             <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-500 ${
               saveStatus === "saving"

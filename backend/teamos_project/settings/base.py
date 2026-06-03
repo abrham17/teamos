@@ -229,6 +229,14 @@ CELERY_BEAT_SCHEDULE = {
         "task": "planning.tasks.autonomous_schedule_auditor",
         "schedule": crontab(hour="*/2"),  # every 2 hours
     },
+    "check-mcp-servers": {
+        "task": "chat.tasks.check_all_mcp_servers",
+        "schedule": crontab(minute="*/5"),  # every 5 minutes
+    },
+    "daily-directive-maintenance": {
+        "task": "chat.tasks.daily_directive_maintenance",
+        "schedule": crontab(hour="2", minute="0"),  # nightly at 02:00
+    },
 }
 
 # --- External APIs ---
@@ -360,3 +368,22 @@ LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
+
+# --- LangSmith Tracing ---
+LANGSMITH_API_KEY = os.environ.get("LANGSMITH_API_KEY", "")
+LANGSMITH_PROJECT = os.environ.get("LANGSMITH_PROJECT", "teamos-production")
+LANGSMITH_TRACING = os.environ.get("LANGSMITH_TRACING", "true").lower() in ("1", "true", "yes")
+
+if LANGSMITH_TRACING and LANGSMITH_API_KEY:
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_API_KEY"] = LANGSMITH_API_KEY
+    os.environ["LANGCHAIN_PROJECT"] = LANGSMITH_PROJECT
+
+# --- Planning Engine Feature Flag ---
+PLANNING_USE_LANGGRAPH = os.environ.get("PLANNING_USE_LANGGRAPH", "true").lower() in ("1", "true", "yes")
+
+# --- Dynamic Crew Factory Feature Flag ---
+# When true, multi-domain high-complexity chat prompts are routed through a
+# LangGraph crew of specialised agents instead of a single AgentCore run.
+# Keep false until crew graphs are end-to-end tested.
+CHAT_USE_CREW_FACTORY = os.environ.get("CHAT_USE_CREW_FACTORY", "true").lower() in ("1", "true", "yes")

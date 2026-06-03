@@ -31,9 +31,12 @@ class Project(models.Model):
         related_name="associated_projects",
         help_text="Wiki pages/documents semantically linked to this project."
     )
+    langgraph_thread_id = models.UUIDField(null=True, blank=True)
+    planning_run_metadata = models.JSONField(null=True, blank=True)
 
     class Meta:
         ordering = ["-updated_at"]
+
 
     def __str__(self):
         return f"[{self.team.name}] {self.name}"
@@ -453,3 +456,40 @@ class ProjectIntegrationConfig(models.Model):
 
     def __str__(self):
         return f"Integration config for {self.project.name}"
+
+
+class GuardianAuditLog(models.Model):
+    """
+    Immutable audit record written by the Guardian Agent for every tool invocation.
+    Tier 1 & 2 records are written on pre-execution (whether approved or blocked).
+    Tier 3 records are written post-execution for routine, low-risk mutations.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    team = models.ForeignKey(
+        "accounts.Team",
+        on_delete=models.CASCADE,
+        related_name="guardian_audit_logs",
+    )
+    session_id = models.CharField(max_length=255)
+    tool_name = models.CharField(max_length=255)
+    tool_input = models.JSONField()
+    tool_result = models.JSONField(null=True, blank=True)
+    tier = models.IntegerField()          # 1, 2, or 3
+    approved = models.BooleanField()
+    risk_score = models.FloatField(null=True, blank=True)
+    reason = models.TextField(null=True, blank=True)
+    agent_round = models.IntegerField(null=True, blank=True)
+    latency_ms = models.IntegerField(null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-timestamp"]
+        indexes = [
+            models.Index(fields=["team", "timestamp"]),
+            models.Index(fields=["tool_name", "approved"]),
+            models.Index(fields=["session_id"]),
+        ]
+
+    def __str__(self):
+        status = "✓" if self.approved else "✗"
+        return f"[T{self.tier}]{status} {self.tool_name} @ {self.timestamp:%Y-%m-%d %H:%M}"

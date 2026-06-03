@@ -17,6 +17,7 @@ interface CanvasSurfaceProps {
   onTouchEnd?: (e: TouchEvent<HTMLDivElement>) => void;
   onDrop?: (e: React.DragEvent<HTMLDivElement>) => void;
   onDragOver?: (e: React.DragEvent<HTMLDivElement>) => void;
+  onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
   children: ReactNode;
 }
 
@@ -35,6 +36,7 @@ export function CanvasSurface({
   onTouchEnd,
   onDrop,
   onDragOver,
+  onContextMenu,
   children,
 }: CanvasSurfaceProps) {
   return (
@@ -50,6 +52,7 @@ export function CanvasSurface({
       onTouchEnd={onTouchEnd}
       onDrop={onDrop}
       onDragOver={onDragOver}
+      onContextMenu={onContextMenu}
     >
       <div
         className="absolute inset-0 pointer-events-none opacity-40"

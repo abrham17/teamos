@@ -70,3 +70,9 @@ groq==0.18.0
 appwrite==6.1.0
 gevent==24.2.1
 tiktoken==0.7.0
+langsmith
+langchain-core
+langgraph
+langgraph-checkpoint-postgres
+psycopg[binary]
+psycopg_pool

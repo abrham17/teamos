@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/sidebar/Sidebar";
 import { MobileHeader } from "@/components/sidebar/MobileHeader";
 import { CommandPalette } from "@/components/command/CommandPalette";
 import { ProvisionUser } from "@/components/auth/ProvisionUser";
+import { FloatingPanelHost } from "@/components/ui/FloatingPanelHost";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
@@ -21,7 +22,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {children}
         </main>
         <CommandPalette />
+        {/* Floating panel overlay — persists across all routes */}
+        <FloatingPanelHost />
       </div>
     </div>
   );
 }
+

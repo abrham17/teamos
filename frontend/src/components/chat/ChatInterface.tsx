@@ -11,9 +11,12 @@ import { ChatAgentToolTimeline } from "@/components/chat/ChatAgentToolTimeline";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
-import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentStrategy, ActivityEntry, ChatCapabilities } from "@/components/chat/chatTypes";
+import type { ChatSession, Citation, ChatMessage, AgentToolStep, AgentStrategy, ActivityEntry, ChatCapabilities, CrewAgentProgress, CrewMessage, GuardianBlock } from "@/components/chat/chatTypes";
 import { AgentActivityFeed } from "@/components/chat/AgentActivityFeed";
 import { CollapsibleThoughtBlock } from "@/components/chat/CollapsibleThoughtBlock";
+import { CrewActivityPanel } from "@/components/chat/CrewActivityPanel";
+import { GuardianBlockCard } from "@/components/chat/GuardianBlockCard";
+import { IntentAcknowledgmentCard } from "@/components/chat/IntentAcknowledgmentCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ICONSCOUT } from "@/lib/iconscoutAssets";
 import { PlanReviewPanel, type ReviewMutation, type ReviewPlanPreview } from "@/components/chat/PlanReviewPanel";
@@ -317,8 +320,25 @@ export function ChatInterface() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const handleCorrectRoute = useCallback(
+    (mode: "ask" | "agent" | "plan" | "research") => {
+      // Abort current stream and re-send last user message with corrected mode
+      abortControllerRef.current?.abort();
+      const lastUser = [...messages].reverse().find((m) => m.role === "user");
+      if (!lastUser) return;
+      // Remove last incomplete assistant message then resend with override
+      setMessages((prev) => prev.filter((m) => m.isStreaming !== true));
+      setIsStreaming(false);
+      setStatus("");
+      // Small delay so abort resolves before next fetch
+      setTimeout(() => sendUserMessage(lastUser.content, mode), 80);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [messages]
+  );
+
   const sendUserMessage = useCallback(
-    async (userMsg: string) => {
+    async (userMsg: string, modeOverride?: "ask" | "agent" | "plan" | "research") => {
       const trimmed = userMsg.trim();
       if (!trimmed || !currentTeamId || !activeSessionId || isStreaming) return;
       if (researchRequested && !capabilities?.research_mode_available) {
@@ -327,9 +347,9 @@ export function ChatInterface() {
       }
 
       setIsStreaming(true);
-      setStatus(researchRequested ? "Searching external sources..." : "Analyzing mission...");
+      setStatus(researchRequested && !modeOverride ? "Searching external sources..." : "Analyzing mission...");
       setStrategy(null);
-      
+
       const userMsgObj: ChatMessage = { role: "user", content: trimmed, id: `u-${Date.now()}` };
       setMessages((prev) => [...prev, userMsgObj]);
 
@@ -344,9 +364,13 @@ export function ChatInterface() {
         agentSteps: [],
         reasoning: "",
         activityFeed: [],
+        guardianBlocks: [],
         isStreaming: true,
       };
       setMessages((prev) => [...prev, assistantMsg]);
+
+      // Derive mode: explicit override > research toggle > default
+      const resolvedMode = modeOverride ?? (researchRequested ? "research" : "ask");
 
       try {
         abortControllerRef.current = new AbortController();
@@ -356,7 +380,7 @@ export function ChatInterface() {
             method: "POST",
             headers: { "Content-Type": "application/json", ...auth },
             credentials: "include",
-            body: JSON.stringify({ message: trimmed, research: researchRequested }),
+            body: JSON.stringify({ message: trimmed, mode: resolvedMode }),
             signal: abortControllerRef.current.signal,
           },
         );
@@ -403,6 +427,81 @@ export function ChatInterface() {
                   } else if (currentEvent === "agent_strategy") {
                     const strat = data as unknown as AgentStrategy;
                     setStrategy(strat);
+                    // Also attach strategy to the working message so it persists in history
+                    working = { ...working, strategy: strat };
+                    setMessages((prev) => {
+                      const next = [...prev];
+                      next[next.length - 1] = { ...working };
+                      return next;
+                    });
+                  } else if (currentEvent === "crew_start") {
+                    const roles = ((data as { roles?: string[] }).roles ?? []) as string[];
+                    working = {
+                      ...working,
+                      crewProgress: {
+                        agents: roles.map((r): CrewAgentProgress => ({
+                          role: r,
+                          status: "queued",
+                          current_action: "Queued — waiting for supervisor",
+                        })),
+                        messages: [],
+                        isCompleted: false,
+                      },
+                    };
+                    setMessages((prev) => {
+                      const next = [...prev];
+                      next[next.length - 1] = { ...working };
+                      return next;
+                    });
+                  } else if (currentEvent === "crew_update") {
+                    const node = String((data as { node?: string }).node ?? "");
+                    const nodeData = ((data as { data?: Record<string, unknown> }).data ?? {}) as Record<string, unknown>;
+                    if (working.crewProgress) {
+                      const completed = (nodeData.completed_agents as string[] | undefined) ?? [];
+                      const rawMsgs = (nodeData.agent_messages as Array<Record<string, unknown>> | undefined) ?? [];
+                      const updatedMsgs: CrewMessage[] = rawMsgs.map((m) => ({
+                        from: String(m.from ?? ""),
+                        to: m.to ? String(m.to) : undefined,
+                        content: String(m.content ?? ""),
+                        timestamp: Number(m.timestamp ?? Date.now()),
+                      }));
+                      const updatedAgents: CrewAgentProgress[] = working.crewProgress.agents.map((agent) => {
+                        if (completed.includes(agent.role)) {
+                          return { ...agent, status: "done", current_action: "Completed" };
+                        }
+                        if (node === `agent_${agent.role}`) {
+                          return { ...agent, status: "executing", current_action: "Running — reasoning and executing tools" };
+                        }
+                        if (node === "supervisor" && agent.status === "executing") {
+                          return { ...agent, status: "thinking", current_action: "Awaiting supervisor synthesis" };
+                        }
+                        return agent;
+                      });
+                      working = {
+                        ...working,
+                        crewProgress: {
+                          agents: updatedAgents,
+                          messages: updatedMsgs.length > 0 ? updatedMsgs : working.crewProgress.messages,
+                          isCompleted: completed.length > 0 && completed.length >= working.crewProgress.agents.length,
+                        },
+                      };
+                      setMessages((prev) => {
+                        const next = [...prev];
+                        next[next.length - 1] = { ...working };
+                        return next;
+                      });
+                    }
+                  } else if (currentEvent === "guardian_block") {
+                    const block = data as GuardianBlock;
+                    working = {
+                      ...working,
+                      guardianBlocks: [...(working.guardianBlocks ?? []), block],
+                    };
+                    setMessages((prev) => {
+                      const next = [...prev];
+                      next[next.length - 1] = { ...working };
+                      return next;
+                    });
                   } else if (currentEvent === "chunk") {
                     setStatus("");
                     const token = String((data as { token?: string }).token ?? "");
@@ -877,18 +976,44 @@ export function ChatInterface() {
                                 </div>
                               </div>
                             ) : m.role === "assistant" ? (
-                              <div className="w-full max-w-none overflow-x-auto">
+                              <div className="w-full max-w-none overflow-x-auto space-y-2">
+                                {/* Intent Acknowledgment Card — visible before agent starts, collapses after */}
+                                {m.strategy && (
+                                  <IntentAcknowledgmentCard
+                                    strategy={m.strategy}
+                                    onCorrectRoute={handleCorrectRoute}
+                                    collapsed={!!(m.content || (m.activityFeed?.length ?? 0) > 0 || m.reasoning)}
+                                    canRoute={!!(m.isStreaming ?? isLiveAssistant)}
+                                  />
+                                )}
+                                {/* Live crew panel */}
+                                {m.crewProgress && (
+                                  <CrewActivityPanel
+                                    progress={m.crewProgress}
+                                    isRunning={!!(m.isStreaming ?? isLiveAssistant)}
+                                  />
+                                )}
+                                {/* Agent activity feed */}
                                 {m.activityFeed && m.activityFeed.length > 0 && (
                                   <AgentActivityFeed
                                     entries={m.activityFeed}
                                     isRunning={!!(m.isStreaming ?? isLiveAssistant)}
                                   />
                                 )}
+                                {/* Three-layer thinking block */}
                                 {m.reasoning && (
                                   <CollapsibleThoughtBlock
                                     thoughtText={m.reasoning}
                                     isStreaming={m.isStreaming ?? isLiveAssistant}
                                   />
+                                )}
+                                {/* Guardian blocks — distinct styled cards, NOT raw errors */}
+                                {m.guardianBlocks && m.guardianBlocks.length > 0 && (
+                                  <div className="space-y-1.5">
+                                    {m.guardianBlocks.map((block) => (
+                                      <GuardianBlockCard key={block.id} block={block} />
+                                    ))}
+                                  </div>
                                 )}
                                 <ChatMessageContent content={m.content} streaming={isLiveAssistant} />
                               </div>

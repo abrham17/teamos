@@ -12,6 +12,7 @@ from django.db import connection
 
 from chat.models import AgentEpisode, AgentMemory
 from ingest.vectors import vector_store
+from langsmith import traceable
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ def _embed_text(text: str) -> list[float] | None:
         return None
 
 
+@traceable(name="compute_episode_embedding", run_type="chain")
 def compute_episode_embedding(episode: AgentEpisode) -> None:
     """Compute and persist the embedding for an episode (called once on creation).
 
@@ -45,6 +47,7 @@ def compute_episode_embedding(episode: AgentEpisode) -> None:
 
 # ── Episode recall (was 51 API calls, now 1 + 1 DB query) ────────────
 
+@traceable(name="recall_similar_episodes", run_type="retriever")
 def recall_similar_episodes(team_id: str, query: str, top_k: int = 5) -> list[dict]:
     """Recall past episodes semantically similar to the current query.
 

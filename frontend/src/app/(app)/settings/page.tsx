@@ -16,6 +16,7 @@ import { Download, Users, Plus, Shield, Settings2, AlertTriangle, Trash2, Clock 
 import { useToast } from "@/components/ui/Toast";
 import { BillingSettings } from "@/components/settings/BillingSettings";
 import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings";
+import { MemoryPanel } from "@/components/settings/MemoryPanel";
 import { AVATAR_OPTIONS } from "@/lib/avatars";
 
 interface TeamData {
@@ -76,7 +77,7 @@ export default function SettingsPage() {
   const [actionBusy, setActionBusy] = useState(false);
   const inviteEmailRef = useRef<HTMLInputElement | null>(null);
   const [activeTab, setActiveTab] = useState<
-    "profile" | "workspace" | "members" | "billing" | "instructions" | "integrations" | "api_keys"
+    "profile" | "workspace" | "members" | "billing" | "instructions" | "integrations" | "api_keys" | "memory"
   >("profile");
   const [billingCheckoutPrefs, setBillingCheckoutPrefs] = useState<{
     plan_key: "team" | "pro" | "enterprise";
@@ -481,6 +482,19 @@ export default function SettingsPage() {
                 }`}
               >
                 API Keys
+              </button>
+              <button
+                onClick={() => setActiveTab("memory")}
+                className={`flex items-center gap-2.5 px-2.5 py-2 w-full rounded-lg text-left text-xs font-medium transition-all ${
+                  activeTab === "memory"
+                    ? "bg-[var(--surface-1)] text-[var(--text-primary)] border border-[var(--border-subtle)] font-semibold shadow-sm"
+                    : "text-[var(--text-muted)] hover:bg-[var(--sidebar-bg-hover)] hover:text-[var(--text-primary)] border border-transparent"
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  Memory
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-[#8b7ff4]/20 text-[#8b7ff4] font-bold">AI</span>
+                </span>
               </button>
             </div>
           </div>
@@ -992,6 +1006,10 @@ export default function SettingsPage() {
                 teamId={currentTeamId}
                 myRole={team?.my_role}
               />
+            )}
+
+            {activeTab === "memory" && currentTeamId && (
+              <MemoryPanel teamId={currentTeamId} />
             )}
           </div>
         </div>

@@ -13,6 +13,7 @@ from ingest.vectors import vector_store
 
 import hashlib
 from django.core.cache import cache
+from langsmith import traceable
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ def _get_llm_client() -> OpenAI:
     )
 
 
+@traceable(name="llm_call", run_type="llm")
 def llm_call(
     team,
     operation: str,

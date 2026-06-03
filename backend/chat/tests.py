@@ -429,4 +429,471 @@ class ChatTTSTests(APITestCase):
             self.assertEqual(res.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
 
 
+class ProceduralMemoryAndClassifierTests(APITestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="pm-owner",
+            email="pm-owner@example.com",
+            password="test-password",
+        )
+        self.team = Team.objects.create(name="PM Team", slug="pm-team", created_by=self.owner)
+        TeamMember.objects.create(team=self.team, user=self.owner, role="owner")
+        
+        # Clear out existing procedural memories if any
+        from chat.models import ProceduralMemory
+        ProceduralMemory.objects.filter(team=self.team).delete()
+
+    def test_directives_injection_and_formatting(self):
+        from chat.models import ProceduralMemory, DirectiveType
+        from chat.memory.injection import get_relevant_directives, format_directives_for_prompt
+
+        # Create sample directives
+        d1 = ProceduralMemory.objects.create(
+            team=self.team,
+            directive="Keep plans under 5 tasks.",
+            directive_type=DirectiveType.PLANNING_HEURISTIC,
+            domain="engineering_sprint",
+            applicable_intent_types=["plan/create"],
+            confidence=0.9
+        )
+        d2 = ProceduralMemory.objects.create(
+            team=self.team,
+            directive="Use GitHub actions safely.",
+            directive_type=DirectiveType.INTEGRATION_RULE,
+            domain="engineering_sprint",
+            applicable_intent_types=["plan/create"],
+            confidence=0.85
+        )
+        d3 = ProceduralMemory.objects.create(
+            team=self.team,
+            directive="Never delete database backups.",
+            directive_type=DirectiveType.FAILURE_PATTERN,
+            domain="ops",
+            applicable_intent_types=["plan/create"],
+            confidence=0.8
+        )
+
+        # 1. Query for engineering_sprint domain
+        directives = get_relevant_directives(
+            team_id=str(self.team.id),
+            intent_type="plan/create",
+            domain="engineering_sprint"
+        )
+        self.assertEqual(len(directives), 2)
+        self.assertIn(d1, directives)
+        self.assertIn(d2, directives)
+        self.assertNotIn(d3, directives)
+
+        # Verify last_used_at updated
+        d1.refresh_from_db()
+        self.assertIsNotNone(d1.last_used_at)
+
+        # 2. Format output check
+        formatted = format_directives_for_prompt(directives)
+        self.assertIn("Keep plans under 5 tasks.", formatted)
+        self.assertIn("Use GitHub actions safely.", formatted)
+
+    @patch("django.core.cache.cache.get")
+    @patch("django.core.cache.cache.set")
+    def test_hybrid_intent_classifier_caching(self, mock_set, mock_get):
+        from chat.intent.schema import IntentSchema
+        from chat.intent.classifier import HybridIntentClassifier
+        from dataclasses import asdict
+
+        # Mock cache hit
+        cached_intent_data = {
+            "intent_type": "wiki/query",
+            "complexity": "low",
+            "domains": ["general"],
+            "required_capabilities": ["wiki_search"],
+            "parallelizable": False,
+            "estimated_rounds": 2,
+            "requires_external": False,
+            "confidence": 0.95
+        }
+        mock_get.return_value = cached_intent_data
+
+        classifier = HybridIntentClassifier()
+        res = classifier.classify("What is the wiki content?", self.team)
+        self.assertEqual(res.intent.intent_type, "wiki/query")
+        self.assertEqual(res.layer_used, 1)
+
+    @patch("chat.intent.embedding_classifier.EmbeddingClassifier.classify")
+    @patch("django.core.cache.cache.get")
+    def test_hybrid_intent_classifier_embedding_fallback(self, mock_cache_get, mock_emb_classify):
+        from chat.intent.schema import IntentSchema
+        from chat.intent.classifier import HybridIntentClassifier
+        
+        mock_cache_get.return_value = None
+        
+        # Layer 2: Embedding Similarity hit
+        matched_intent = IntentSchema(
+            intent_type="plan/create",
+            complexity="high",
+            domains=["engineering"],
+            required_capabilities=["plan_creation"],
+            parallelizable=True,
+            estimated_rounds=8,
+            requires_external=False,
+            confidence=0.88
+        )
+        mock_emb_classify.return_value = (matched_intent, 0.88)
+
+        classifier = HybridIntentClassifier()
+        res = classifier.classify_with_metadata("build me a sprint schedule", self.team)
+        self.assertEqual(res.intent.intent_type, "plan/create")
+        self.assertEqual(res.layer_used, 2)
+        self.assertEqual(res.similarity_score, 0.88)
+
+    @patch("llm_orchestrator.orchestrator.llm_json_call")
+    def test_retrospective_learning_loop_success_extraction(self, mock_llm_json):
+        from chat.models import AgentEpisode, ProceduralMemory, DirectiveType
+        from chat.tasks import retrospective_learning_loop
+
+        episode = AgentEpisode.objects.create(
+            team=self.team,
+            trigger="Create a new release checklist.",
+            plan={"type": "strategic"},
+            actions=[{"tool": "wiki_create_page", "ok": True}],
+            outcome={"success": True},
+            learnings="Successfully created release checklist page in wiki.",
+            success=True,
+            quality_score=0.9,
+            rounds_taken=2
+        )
+
+        # Mock LLM extraction return value
+        mock_llm_json.return_value = {
+            "domain": "engineering_sprint",
+            "patterns": [
+                {
+                    "type": "planning_heuristic",
+                    "keyword": "release checklist",
+                    "directive": "Always create a release checklist page when starting a new sprint.",
+                    "applicable_intents": ["plan/create"]
+                }
+            ]
+        }
+
+        # Run retro loop
+        res = retrospective_learning_loop(str(episode.id))
+        self.assertEqual(res["status"], "success")
+
+        # Verify ProceduralMemory generated
+        mem = ProceduralMemory.objects.filter(team=self.team).first()
+        self.assertIsNotNone(mem)
+        self.assertEqual(mem.domain, "engineering_sprint")
+        self.assertEqual(mem.directive_type, DirectiveType.PLANNING_HEURISTIC)
+        self.assertIn("Always create a release checklist", mem.directive)
+
+    def test_daily_directive_maintenance_pruning_and_decay(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from chat.models import ProceduralMemory, DirectiveType
+        from chat.tasks import daily_directive_maintenance
+
+        now = timezone.now()
+
+        # 1. Expired directive
+        ProceduralMemory.objects.create(
+            team=self.team,
+            directive="Old rule.",
+            directive_type=DirectiveType.VOCABULARY,
+            confidence=0.9,
+            expires_at=now - timedelta(days=1)
+        )
+
+        # 2. Contradicted directive (contradiction count >= 3)
+        ProceduralMemory.objects.create(
+            team=self.team,
+            directive="Contradicted rule.",
+            directive_type=DirectiveType.VOCABULARY,
+            confidence=0.8,
+            contradiction_count=3
+        )
+
+        # 3. Decaying directive (unused for >30 days)
+        decaying = ProceduralMemory.objects.create(
+            team=self.team,
+            directive="Unused rule.",
+            directive_type=DirectiveType.VOCABULARY,
+            confidence=0.9,
+            last_used_at=now - timedelta(days=31)
+        )
+
+        # Run maintenance
+        res = daily_directive_maintenance()
+        self.assertEqual(res["pruned"], 2)  # Expired + contradicted
+        
+        decaying.refresh_from_db()
+        self.assertLess(decaying.confidence, 0.9)  # Confidence decayed
+
+
+class MCPDictCache:
+    def __init__(self):
+        self.data = {}
+    def get(self, key, default=None):
+        return self.data.get(key, default)
+    def set(self, key, value, timeout=None):
+        self.data[key] = value
+    def delete(self, key):
+        self.data.pop(key, None)
+    def clear(self):
+        self.data.clear()
+
+
+class MCPToolsUpgradeTests(APITestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._cache_close_patcher = patch("django.core.cache.caches.close_all", lambda: None)
+        cls._cache_close_patcher.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._cache_close_patcher.stop()
+        super().tearDownClass()
+
+    def setUp(self):
+        self.dict_cache = MCPDictCache()
+        self._patchers = [
+            patch("django.core.cache.cache", self.dict_cache),
+            patch("chat.mcp_client.cache", self.dict_cache),
+            patch("chat.mcp.health.cache", self.dict_cache),
+            patch("chat.mcp.executor.cache", self.dict_cache),
+        ]
+        for p in self._patchers:
+            p.start()
+        
+        self.owner = User.objects.create_user(
+            username="mcp-test-owner",
+            email="mcp-test-owner@example.com",
+            password="test-password",
+        )
+        self.team = Team.objects.create(
+            name="MCP Upgrade Team",
+            slug="mcp-upgrade-team",
+            created_by=self.owner,
+        )
+        TeamMember.objects.create(team=self.team, user=self.owner, role="owner")
+        
+        from chat.models import MCPServerRegistration
+        self.server = MCPServerRegistration.objects.create(
+            team=self.team,
+            name="demo_server",
+            url="http://localhost:8000/mcp",
+            auth_token="demo-token",
+            allowed_crew_roles=["architect", "engineer"],
+            risk_level_override=None,
+        )
+
+    def tearDown(self):
+        for p in self._patchers:
+            p.stop()
+        super().tearDown()
+
+    @patch("chat.mcp_client.MCPClient.discover_tools")
+    def test_registry_validation_and_risk_inference(self, mock_discover):
+        from chat.mcp_client import MCPTool
+        from chat.mcp.registry import get_mcp_registry
+        
+        # Mock server returning 3 tools
+        mock_discover.return_value = [
+            # Low risk read tool
+            MCPTool(server_name="demo_server", name="read_file", description="Retrieve file contents", input_schema={"type": "object", "properties": {}}),
+            # High risk delete tool
+            MCPTool(server_name="demo_server", name="delete_db", description="Delete database records", input_schema={"type": "object", "properties": {}}),
+            # Shadowing tool (should be rejected)
+            MCPTool(server_name="demo_server", name="wiki_read_full_page", description="Read wiki page", input_schema={"type": "object", "properties": {}}),
+        ]
+        
+        registry = get_mcp_registry()
+        registry.unregister_server(str(self.server.id))
+        
+        registered = registry.register_server(self.server)
+        
+        # wiki_read_full_page shadows internal tool, so only 2 tools registered
+        self.assertEqual(len(registered), 2)
+        self.assertIn("mcp_demo_server_read_file", registered)
+        self.assertIn("mcp_demo_server_delete_db", registered)
+        
+        # Test risk inference
+        read_tool = registry.get_tool("mcp_demo_server_read_file")
+        self.assertEqual(read_tool.risk_level, "low")
+        self.assertFalse(read_tool.is_destructive)
+        
+        delete_tool = registry.get_tool("mcp_demo_server_delete_db")
+        self.assertEqual(delete_tool.risk_level, "high")
+        self.assertTrue(delete_tool.is_destructive)
+
+    def test_circuit_breaker_states(self):
+        from chat.mcp.health import is_server_available, record_failure, record_success, get_circuit_state, CircuitState
+        
+        server_id = str(self.server.id)
+        
+        # Initially closed (available)
+        self.assertTrue(is_server_available(server_id))
+        self.assertEqual(get_circuit_state(server_id), CircuitState.CLOSED)
+        
+        # 3 failures triggers OPEN state
+        record_failure(server_id)
+        record_failure(server_id)
+        self.assertTrue(is_server_available(server_id)) # still closed/half_open threshold
+        record_failure(server_id)
+        
+        self.assertFalse(is_server_available(server_id))
+        self.assertEqual(get_circuit_state(server_id), CircuitState.OPEN)
+        
+        # Success resets circuit
+        record_success(server_id)
+        self.assertTrue(is_server_available(server_id))
+        self.assertEqual(get_circuit_state(server_id), CircuitState.CLOSED)
+
+    @patch("chat.mcp_client.MCPClient.call_tool")
+    def test_executor_idempotency_and_audit_logging(self, mock_call):
+        from chat.mcp.registry import get_mcp_registry, MCPToolDefinition
+        from chat.mcp.executor import MCPToolExecutor
+        from chat.models import MCPToolExecutionLog
+        
+        # Setup tool in registry
+        registry = get_mcp_registry()
+        registry._tools["mcp_demo_server_run_query"] = MCPToolDefinition(
+            server_id=str(self.server.id),
+            server_name="demo_server",
+            tool_name="run_query",
+            prefixed_name="mcp_demo_server_run_query",
+            description="run query on db",
+            parameters_schema={"properties": {}},
+            is_destructive=False,
+            is_external_write=False,
+            risk_level="medium",
+            team_id=str(self.team.id)
+        )
+        
+        mock_call.return_value = {"ok": True, "result": "query_ran"}
+        
+        executor = MCPToolExecutor(team_id=str(self.team.id), session_id="test-session")
+        
+        # Execution 1 (Cache Miss)
+        res1 = executor.execute(
+            prefixed_name="mcp_demo_server_run_query",
+            tool_input={"q": "select 1"},
+            idempotency_key="idem-123"
+        )
+        self.assertTrue(res1["ok"])
+        self.assertEqual(res1["result"], "query_ran")
+        self.assertFalse(res1.get("idempotency_hit", False))
+        
+        # Execution 2 (Cache Hit)
+        res2 = executor.execute(
+            prefixed_name="mcp_demo_server_run_query",
+            tool_input={"q": "select 1"},
+            idempotency_key="idem-123"
+        )
+        self.assertTrue(res2["ok"])
+        self.assertEqual(res2["result"], "query_ran")
+        self.assertTrue(res2.get("idempotency_hit"))
+        
+        # Verify Audit logs
+        logs = MCPToolExecutionLog.objects.filter(team=self.team, tool_name="mcp_demo_server_run_query")
+        self.assertTrue(logs.exists())
+        self.assertEqual(logs.count(), 1) # Only 1 actual call saved to DB since second was idempotency hit before client call
+
+    def test_crew_role_scoping_rules(self):
+        from chat.crew.tools import get_tools_for_role
+        from chat.mcp.registry import get_mcp_registry, MCPToolDefinition
+        
+        registry = get_mcp_registry()
+        registry._tools.clear()
+        
+        # 1. Medium risk tool, server scoped to allowed_crew_roles=["architect", "engineer"]
+        registry._tools["mcp_demo_server_med_tool"] = MCPToolDefinition(
+            server_id=str(self.server.id),
+            server_name="demo_server",
+            tool_name="med_tool",
+            prefixed_name="mcp_demo_server_med_tool",
+            description="medium tool description",
+            parameters_schema={"properties": {}},
+            is_destructive=False,
+            is_external_write=False,
+            risk_level="medium",
+            team_id=str(self.team.id)
+        )
+        
+        # 2. High risk tool, server scoped to allowed_crew_roles=["architect", "engineer"]
+        registry._tools["mcp_demo_server_high_tool"] = MCPToolDefinition(
+            server_id=str(self.server.id),
+            server_name="demo_server",
+            tool_name="high_tool",
+            prefixed_name="mcp_demo_server_high_tool",
+            description="high tool description",
+            parameters_schema={"properties": {}},
+            is_destructive=True,
+            is_external_write=False,
+            risk_level="high",
+            team_id=str(self.team.id)
+        )
+        
+        # Architect has access to both
+        architect_tools = get_tools_for_role("architect", str(self.team.id), [])
+        tool_names = [t["name"] for t in architect_tools]
+        self.assertIn("mcp_demo_server_med_tool", tool_names)
+        self.assertIn("mcp_demo_server_high_tool", tool_names)
+        
+        # Researcher is a read-only role, so high-risk tool is excluded
+        researcher_tools = get_tools_for_role("researcher", str(self.team.id), [])
+        tool_names = [t["name"] for t in researcher_tools]
+        # Skip both: "researcher" is not in server.allowed_crew_roles
+        self.assertNotIn("mcp_demo_server_med_tool", tool_names)
+        self.assertNotIn("mcp_demo_server_high_tool", tool_names)
+
+    def test_guardian_tier1_mcp_validation(self):
+        from planning.guardian.tier1 import tier1_check
+        from planning.guardian.context import GuardianContext
+        from chat.mcp.registry import get_mcp_registry, MCPToolDefinition
+        
+        registry = get_mcp_registry()
+        registry._tools["mcp_demo_server_dest_tool"] = MCPToolDefinition(
+            server_id=str(self.server.id),
+            server_name="demo_server",
+            tool_name="dest_tool",
+            prefixed_name="mcp_demo_server_dest_tool",
+            description="destructive tool",
+            parameters_schema={"properties": {}},
+            is_destructive=True,
+            is_external_write=True,
+            risk_level="high",
+            team_id=str(self.team.id)
+        )
+        
+        context_no_approval = GuardianContext(
+            acting_team_id=str(self.team.id),
+            session_id="test",
+            token_usage_this_run=0,
+            team_token_budget=100000,
+            team_has_integrations=True,
+            external_writes_enabled=True,
+            human_approved_destructive=False,
+            current_round=1
+        )
+        
+        # Without approval, destructive tool check fails
+        res1 = tier1_check("mcp_demo_server_dest_tool", {}, context_no_approval)
+        self.assertFalse(res1.approved)
+        self.assertIn("classified as destructive", res1.reason)
+        
+        context_with_approval = GuardianContext(
+            acting_team_id=str(self.team.id),
+            session_id="test",
+            token_usage_this_run=0,
+            team_token_budget=100000,
+            team_has_integrations=True,
+            external_writes_enabled=True,
+            human_approved_destructive=True,
+            current_round=1
+        )
+        
+        # With approval, passes
+        res2 = tier1_check("mcp_demo_server_dest_tool", {}, context_with_approval)
+        self.assertTrue(res2.approved)
 

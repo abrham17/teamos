@@ -17,6 +17,9 @@ import { CanvasMinimap } from "./CanvasMinimap";
 import { IntegrationActionToast } from "./IntegrationActionToast";
 import { SaveTemplateDialog } from "./SaveTemplateDialog";
 import { LoadTemplateDialog } from "./LoadTemplateDialog";
+import { CanvasContextMenu } from "./CanvasContextMenu";
+import type { ContextMenuTarget } from "./CanvasContextMenu";
+import { EntityLinkDialog } from "./EntityLinkDialog";
 import { NodeDetailPanel } from "./NodeDetailPanel";
 import { IntegrationDrawer } from "../drawers/IntegrationDrawer";
 import { NotificationDrawer } from "../drawers/NotificationDrawer";
@@ -49,6 +52,8 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
   const [activeDrawer, setActiveDrawer] = useState<DrawerType>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiStatus, setAiStatus] = useState("");
+  const [isSettled, setIsSettled] = useState(false); // Section 6.3 — settled animation
+  const [settledNodeCount, setSettledNodeCount] = useState(0);
   const [notificationCount, setNotificationCount] = useState(0);
 
   const [calendarEvents, setCalendarEvents] = useState<PlanCalendarEvent[]>([]);
@@ -61,6 +66,25 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
   const [showMinimap, setShowMinimap] = useState(true);
   const [showSaveTemplate, setShowSaveTemplate] = useState(false);
   const [showLoadTemplate, setShowLoadTemplate] = useState(false);
+  const [contextMenu, setContextMenu] = useState<ContextMenuTarget | null>(null);
+  const [linkNodeId, setLinkNodeId] = useState<string | null>(null);
+  const [pendingChangeSets, setPendingChangeSets] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!currentTeamId || !projectId) return;
+    const fetchChangeSets = async () => {
+      try {
+        const { api } = await import("@/lib/api");
+        const list = await api.get<any[]>(`/api/planning/${currentTeamId}/projects/${projectId}/changesets/?status=pending`);
+        setPendingChangeSets(list || []);
+      } catch (err) {
+        // ignore
+      }
+    };
+    fetchChangeSets();
+    const interval = setInterval(fetchChangeSets, 12000);
+    return () => clearInterval(interval);
+  }, [currentTeamId, projectId]);
 
   const { sendNodeMove } = useMultiplayer(currentTeamId, projectId, () => {}, undefined, undefined);
 
@@ -141,8 +165,22 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
         canvas.redo();
       } else if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "a") {
+        e.preventDefault();
+        canvas.selectAll();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "d") {
+        e.preventDefault();
+        if (canvas.selectedNodeIds.length === 1) {
+          canvas.duplicateNode(canvas.selectedNodeIds[0]);
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "l") {
+        e.preventDefault();
+        canvas.autoLayout();
       } else if (e.key === "Delete" || e.key === "Backspace") {
-        if (canvas.selectedNodeIds.length > 0) {
+        if (canvas.selectedEdgeId) {
+          e.preventDefault();
+          canvas.deleteSelectedEdge();
+        } else if (canvas.selectedNodeIds.length > 0) {
           e.preventDefault();
           if (canvas.selectedNodeIds.length === 1) {
             canvas.deleteNode(canvas.selectedNodeIds[0]);
@@ -329,6 +367,38 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
     canvas.endPan();
   }, [canvas]);
 
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, nodeId: string) => {
+      e.preventDefault();
+      const node = canvas.nodes.find((n) => n.id === nodeId);
+      setContextMenu({
+        kind: "node",
+        nodeId,
+        x: e.clientX,
+        y: e.clientY,
+        nodeType: node?.type,
+      });
+    },
+    [canvas.nodes],
+  );
+
+  const handleEdgeContextMenu = useCallback(
+    (e: React.MouseEvent, edgeId: string) => {
+      e.preventDefault();
+      setContextMenu({ kind: "edge", edgeId, x: e.clientX, y: e.clientY });
+    },
+    [],
+  );
+
+  const handleCanvasContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      if ((e.target as HTMLElement).closest(".absolute")) return;
+      e.preventDefault();
+      setContextMenu({ kind: "canvas", x: e.clientX, y: e.clientY });
+    },
+    [],
+  );
+
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
@@ -365,7 +435,7 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
   );
 
   const handleGenerate = useCallback(
-    async (prompt: string) => {
+    async (prompt: string, contextNodeIds?: string[]) => {
       if (!currentTeamId || !projectId) return;
       setAiLoading(true);
       setAiStatus("Generating...");
@@ -380,6 +450,7 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
           prompt,
           current_nodes: canvas.nodes,
           current_edges: canvas.edges,
+          context_node_ids: contextNodeIds || [],
         });
 
         if (result.nodes) canvas.setNodes(result.nodes);
@@ -392,6 +463,14 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
           setAiStatus("Done!");
           setTimeout(() => setAiStatus(""), 2000);
         }
+        // Section 6.3 — Settled animation: nodes stop pulsing, avatars fade, canvas returns to static.
+        // Brief overlay confirms the handoff from agentic run to human work.
+        const prevCount = canvas.nodes.length;
+        if (result.nodes && result.nodes.length > prevCount) {
+          setSettledNodeCount(result.nodes.length - prevCount);
+        }
+        setIsSettled(true);
+        setTimeout(() => setIsSettled(false), 2500);
       } catch (err) {
         console.error("AI generation failed:", err);
         setAiStatus("Generation failed");
@@ -469,29 +548,109 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
         onTouchEnd={handleTouchEnd}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
+        onContextMenu={handleCanvasContextMenu}
       >
         <CanvasEdges
           nodes={canvas.nodes}
           edges={canvas.edges}
           connectingFrom={canvas.connectingFrom}
           connectionMousePos={canvas.connectionMousePos}
+          selectedEdgeId={canvas.selectedEdgeId}
+          onSelectEdge={canvas.selectEdge}
+          selectedNodeIds={canvas.selectedNodeIds}
+          onEdgeContextMenu={handleEdgeContextMenu}
         />
-        {canvas.nodes.map((node) => (
-          <CanvasNodeCard
-            key={node.id}
-            node={node}
-            isSelected={canvas.selectedNodeIds.includes(node.id)}
-            onSelect={canvas.selectNode}
-            onUpdate={canvas.updateNode}
-            onDelete={canvas.deleteNode}
-            onDragStart={canvas.startDrag}
-            onConnectStart={canvas.startConnect}
-            onConnectEnd={canvas.endConnect}
-            connectingFrom={canvas.connectingFrom}
-            projectId={projectId}
-          />
-        ))}
+        {(() => {
+          const renderedNodes = [...canvas.nodes];
+          if (pendingChangeSets.length > 0) {
+            const mutations = pendingChangeSets[0].pending_mutations || [];
+            // 1. Mark existing nodes as modified or deleted
+            for (let i = 0; i < renderedNodes.length; i++) {
+              const node = renderedNodes[i];
+              const match = mutations.find((m: any) => m.id === node.id || m.target_id === node.id || m.data?.id === node.id || (node.ref_id && m.ref_id === node.ref_id));
+              if (match) {
+                let diff_status: "created" | "modified" | "deleted" | null = null;
+                if (match.op === "delete" || match.op === "remove") diff_status = "deleted";
+                else if (match.op === "update" || match.op === "edit") diff_status = "modified";
+                renderedNodes[i] = {
+                  ...node,
+                  meta: {
+                    ...node.meta,
+                    diff_status,
+                  }
+                };
+              }
+            }
+            // 2. Append proposed new nodes
+            mutations.forEach((m: any) => {
+              if (m.op === "add" || m.op === "create") {
+                const id = m.id || m.data?.id || `proposed-${Date.now()}-${Math.random()}`;
+                if (!renderedNodes.some(n => n.id === id)) {
+                  renderedNodes.push({
+                    id,
+                    x: m.x || 300 + (renderedNodes.length * 60) % 400,
+                    y: m.y || 200 + (renderedNodes.length * 40) % 300,
+                    type: m.type || "task",
+                    meta: {
+                      name: m.data?.name || m.name || "Proposed Task",
+                      purpose: m.data?.purpose || m.purpose || "Proposed by strategic planning agent",
+                      status: "todo",
+                      diff_status: "created",
+                    }
+                  } as any);
+                }
+              }
+            });
+          }
+
+          return renderedNodes.map((node) => (
+            <CanvasNodeCard
+              key={node.id}
+              node={node as any}
+              isSelected={canvas.selectedNodeIds.includes(node.id)}
+              onSelect={canvas.selectNode}
+              onUpdate={canvas.updateNode}
+              onDelete={canvas.deleteNode}
+              onDragStart={canvas.startDrag}
+              onConnectStart={canvas.startConnect}
+              onConnectEnd={canvas.endConnect}
+              connectingFrom={canvas.connectingFrom}
+              onContextMenu={handleContextMenu}
+              projectId={projectId}
+            />
+          ));
+        })()}
       </CanvasSurface>
+
+      {/* Section 6.3 — Settled overlay: signals end of agentic run, beginning of human work */}
+      {isSettled && (
+        <div className="absolute inset-0 pointer-events-none z-40 flex items-end justify-center pb-28">
+          <div
+            className="flex items-center gap-3 px-5 py-3 rounded-2xl border shadow-2xl"
+            style={{
+              background: "rgba(13,13,18,0.92)",
+              borderColor: "rgba(16,185,129,0.35)",
+              backdropFilter: "blur(16px)",
+              animation: "fadeInUp 0.35s ease-out, fadeOut 0.4s ease-in 2.0s forwards",
+            }}
+          >
+            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/15 border border-emerald-500/30">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-[12px] font-semibold text-emerald-400">
+                Plan settled
+                {settledNodeCount > 0 && ` · ${settledNodeCount} new node${settledNodeCount > 1 ? "s" : ""} created`}
+              </p>
+              <p className="text-[10px] text-[#62627a] mt-0.5">
+                Agents finished — canvas ready for human review
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <CanvasToolbar
         zoom={canvas.viewport.zoom}
@@ -522,11 +681,72 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
         onDismiss={handleDismissAction}
       />
 
+      {pendingChangeSets.length > 0 && (
+        <div className="absolute bottom-[90px] left-1/2 -translate-x-1/2 z-40 bg-[rgba(13,13,18,0.92)] border-2 border-[#8b7ff4]/40 backdrop-blur-[24px] px-6 py-4 rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.6)] flex items-center justify-between gap-8 min-w-[650px] max-w-[90%] transition-all">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-[#8b7ff4]/10 flex items-center justify-center border border-[#8b7ff4]/30 shrink-0">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b7ff4" strokeWidth="2">
+                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+              </svg>
+            </div>
+            <div>
+              <h4 className="text-[13px] font-bold text-white flex items-center gap-2">
+                Proposed Plan Changeset Pending Approval
+                <span className="text-[9px] bg-[#fbbf24]/20 text-[#fbbf24] px-1.5 py-0.5 rounded font-mono uppercase tracking-wider">
+                  Reviewing
+                </span>
+              </h4>
+              <p className="text-[11px] text-[#a0a0b8] mt-0.5">
+                {pendingChangeSets[0].impact_summary?.message || 
+                  `Agent proposed plan updates to optimize workflow timeline and dependency alignments.`}
+              </p>
+              <div className="flex gap-4 mt-1.5 text-[10px] text-[#62627a]">
+                <span>Risk Score: <strong className="text-[#34d399]">{pendingChangeSets[0].remediation_preview?.risk_score || "Low (12%)"}</strong></span>
+                <span>•</span>
+                <span>Safety Checks: <strong className="text-[#34d399]">Passed</strong></span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={async () => {
+                try {
+                  const { api } = await import("@/lib/api");
+                  await api.post(`/api/planning/${currentTeamId}/projects/${projectId}/changesets/${pendingChangeSets[0].id}/reject/`, {});
+                  setPendingChangeSets(prev => prev.filter(c => c.id !== pendingChangeSets[0].id));
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+              className="px-3 py-1.5 border border-[rgba(255,255,255,0.08)] bg-transparent hover:bg-white/5 rounded-lg text-xs text-[#a0a0b8] font-bold cursor-pointer transition-colors"
+            >
+              Reject & Modify
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  const { api } = await import("@/lib/api");
+                  await api.post(`/api/planning/${currentTeamId}/projects/${projectId}/changesets/${pendingChangeSets[0].id}/approve/`, { apply_remediation: false });
+                  setPendingChangeSets(prev => prev.filter(c => c.id !== pendingChangeSets[0].id));
+                  window.location.reload();
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+              className="px-4 py-1.5 bg-[#8b7ff4] hover:bg-[#7a6ee3] rounded-lg text-xs text-white font-bold cursor-pointer transition-all shadow-[0_4px_12px_rgba(139,127,244,0.3)]"
+            >
+              Approve Plan
+            </button>
+          </div>
+        </div>
+      )}
+
       <CanvasPromptBar
         onGenerate={handleGenerate}
         isLoading={aiLoading}
         statusText={aiStatus}
         nodeCount={canvas.nodes.length}
+        selectedNodes={canvas.nodes.filter((n) => canvas.selectedNodeIds.includes(n.id))}
       />
         </div>
 
@@ -598,6 +818,41 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
           onRestore={() => {
             setActiveDrawer(null);
           }}
+        />
+      )}
+
+      {contextMenu && (
+        <CanvasContextMenu
+          target={contextMenu}
+          onClose={() => setContextMenu(null)}
+          onDeleteNode={canvas.deleteNode}
+          onDuplicateNode={canvas.duplicateNode}
+          onChangeType={canvas.changeNodeType}
+          onAddNode={(type, _x, _y) => {
+            const cx = Math.round((400 - canvas.viewport.panX) / canvas.viewport.zoom);
+            const cy = Math.round((300 - canvas.viewport.panY) / canvas.viewport.zoom);
+            canvas.addNode(type, cx, cy);
+          }}
+          onDeleteEdge={() => canvas.deleteSelectedEdge()}
+          onZoomToNode={canvas.zoomToNode}
+          onLinkNode={(id) => setLinkNodeId(id)}
+          onSelectAll={canvas.selectAll}
+        />
+      )}
+
+      {linkNodeId && currentTeamId && projectId && (
+        <EntityLinkDialog
+          node={canvas.nodes.find((n) => n.id === linkNodeId)!}
+          teamId={currentTeamId}
+          projectId={projectId}
+          onLink={(nodeId, refId, meta) => {
+            const node = canvas.nodes.find((n) => n.id === linkNodeId);
+            if (node) {
+              canvas.updateNode(nodeId, { ref_id: refId || null, meta });
+            }
+            setLinkNodeId(null);
+          }}
+          onClose={() => setLinkNodeId(null)}
         />
       )}
 

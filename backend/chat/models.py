@@ -76,6 +76,14 @@ class AgentEpisode(models.Model):
     tags = models.JSONField(default=list, blank=True, help_text="Semantic tags for retrieval")
     success = models.BooleanField(default=True)
     duration_ms = models.PositiveIntegerField(default=0, help_text="Total execution time")
+    
+    # Retrospective / Procedural learning fields
+    inferred_domain = models.CharField(max_length=100, null=True, blank=True)
+    quality_score = models.FloatField(default=1.0)
+    rounds_taken = models.PositiveIntegerField(default=1)
+    failure_point = models.TextField(blank=True, default="")
+    error_trace = models.TextField(blank=True, default="")
+
     embedding = VectorField(dimensions=1536, null=True, blank=True, help_text="Pre-computed embedding for semantic recall")
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -84,6 +92,7 @@ class AgentEpisode(models.Model):
         indexes = [
             models.Index(fields=["team", "-created_at"]),
             models.Index(fields=["team", "success"]),
+            models.Index(fields=["inferred_domain"]),
         ]
 
     def __str__(self):
@@ -137,6 +146,17 @@ class MCPServerRegistration(models.Model):
     auth_token = models.TextField(blank=True, default="", help_text="Bearer token for server auth")
     capabilities = models.JSONField(default=list, blank=True, help_text="List of capability strings")
     enabled = models.BooleanField(default=True)
+    # Crew role scoping (null = available to all roles)
+    allowed_crew_roles = models.JSONField(
+        null=True, blank=True,
+        help_text="Crew roles allowed to call this server's tools. Null = all roles."
+    )
+    # Override the auto-inferred risk level for this server's tools
+    risk_level_override = models.CharField(
+        max_length=20,
+        choices=[("low", "Low"), ("medium", "Medium"), ("high", "High")],
+        null=True, blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -177,3 +197,145 @@ class MCPServerRegistration(models.Model):
         return f"MCP[{status}] {self.name} ({self.team.name})"
 
 
+class DirectiveType(models.TextChoices):
+    PLANNING_HEURISTIC   = "planning_heuristic"    # How to structure plans for this team
+    INTEGRATION_RULE     = "integration_rule"       # Constraints for external tools
+    COMMUNICATION_STYLE  = "communication_style"    # How this team prefers output formatted
+    RISK_PATTERN         = "risk_pattern"           # Known risk factors in this domain
+    WORKFLOW_PREFERENCE  = "workflow_preference"    # Task structure preferences
+    VOCABULARY           = "vocabulary"             # Domain-specific terms this team uses
+    FAILURE_PATTERN      = "failure_pattern"        # What NOT to do (from failed episodes)
+    SUCCESS_PATTERN      = "success_pattern"        # What worked well (from successful episodes)
+
+
+class ProceduralMemory(models.Model):
+    """
+    Domain-tagged, typed procedural memories (directives) with confidence scoring.
+    Learned from both successful and failed agent episodes.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="procedural_memories")
+    
+    # Directive content
+    directive = models.TextField()
+    directive_type = models.CharField(max_length=50, choices=DirectiveType.choices)
+    
+    # Domain tagging
+    domain = models.CharField(max_length=100, null=True, blank=True)
+    
+    # Intent type applicability
+    applicable_intent_types = models.JSONField(default=list, blank=True)
+    
+    # Provenance
+    source_episode_ids = models.JSONField(default=list, blank=True)
+    extraction_method = models.CharField(max_length=50)
+    
+    # Quality signals
+    confidence = models.FloatField(default=0.7)
+    reinforcement_count = models.IntegerField(default=1)
+    contradiction_count = models.IntegerField(default=0)
+    
+    # Lifecycle
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    last_reinforced_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(null=True, blank=True)  # null = permanent
+    
+    class Meta:
+        ordering = ["-confidence", "-reinforcement_count"]
+        indexes = [
+            models.Index(fields=["team", "domain", "directive_type"]),
+            models.Index(fields=["team", "applicable_intent_types"]),
+            models.Index(fields=["confidence", "reinforcement_count"]),
+        ]
+
+    def __str__(self):
+        domain_str = self.domain or "global"
+        return f"ProceduralMemory({self.team.name} [{domain_str}]: {self.directive[:40]})"
+
+
+class IntentClassificationLog(models.Model):
+    """
+    Audit trail for classification decisions.
+    Used to monitor and improve classifier examples over time.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="intent_classification_logs")
+    session_id = models.CharField(max_length=255, blank=True, default="")
+    
+    message = models.TextField(blank=True, default="")
+    message_hash = models.CharField(max_length=64, db_index=True)
+    
+    # Classification result
+    intent_type = models.CharField(max_length=100)
+    complexity = models.CharField(max_length=20)
+    domains = models.JSONField(default=list, blank=True)
+    required_capabilities = models.JSONField(default=list, blank=True)
+    intent_confidence = models.FloatField()
+    
+    # Routing decision
+    layer_used = models.IntegerField()         # 1, 2, or 3
+    similarity_score = models.FloatField(null=True, blank=True)
+    latency_ms = models.IntegerField()
+    
+    # Outcome
+    agent_outcome = models.CharField(max_length=50, null=True, blank=True)
+    crew_used = models.BooleanField(default=False)
+    crew_composition = models.JSONField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["team", "intent_type", "created_at"]),
+            models.Index(fields=["layer_used", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"IntentClassificationLog({self.team.name}: {self.intent_type} via Layer {self.layer_used})"
+
+
+class MCPToolExecutionLog(models.Model):
+    """Audit trail for every MCP tool invocation — mirrors ToolExecutionLog for OAuth tools."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="mcp_tool_logs")
+    session_id = models.CharField(max_length=255, blank=True, default="")
+    server_name = models.CharField(max_length=100)
+    tool_name = models.CharField(max_length=255)
+    tool_input = models.JSONField(default=dict)
+    result_summary = models.TextField(blank=True, default="")
+    latency_ms = models.IntegerField(default=0)
+    success = models.BooleanField(default=True)
+    circuit_state_at_call = models.CharField(max_length=20, null=True, blank=True)
+    idempotency_hit = models.BooleanField(default=False)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-timestamp"]
+        indexes = [
+            models.Index(fields=["team", "server_name", "timestamp"]),
+            models.Index(fields=["tool_name", "success"]),
+        ]
+
+    def __str__(self):
+        ok = "✓" if self.success else "✗"
+        return f"{ok} mcp:{self.server_name}/{self.tool_name}"
+
+
+class MCPRegistrationEvent(models.Model):
+    """Audit trail for MCP server registration and schema-validation events."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    server = models.ForeignKey(
+        MCPServerRegistration, on_delete=models.CASCADE,
+        related_name="registration_events"
+    )
+    event_type = models.CharField(max_length=50)  # e.g. "validation_errors", "registered"
+    details = models.JSONField(default=dict)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-timestamp"]
+
+    def __str__(self):
+        return f"MCPRegistrationEvent({self.server.name}: {self.event_type})"

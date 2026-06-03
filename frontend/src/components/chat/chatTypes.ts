@@ -47,6 +47,12 @@ export type AgentStrategy = {
   primary_agent: string;
   reasoning_depth: "lightweight" | "standard" | "deep";
   confidence: number;
+  intent_type?: string;
+  complexity?: string;
+  domains?: string[];
+  layer_used?: number;
+  latency_ms?: number;
+  is_crew?: boolean;
 };
 
 export type ActivityEntry = {
@@ -70,10 +76,45 @@ export type ChatMessage = {
   reasoning?: string;
   isStreaming?: boolean;
   activityFeed?: ActivityEntry[];
+  crewProgress?: CrewProgress;
+  guardianBlocks?: GuardianBlock[];
   question?: {
     question: string;
     options?: string[];
   };
+};
+
+export type GuardianBlock = {
+  id: string;
+  action: string;
+  human_action?: string;
+  reason: string;
+  tier: 1 | 2;
+  tier_label?: string;
+  settings_path?: string;
+  rephrase_suggestion?: string;
+  /** Section 6.1 — which agent role triggered the Guardian block */
+  triggered_by_agent?: string;
+};
+
+export type CrewAgentProgress = {
+  role: string;
+  status: "queued" | "thinking" | "executing" | "done";
+  current_action?: string;
+  duration_ms?: number;
+};
+
+export type CrewMessage = {
+  from: string;
+  to?: string;
+  content: string;
+  timestamp: number;
+};
+
+export type CrewProgress = {
+  agents: CrewAgentProgress[];
+  messages: CrewMessage[];
+  isCompleted: boolean;
 };
 
 export type ChatCapabilities = {
