@@ -7,7 +7,7 @@ import { useCanvasSync } from "../../hooks/useCanvasSync";
 import { useMultiplayer } from "../../hooks/useMultiplayer";
 import { getPlannerCalendarFeed, getPlannerActivity, getTeamMembers } from "../../api";
 import { getIntegrationActions } from "../../canvasApi";
-import type { IntegrationAction } from "../../canvasApi";
+import type { IntegrationAction, CanvasNode } from "../../canvasApi";
 import { CanvasSurface } from "./CanvasSurface";
 import { CanvasNodeCard } from "./CanvasNode";
 import { CanvasEdges } from "./CanvasEdges";
@@ -68,14 +68,14 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
   const [showLoadTemplate, setShowLoadTemplate] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuTarget | null>(null);
   const [linkNodeId, setLinkNodeId] = useState<string | null>(null);
-  const [pendingChangeSets, setPendingChangeSets] = useState<any[]>([]);
+  const [pendingChangeSets, setPendingChangeSets] = useState<Array<Record<string, unknown>>>([]);
 
   useEffect(() => {
     if (!currentTeamId || !projectId) return;
     const fetchChangeSets = async () => {
       try {
         const { api } = await import("@/lib/api");
-        const list = await api.get<any[]>(`/api/planning/${currentTeamId}/projects/${projectId}/changesets/?status=pending`);
+        const list = await api.get<Array<Record<string, unknown>>>(`/api/planning/${currentTeamId}/projects/${projectId}/changesets/?status=pending`);
         setPendingChangeSets(list || []);
       } catch (err) {
         // ignore
@@ -567,7 +567,7 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
             // 1. Mark existing nodes as modified or deleted
             for (let i = 0; i < renderedNodes.length; i++) {
               const node = renderedNodes[i];
-              const match = mutations.find((m: any) => m.id === node.id || m.target_id === node.id || m.data?.id === node.id || (node.ref_id && m.ref_id === node.ref_id));
+              const match = mutations.find((m: Record<string, unknown>) => m.id === node.id || m.target_id === node.id || (m.data as Record<string, unknown>)?.id === node.id || (node.ref_id && m.ref_id === node.ref_id));
               if (match) {
                 let diff_status: "created" | "modified" | "deleted" | null = null;
                 if (match.op === "delete" || match.op === "remove") diff_status = "deleted";
@@ -582,7 +582,7 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
               }
             }
             // 2. Append proposed new nodes
-            mutations.forEach((m: any) => {
+            mutations.forEach((m: Record<string, unknown>) => {
               if (m.op === "add" || m.op === "create") {
                 const id = m.id || m.data?.id || `proposed-${Date.now()}-${Math.random()}`;
                 if (!renderedNodes.some(n => n.id === id)) {
@@ -597,7 +597,7 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
                       status: "todo",
                       diff_status: "created",
                     }
-                  } as any);
+                  } as CanvasNode);
                 }
               }
             });
@@ -606,7 +606,7 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
           return renderedNodes.map((node) => (
             <CanvasNodeCard
               key={node.id}
-              node={node as any}
+              node={node as CanvasNode}
               isSelected={canvas.selectedNodeIds.includes(node.id)}
               onSelect={canvas.selectNode}
               onUpdate={canvas.updateNode}

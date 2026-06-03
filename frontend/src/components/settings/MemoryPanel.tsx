@@ -330,7 +330,7 @@ export function MemoryPanel({ teamId }: Props) {
         </div>
       ) : Object.keys(grouped).length === 0 ? (
         <div className="text-center py-16 text-sm text-[var(--text-muted)]">
-          No directives yet. The agent will learn from your team's activity automatically.
+          No directives yet. The agent will learn from your team&apos;s activity automatically.
         </div>
       ) : (
         Object.entries(grouped).map(([domain, domDirectives]) => {

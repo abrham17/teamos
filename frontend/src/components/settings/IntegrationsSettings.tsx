@@ -550,8 +550,9 @@ export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsPro
       success("MCP Server registered successfully!");
       // Automatically trigger a sync after adding
       handleMcpSync(result.id, result.name);
-    } catch (err: any) {
-      showError(err.message || "Failed to register MCP server.");
+    } catch (err: unknown) {
+      const error = err as Error | { message?: string };
+      showError((error instanceof Error ? error.message : (error as { message?: string }).message) || "Failed to register MCP server.");
     } finally {
       setMcpSubmitting(false);
     }
@@ -568,8 +569,9 @@ export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsPro
       const updatedList = await api.get<MCPServer[]>(`/chat/${teamId}/mcp-servers/`);
       setMcpServers(updatedList);
       success(`Synced ${result.tools_count} tools from MCP server '${serverName}'!`);
-    } catch (err: any) {
-      showError(err.message || `Failed to sync tools from MCP server '${serverName}'.`);
+    } catch (err: unknown) {
+      const error = err as Error | { message?: string };
+      showError((error instanceof Error ? error.message : (error as { message?: string }).message) || `Failed to sync tools from MCP server '${serverName}'.`);
     } finally {
       setMcpSyncing((prev) => ({ ...prev, [serverId]: false }));
     }
@@ -581,8 +583,9 @@ export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsPro
       await api.delete(`/chat/${teamId}/mcp-servers/${serverId}/`);
       setMcpServers((prev) => prev.filter((s) => s.id !== serverId));
       success(`MCP server '${serverName}' removed.`);
-    } catch (err: any) {
-      showError(err.message || "Failed to remove MCP server.");
+    } catch (err: unknown) {
+      const error = err as Error | { message?: string };
+      showError((error instanceof Error ? error.message : (error as { message?: string }).message) || "Failed to remove MCP server.");
     }
   };
 
@@ -592,7 +595,7 @@ export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsPro
       return;
     }
     try {
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         name: editMcpName.trim().toLowerCase(),
         url: editMcpUrl.trim(),
         enabled: editMcpEnabled,
@@ -604,8 +607,9 @@ export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsPro
       setMcpServers((prev) => prev.map((s) => s.id === serverId ? result : s));
       setEditingMcpId(null);
       success("MCP Server updated successfully!");
-    } catch (err: any) {
-      showError(err.message || "Failed to update MCP server.");
+    } catch (err: unknown) {
+      const error = err as Error | { message?: string };
+      showError((error instanceof Error ? error.message : (error as { message?: string }).message) || "Failed to update MCP server.");
     }
   };
 

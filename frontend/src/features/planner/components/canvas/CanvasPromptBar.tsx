@@ -7,7 +7,7 @@ interface CanvasPromptBarProps {
   isLoading: boolean;
   statusText: string;
   nodeCount: number;
-  selectedNodes?: Array<{ id: string; type: string; meta?: any }>;
+  selectedNodes?: Array<{ id: string; type: string; meta?: Record<string, unknown> }>;
 }
 
 const SAMPLE_PROMPTS = [

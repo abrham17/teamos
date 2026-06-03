@@ -296,8 +296,8 @@ export function NodeDetailPanel({ node, onClose, onUpdate, onDelete, teamId, pro
             {/* Layer 1: Single Sentence Summary (Always visible) */}
             <div className="bg-[#13131a] rounded-lg p-2.5 border border-[rgba(255,255,255,0.05)] text-xs text-[#a0a0b8] leading-relaxed">
               <span className="font-semibold text-white block mb-0.5">Synthesis Summary</span>
-              {typeof node.meta?.reasoning_trace === "object" && (node.meta?.reasoning_trace as any)?.summary
-                ? String((node.meta?.reasoning_trace as any).summary)
+              {typeof node.meta?.reasoning_trace === "object" && (node.meta?.reasoning_trace as Record<string, unknown>)?.summary
+                ? String((node.meta?.reasoning_trace as Record<string, unknown>).summary)
                 : node.meta?.purpose
                   ? `Agent derived this ${node.type} node to satisfy: "${node.meta.purpose}"`
                   : `Agent added this node to fulfill the strategic requirements of the project milestone.`}
@@ -315,16 +315,16 @@ export function NodeDetailPanel({ node, onClose, onUpdate, onDelete, teamId, pro
                   <div className="w-full bg-[#1e1e2d] h-1.5 rounded-full mt-1 overflow-hidden">
                     <div 
                       className="bg-gradient-to-r from-[#8b7ff4] to-[#6366f1] h-full" 
-                      style={{ width: `${(node.meta?.reasoning_trace as any)?.confidence * 100 || 88}%` }}
+                      style={{ width: `${((node.meta?.reasoning_trace as Record<string, unknown>)?.confidence as number) * 100 || 88}%` }}
                     />
                   </div>
-                  <span className="text-[10px] text-[#62627a] mt-0.5 block">Confidence: {Math.round((node.meta?.reasoning_trace as any)?.confidence * 100 || 88)}%</span>
+                  <span className="text-[10px] text-[#62627a] mt-0.5 block">Confidence: {Math.round(((node.meta?.reasoning_trace as Record<string, unknown>)?.confidence as number) * 100 || 88)}%</span>
                 </div>
 
                 <div>
                   <span className="text-white font-medium block">Alternatives Considered</span>
                   <p className="text-[10.5px] mt-0.5 text-[#8c8ca3]">
-                    {((node.meta?.reasoning_trace as any)?.alternatives as string[])?.join(", ") || 
+                    {(((node.meta?.reasoning_trace as Record<string, unknown>)?.alternatives as string[])?.join(", ")) || 
                       "Considered standalone developer assignment, opted for integrated workflow dependencies."}
                   </p>
                 </div>
@@ -332,7 +332,7 @@ export function NodeDetailPanel({ node, onClose, onUpdate, onDelete, teamId, pro
                 <div>
                   <span className="text-white font-medium block">Retrieved Context</span>
                   <p className="text-[10.5px] mt-0.5 text-[#8c8ca3]">
-                    {(node.meta?.reasoning_trace as any)?.context || 
+                    {((node.meta?.reasoning_trace as Record<string, unknown>)?.context as string) || 
                       "Sourced from Brand Guidelines wiki and target release schedule."}
                   </p>
                 </div>
