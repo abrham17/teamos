@@ -52,7 +52,7 @@ export function CanvasPromptBar({
         {selectedNodes.length > 0 && (
           <div className="text-[10px] bg-[#8b7ff4]/10 border border-[#8b7ff4]/30 rounded-lg px-2.5 py-1 text-[#8b7ff4] flex items-center gap-1.5 font-semibold mr-1">
             <span className="w-1.5 h-1.5 rounded-full bg-[#8b7ff4] animate-pulse" />
-            {selectedNodes.length} selected ({selectedNodes[0].meta?.name || selectedNodes[0].type})
+            {selectedNodes.length} selected ({String(selectedNodes[0].meta?.name || selectedNodes[0].type)})
           </div>
         )}
 

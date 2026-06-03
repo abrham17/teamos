@@ -470,7 +470,7 @@ export function CanvasNodeCard({
                 Planner proposed:
               </p>
               <p className="text-[10px] text-[var(--text-secondary)] pl-2.5 leading-relaxed">
-                {(node.meta.conflict as Record<string, unknown>).proposer_proposal}
+                {String((node.meta.conflict as Record<string, unknown>).proposer_proposal || "")}
               </p>
             </div>
             <div className="space-y-1">
@@ -479,14 +479,14 @@ export function CanvasNodeCard({
                 Risk Critic objected:
               </p>
               <p className="text-[10px] text-[var(--text-secondary)] pl-2.5 leading-relaxed">
-                {(node.meta.conflict as Record<string, unknown>).objector_objection}
+                {String((node.meta.conflict as Record<string, unknown>).objector_objection || "")}
               </p>
             </div>
           </div>
           <div className="space-y-1.5 pt-2">
             {(((node.meta.conflict as Record<string, unknown>).options || []) as Array<Record<string, unknown>>).map((opt) => (
               <button
-                key={opt.key}
+                key={String(opt.key)}
                 onClick={(e) => {
                   e.stopPropagation();
                   setConflictResolved(true);
@@ -504,7 +504,7 @@ export function CanvasNodeCard({
                 }}
                 className="w-full text-left p-1.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded text-[9px] text-[var(--text-primary)] hover:border-[var(--accent)] transition-all cursor-pointer font-medium leading-tight"
               >
-                {opt.label}
+                {String(opt.label || "")}
               </button>
             ))}
           </div>

@@ -33,6 +33,17 @@ import type { PlanCalendarEvent, ActivityItem, TeamMember, PlanProjectDetail } f
 
 type DrawerType = "integrations" | "notifications" | "calendar" | "activity" | "team" | "workload" | "history" | null;
 
+interface PendingChangeSet {
+  id: string;
+  pending_mutations?: Array<Record<string, unknown>>;
+  impact_summary?: {
+    message?: string;
+  };
+  remediation_preview?: {
+    risk_score?: string;
+  };
+}
+
 const DRAWER_BUTTONS: { key: DrawerType; label: string; icon: string }[] = [
   { key: "calendar", label: "Calendar", icon: "📅" },
   { key: "activity", label: "Activity", icon: "📋" },
@@ -68,14 +79,14 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
   const [showLoadTemplate, setShowLoadTemplate] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuTarget | null>(null);
   const [linkNodeId, setLinkNodeId] = useState<string | null>(null);
-  const [pendingChangeSets, setPendingChangeSets] = useState<Array<Record<string, unknown>>>([]);
+  const [pendingChangeSets, setPendingChangeSets] = useState<PendingChangeSet[]>([]);
 
   useEffect(() => {
     if (!currentTeamId || !projectId) return;
     const fetchChangeSets = async () => {
       try {
         const { api } = await import("@/lib/api");
-        const list = await api.get<Array<Record<string, unknown>>>(`/api/planning/${currentTeamId}/projects/${projectId}/changesets/?status=pending`);
+        const list = await api.get<PendingChangeSet[]>(`/api/planning/${currentTeamId}/projects/${projectId}/changesets/?status=pending`);
         setPendingChangeSets(list || []);
       } catch (err) {
         // ignore
@@ -563,7 +574,7 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
         {(() => {
           const renderedNodes = [...canvas.nodes];
           if (pendingChangeSets.length > 0) {
-            const mutations = pendingChangeSets[0].pending_mutations || [];
+            const mutations = (pendingChangeSets[0].pending_mutations || []) as Array<Record<string, unknown>>;
             // 1. Mark existing nodes as modified or deleted
             for (let i = 0; i < renderedNodes.length; i++) {
               const node = renderedNodes[i];
@@ -584,16 +595,17 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
             // 2. Append proposed new nodes
             mutations.forEach((m: Record<string, unknown>) => {
               if (m.op === "add" || m.op === "create") {
-                const id = m.id || m.data?.id || `proposed-${Date.now()}-${Math.random()}`;
+                  const id = (m.id as string | undefined) || ((m.data as Record<string, unknown>)?.id as string | undefined) || `proposed-${Date.now()}-${Math.random()}`;
                 if (!renderedNodes.some(n => n.id === id)) {
                   renderedNodes.push({
                     id,
-                    x: m.x || 300 + (renderedNodes.length * 60) % 400,
-                    y: m.y || 200 + (renderedNodes.length * 40) % 300,
-                    type: m.type || "task",
+                    x: (m.x as number | undefined) || 300 + (renderedNodes.length * 60) % 400,
+                    y: (m.y as number | undefined) || 200 + (renderedNodes.length * 40) % 300,
+                    type: (m.type as CanvasNode["type"] | undefined) || "task",
+                    ref_id: null,
                     meta: {
-                      name: m.data?.name || m.name || "Proposed Task",
-                      purpose: m.data?.purpose || m.purpose || "Proposed by strategic planning agent",
+                      name: (m.data as Record<string, unknown>)?.name as string || (m.name as string) || "Proposed Task",
+                      purpose: (m.data as Record<string, unknown>)?.purpose as string || (m.purpose as string) || "Proposed by strategic planning agent",
                       status: "todo",
                       diff_status: "created",
                     }
