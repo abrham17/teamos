@@ -54,3 +54,9 @@ logs/
 *.pem
 .local/
 .opencode
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
