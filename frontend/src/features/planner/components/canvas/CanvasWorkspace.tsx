@@ -493,7 +493,7 @@ export function CanvasWorkspace({ projectId }: CanvasWorkspaceProps) {
   );
 
   return (
-    <div className="w-full h-screen flex flex-col bg-[#08080c] text-[#eeeef2] overflow-hidden select-none" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+    <div className="w-full h-full flex flex-col bg-[#08080c] text-[#eeeef2] overflow-hidden select-none" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 flex flex-col overflow-hidden">
           <header className="h-[52px] border-b border-[rgba(255,255,255,0.07)] bg-[rgba(13,13,18,0.9)] backdrop-blur-[16px] flex items-center justify-between px-5 z-30 shrink-0">
