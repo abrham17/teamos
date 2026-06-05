@@ -257,7 +257,7 @@ class ChatQueryStreamView(APIView):
         research_requested = bool(request.data.get("research"))
         if research_requested and mode == "ask":
             mode = "research"
-        if mode not in ("ask", "agent", "plan", "research"):
+        if mode not in ("ask", "research"):
             return fail("Invalid mode.", status_code=400, code="invalid_mode")
 
         if mode in ("agent", "plan"):
@@ -471,132 +471,6 @@ class AdminUsageStatsView(APIView):
         }
 
         return ok({"models": data, "research": research_payload})
-
-
-class ProactiveAlertsView(APIView):
-    """GET /api/chat/:team_id/alerts/ — proactive alerts for the frontend banner."""
-
-    permission_classes = [IsAuthenticated, IsTeamMember]
-
-    def get(self, request, team_id):
-        from datetime import timedelta
-        from django.utils import timezone
-        from planning.models import Task, Milestone
-        from wiki.models import WikiPage
-
-        today = timezone.now().date()
-        week_from_now = today + timedelta(days=7)
-        alerts = []
-
-        # Overdue tasks
-        overdue = Task.objects.filter(
-            project__team_id=team_id,
-            end_date__lt=today,
-            status__in=["todo", "in-progress"],
-        ).select_related("project")[:5]
-
-        for t in overdue:
-            days = (today - t.end_date).days
-            alerts.append({
-                "id": f"overdue-{t.id}",
-                "type": "overdue",
-                "severity": "critical" if days > 7 else "warning",
-                "message": f"'{t.title}' is {days} days overdue",
-                "suggestedAction": f"Update the task status or adjust the deadline",
-                "autoFixable": False,
-                "createdAt": str(t.end_date),
-            })
-
-        # Approaching milestones
-        approaching = Milestone.objects.filter(
-            project__team_id=team_id,
-            target_date__range=[today, week_from_now],
-            status="pending",
-        ).select_related("project")[:5]
-
-        for m in approaching:
-            alerts.append({
-                "id": f"milestone-{m.id}",
-                "type": "milestone_approaching",
-                "severity": "info",
-                "message": f"Milestone '{m.title}' is approaching ({m.target_date})",
-                "suggestedAction": f"Review tasks for milestone completion",
-                "autoFixable": False,
-                "createdAt": str(m.target_date),
-            })
-
-        # Stale wiki pages
-        stale = WikiPage.objects.filter(
-            team_id=team_id,
-            is_deleted=False,
-            updated_at__lt=timezone.now() - timedelta(days=90),
-        )[:5]
-
-        for p in stale:
-            alerts.append({
-                "id": f"stale-{p.id}",
-                "type": "stale_wiki",
-                "severity": "warning",
-                "message": f"Wiki page '{p.title}' hasn't been updated in 90+ days",
-                "suggestedAction": f"Review and update or archive this page",
-                "autoFixable": False,
-                "createdAt": str(p.updated_at.date()),
-            })
-
-        return ok({"alerts": alerts})
-
-
-class ProactiveSuggestionsView(APIView):
-    """GET /api/chat/:team_id/suggestions/ — lightweight proactive suggestions."""
-
-    permission_classes = [IsAuthenticated, IsTeamMember]
-
-    def get(self, request, team_id):
-        from datetime import timedelta
-        from django.utils import timezone
-        from planning.models import Task, Milestone
-
-        today = timezone.now().date()
-        suggestions = []
-
-        # Overdue tasks
-        overdue_count = Task.objects.filter(
-            project__team_id=team_id,
-            end_date__lt=today,
-            status__in=["todo", "in-progress"],
-        ).count()
-        if overdue_count > 0:
-            suggestions.append({
-                "type": "overdue_tasks",
-                "priority": "high" if overdue_count > 3 else "medium",
-                "message": f"{overdue_count} tasks are overdue",
-                "action": "review_overdue",
-            })
-
-        # Upcoming milestones
-        week_from_now = today + timedelta(days=7)
-        upcoming = Milestone.objects.filter(
-            project__team_id=team_id,
-            target_date__range=[today, week_from_now],
-            status="pending",
-        ).count()
-        if upcoming > 0:
-            suggestions.append({
-                "type": "upcoming_milestones",
-                "priority": "medium",
-                "message": f"{upcoming} milestones due this week",
-                "action": "review_milestones",
-            })
-
-        logger.info(
-            "Suggestions for team %s: overdue=%d, upcoming=%d, returning %d suggestions",
-            team_id,
-            overdue_count,
-            upcoming,
-            len(suggestions)
-        )
-
-        return ok({"suggestions": suggestions})
 
 
 # ── MCP Integration Management Views ───────────────────────────────────

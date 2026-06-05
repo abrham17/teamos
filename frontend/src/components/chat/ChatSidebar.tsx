@@ -114,19 +114,17 @@ export function ChatSidebar({
         {/* ── Header ── */}
         <div
           className={cn(
-            "flex items-center h-14 border-b border-[var(--border-subtle)] shrink-0",
+            "flex items-center h-[52px] border-b border-[var(--border-subtle)] shrink-0",
             collapsed ? "justify-center" : "px-4 justify-between"
           )}
         >
           {collapsed ? (
-            <Bot className="w-5 h-5 text-[var(--accent)]" />
+            <span className="text-[11px] uppercase tracking-widest text-[var(--text-muted)] font-bold">C</span>
           ) : (
             <>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
-                  Chats
-                </span>
-              </div>
+              <span className="text-[11px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
+                Chats
+              </span>
               <button
                 onClick={toggleCollapsed}
                 title="Collapse sidebar"

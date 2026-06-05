@@ -118,86 +118,39 @@ class VectorStore:
 
     def search_similar_pages(self, team_id: str, query_text: str, limit: int = 10):
         from wiki.models import PageChunk
-        from planning.models import PlanChunk
 
         if connection.vendor != "postgresql":
             return self._keyword_search_similar_pages(team_id, query_text, limit=limit)
         
         vector = self._get_embedding(query_text)
         
-        # 1. Search Wiki PageChunks
         wiki_results = (
             PageChunk.objects.filter(page__team_id=team_id)
             .annotate(distance=CosineDistance("embedding", vector))
-            .filter(distance__lt=0.45) # Increased threshold for better recall
+            .filter(distance__lt=0.45)
             .order_by("distance")[:limit]
         )
         
-        # 2. Search PlanChunks
-        plan_results = (
-            PlanChunk.objects.filter(project__team_id=team_id)
-            .annotate(distance=CosineDistance("embedding", vector))
-            .filter(distance__lt=0.45) # Increased threshold for better recall
-            .order_by("distance")[:limit]
-        )
-        
-        # 3. Combine and sort
-        combined = []
-        for r in wiki_results:
-            combined.append({
-                "type": "wiki",
-                "obj": r,
-                "score": 1.0 - float(r.distance),
-                "distance": float(r.distance)
-            })
-        for r in plan_results:
-            combined.append({
-                "type": "plan",
-                "obj": r,
-                "score": 1.0 - float(r.distance),
-                "distance": float(r.distance)
-            })
-            
-        combined.sort(key=lambda x: x["distance"])
-        top_results = combined[:limit]
-
-        # 4. Mock structure for compatibility
         class MockPoint:
-            def __init__(self, item):
-                obj = item["obj"]
+            def __init__(self, obj):
                 self.id = str(obj.id)
-                self.score = item["score"]
-                
-                if item["type"] == "wiki":
-                    self.payload = {
-                        "source_type": "wiki",
-                        "page_id": str(obj.page_id),
-                        "page_title": obj.page.title,
-                        "slug": obj.page.slug,
-                        "chunk_index": obj.chunk_index,
-                        "section_title": obj.section_title,
-                        "content": obj.content,
-                        "team_id": str(team_id),
-                    }
-                else:
-                    self.payload = {
-                        "source_type": "plan",
-                        "project_id": str(obj.project_id),
-                        "project_name": obj.project.name,
-                        "source_kind": obj.source_kind,
-                        "source_ref_id": str(obj.source_ref_id) if obj.source_ref_id else None,
-                        "title": obj.title,
-                        "chunk_index": obj.chunk_index,
-                        "content": obj.content,
-                        "team_id": str(team_id),
-                    }
+                self.score = 1.0 - float(obj.distance)
+                self.payload = {
+                    "source_type": "wiki",
+                    "page_id": str(obj.page_id),
+                    "page_title": obj.page.title,
+                    "slug": obj.page.slug,
+                    "chunk_index": obj.chunk_index,
+                    "section_title": obj.section_title,
+                    "content": obj.content,
+                    "team_id": str(team_id),
+                }
         
-        return [MockPoint(r) for r in top_results]
+        return [MockPoint(r) for r in wiki_results]
 
     def _keyword_search_similar_pages(self, team_id: str, query_text: str, limit: int = 10):
         """SQLite/dev fallback when pgvector distance SQL is unavailable."""
         from wiki.models import PageChunk
-        from planning.models import PlanChunk
 
         terms = [t.lower() for t in (query_text or "").split() if len(t) > 2][:12]
 
@@ -209,42 +162,25 @@ class VectorStore:
         for chunk in PageChunk.objects.filter(page__team_id=team_id).select_related("page")[:200]:
             score = score_text(f"{chunk.page.title} {chunk.content}")
             if score:
-                combined.append(("wiki", score, chunk))
-        for chunk in PlanChunk.objects.filter(project__team_id=team_id).select_related("project")[:200]:
-            score = score_text(f"{chunk.title} {chunk.content}")
-            if score:
-                combined.append(("plan", score, chunk))
+                combined.append((score, chunk))
 
-        combined.sort(key=lambda item: item[1], reverse=True)
+        combined.sort(key=lambda item: item[0], reverse=True)
 
         class MockPoint:
             def __init__(self, item):
-                kind, score, obj = item
+                score, obj = item
                 self.id = str(obj.id)
                 self.score = float(score)
-                if kind == "wiki":
-                    self.payload = {
-                        "source_type": "wiki",
-                        "page_id": str(obj.page_id),
-                        "page_title": obj.page.title,
-                        "slug": obj.page.slug,
-                        "chunk_index": obj.chunk_index,
-                        "section_title": obj.section_title,
-                        "content": obj.content,
-                        "team_id": str(team_id),
-                    }
-                else:
-                    self.payload = {
-                        "source_type": "plan",
-                        "project_id": str(obj.project_id),
-                        "project_name": obj.project.name,
-                        "source_kind": obj.source_kind,
-                        "source_ref_id": str(obj.source_ref_id) if obj.source_ref_id else None,
-                        "title": obj.title,
-                        "chunk_index": obj.chunk_index,
-                        "content": obj.content,
-                        "team_id": str(team_id),
-                    }
+                self.payload = {
+                    "source_type": "wiki",
+                    "page_id": str(obj.page_id),
+                    "page_title": obj.page.title,
+                    "slug": obj.page.slug,
+                    "chunk_index": obj.chunk_index,
+                    "section_title": obj.section_title,
+                    "content": obj.content,
+                    "team_id": str(team_id),
+                }
 
         return [MockPoint(item) for item in combined[:limit]]
 

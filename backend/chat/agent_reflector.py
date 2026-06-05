@@ -56,15 +56,14 @@ SKIP_REFLECTION_TOOLS = {
     "wiki_team_overview",
     "wiki_read_full_page",
     "agent_memory_read",
-    "plan_list_projects",
-    "plan_search",
-    "plan_read_entity",
     "graph_traverse_neighbors",
     "graph_find_contradictions",
     "knowledge_gap_analysis",
-    "calendar_detect_conflicts",
-    "calendar_check_overdue",
-    "plan_check_overdue",
+}
+
+
+CRITICAL_TOOLS = {
+    "wiki_create_page",
 }
 
 # Tools where failure is critical and should trigger a replan

@@ -361,4 +361,4 @@ PLANNING_USE_LANGGRAPH = os.environ.get("PLANNING_USE_LANGGRAPH", "true").lower(
 # When true, multi-domain high-complexity chat prompts are routed through a
 # LangGraph crew of specialised agents instead of a single AgentCore run.
 # Keep false until crew graphs are end-to-end tested.
-CHAT_USE_CREW_FACTORY = os.environ.get("CHAT_USE_CREW_FACTORY", "true").lower() in ("1", "true", "yes")
+CHAT_USE_CREW_FACTORY = os.environ.get("CHAT_USE_CREW_FACTORY", "false").lower() in ("1", "true", "yes")

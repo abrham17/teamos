@@ -227,7 +227,7 @@ const mdComponents: Components = {
   tbody: ({ children }) => <tbody>{children}</tbody>,
   tr: ({ children }) => <tr className="transition-colors hover:bg-[var(--bg-800)]/20 even:bg-[var(--bg-800)]/30">{children}</tr>,
   th: ({ children }) => (
-    <th className="px-3 py-2 font-semibold uppercase tracking-wide text-[10px] text-[var(--text-muted)]">
+    <th className="bg-[var(--bg-800)] text-[10px] uppercase tracking-wide text-[var(--text-muted)] px-3 py-2">
       {children}
     </th>
   ),
@@ -248,12 +248,12 @@ function CodeBlock({ lang, text, className, children }: { lang?: string; text: s
   return (
     <div className="my-5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-950)] overflow-hidden">
       <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--bg-950)] border-b border-[var(--border-subtle)] rounded-t-lg select-none">
-        <span className="text-[10px] uppercase font-semibold text-[var(--text-dim)] tracking-wider">
+        <span className="text-[10px] uppercase text-[var(--text-dim)]">
           {lang || "code"}
         </span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 text-[10px] font-semibold text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors"
+          className="flex items-center gap-1 text-[10px] text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors"
           title="Copy code"
         >
           {copied ? (

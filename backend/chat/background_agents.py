@@ -6,53 +6,32 @@ from celery import shared_task
 from django.utils import timezone
 
 from accounts.models import Team
-from planning.models import Task, Milestone
 from wiki.models import WikiPage
 from chat.models import AgentEpisode
-from llm_orchestrator.orchestrator import llm_call
 
 logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=300)
 def daily_team_health_check(self, team_id: str):
-    """Daily: checks overdue items, stale wiki, approaching milestones, conflicts."""
+    """Daily: checks stale wiki pages and logs a health episode."""
     try:
         team = Team.objects.get(id=team_id)
     except Team.DoesNotExist:
         return
 
-    today = timezone.now().date()
-    week_from_now = today + timedelta(days=7)
-
-    overdue = list(Task.objects.filter(
-        project__team_id=team_id, end_date__lt=today,
-        status__in=["todo", "in-progress"],
-    ).select_related("project")[:20])
-
-    approaching = list(Milestone.objects.filter(
-        project__team_id=team_id, target_date__range=[today, week_from_now],
-        status="pending",
-    ).select_related("project")[:10])
-
-    stale_pages = list(WikiPage.objects.filter(
-        team_id=team_id, is_deleted=False,
+    stale_pages = WikiPage.objects.filter(
+        team_id=team_id,
+        is_deleted=False,
         updated_at__lt=timezone.now() - timedelta(days=90),
-    )[:10])
-
-    from planning.agent_sync import detect_date_conflicts
-    conflicts = detect_date_conflicts(team_id)
+    ).count()
 
     health = {
         "team_id": team_id,
         "checked_at": str(timezone.now()),
-        "overdue_count": len(overdue),
-        "approaching_milestones": len(approaching),
-        "stale_pages": len(stale_pages),
-        "conflicts": len(conflicts),
-        "has_critical": len(overdue) > 5 or len(conflicts) > 0,
+        "stale_pages": stale_pages,
+        "has_critical": stale_pages > 10,
     }
-
     AgentEpisode.objects.create(
         team=team, trigger="daily_health_check",
         plan={"type": "scheduled"},
@@ -61,73 +40,14 @@ def daily_team_health_check(self, team_id: str):
         success=not health["has_critical"],
         tags=["health_check", "scheduled"],
     )
-
-    logger.info("Health check team %s: %d overdue, %d conflicts, %d stale",
-                 team_id, len(overdue), len(conflicts), len(stale_pages))
     return health
-
-
-@shared_task(bind=True, max_retries=1, default_retry_delay=600)
-def weekly_retrospective(self, team_id: str):
-    """Weekly: generate team performance summary."""
-    try:
-        team = Team.objects.get(id=team_id)
-    except Team.DoesNotExist:
-        return
-
-    one_week_ago = timezone.now() - timedelta(days=7)
-    completed = Task.objects.filter(
-        project__team_id=team_id, status="completed",
-        updated_at__gte=one_week_ago,
-    ).select_related("project")
-
-    if not completed.exists():
-        return
-
-    task_list = "\n".join(
-        f"- [{t.project.name}] {t.title} ({t.priority})"
-        for t in completed[:20]
-    )
-
-    prompt = f"""Weekly retrospective for team "{team.name}".
-
-Completed tasks ({completed.count()}):
-{task_list}
-
-Generate: 1) Key accomplishments 2) Patterns observed 3) Recommendations for next week.
-Output in markdown."""
-
-    resp, _, _ = llm_call(
-        team=team, operation="weekly_retrospective",
-        messages=[{"role": "user", "content": prompt}],
-    )
-    summary = resp.choices[0].message.content if resp else ""
-
-    slug = f"retro-{timezone.now().strftime('%Y-w%W')}"
-    WikiPage.objects.update_or_create(
-        team=team, slug=slug,
-        defaults={
-            "title": f"Weekly Retro — W{timezone.now().strftime('%W')}",
-            "content": summary,
-            "page_type": "retrospective",
-            "frontmatter": {"auto_generated": True},
-        }
-    )
-    logger.info("Retrospective generated for team %s", team_id)
-    return summary
 
 
 @shared_task(bind=True, max_retries=1)
 def daily_health_check_all_teams(self):
-    """Celery beat wrapper: run health check for all teams."""
-    from accounts.models import Team
-    for team in Team.objects.all():
-        daily_team_health_check.delay(str(team.id))
-
-
-@shared_task(bind=True, max_retries=1)
-def weekly_retrospective_all_teams(self):
-    """Celery beat wrapper: run retrospective for all teams."""
-    from accounts.models import Team
-    for team in Team.objects.all():
-        weekly_retrospective.delay(str(team.id))
+    team_ids = Team.objects.values_list("id", flat=True).iterator(chunk_size=50)
+    for team_id in team_ids:
+        daily_team_health_check.apply_async(
+            args=[str(team_id)],
+            countdown=1,
+        )

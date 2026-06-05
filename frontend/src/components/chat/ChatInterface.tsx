@@ -17,7 +17,6 @@ import { CrewActivityPanel } from "@/components/chat/CrewActivityPanel";
 import { GuardianBlockCard } from "@/components/chat/GuardianBlockCard";
 import { IntentAcknowledgmentCard } from "@/components/chat/IntentAcknowledgmentCard";
 import { QuestionCard } from "@/components/chat/QuestionCard";
-import { ProactiveSuggestions } from "@/components/chat/ProactiveSuggestions";
 
 type SessionDetailResponse = { messages?: ChatMessage[] };
 
@@ -258,7 +257,7 @@ export function ChatInterface() {
   };
 
   const handleCorrectRoute = useCallback(
-    (mode: "ask" | "agent" | "research") => {
+    (mode: "ask" | "research") => {
       abortControllerRef.current?.abort();
       const lastUser = [...messages].reverse().find((m) => m.role === "user");
       if (!lastUser) return;
@@ -272,7 +271,7 @@ export function ChatInterface() {
   );
 
   const sendUserMessage = useCallback(
-    async (userMsg: string, modeOverride?: "ask" | "agent" | "research") => {
+    async (userMsg: string, modeOverride?: "ask" | "research") => {
       const trimmed = userMsg.trim();
       if (!trimmed || !currentTeamId || !activeSessionId || isStreaming) return;
       if (researchRequested && !capabilities?.research_mode_available) {
@@ -869,28 +868,36 @@ export function ChatInterface() {
                     transition={{ duration: 0.35, ease: "easeOut" }}
                     key={m.id || i} 
                     className={cn(
-                      "mx-auto flex w-full max-w-3xl gap-4 py-4 group/msg border-none shadow-none", 
+                      "mx-auto flex w-full max-w-3xl py-4 group/msg border-none shadow-none", 
                       isUser ? "justify-end" : "justify-start"
                     )}
                   >
-                    {!isUser && (
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] mt-0.5 select-none">
-                        <Bot className="h-4 w-4 text-[var(--bg-950)]" />
-                      </div>
-                    )}
-                    <div className={cn("flex max-w-[85%] flex-col gap-1 min-w-0 w-full", isUser ? "items-end" : "items-start")}>
+                    <div className={cn("flex flex-col gap-1 min-w-0 max-w-[85%]", isUser ? "items-end" : "items-start w-full")}>
                       
-                      <div className="flex items-center gap-2 mb-1 px-1 opacity-0 group-hover/msg:opacity-100 transition-opacity h-4 select-none">
-                        <span className="text-[9px] text-[var(--text-dim)] font-mono">
-                          {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                      </div>
+                      {!isUser && (
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] select-none">
+                            <Bot className="h-4 w-4 text-[var(--bg-950)]" />
+                          </div>
+                          <span className="text-[9px] text-[var(--text-dim)] font-mono opacity-0 group-hover/msg:opacity-100 transition-opacity select-none">
+                            {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </div>
+                      )}
+
+                      {isUser && (
+                        <div className="flex items-center gap-2 mb-1 px-1 opacity-0 group-hover/msg:opacity-100 transition-opacity h-4 select-none">
+                          <span className="text-[9px] text-[var(--text-dim)] font-mono">
+                            {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </div>
+                      )}
                       
                       <div className="relative group/msg-content w-full">
                         <div className={cn(
                           "text-[14px] leading-relaxed",
                           isUser
-                            ? "bg-[var(--bg-800)] px-4 py-2.5 rounded-2xl text-[var(--text-primary)] inline-block float-right text-right"
+                            ? "bg-[var(--bg-800)] px-4 py-2.5 rounded-2xl text-[var(--text-primary)] inline-block text-left"
                             : "bg-transparent text-[var(--text-primary)] w-full"
                         )}>
                             {isEditing ? (
@@ -1031,11 +1038,6 @@ export function ChatInterface() {
                       )}
 
                     </div>
-                    {isUser && (
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--bg-700)] border border-[var(--border-strong)] mt-0.5 select-none">
-                        <User className="h-4 w-4 text-[var(--text-muted)]" />
-                      </div>
-                    )}
                   </motion.div>
                 );
               })}
@@ -1072,26 +1074,16 @@ export function ChatInterface() {
                   <h1 className="text-3xl font-medium tracking-tight text-[var(--text-primary)] mb-2">
                     TeamOS Chat
                   </h1>
-                  <p className="text-sm text-[var(--text-muted)] max-w-md mx-auto">
-                    Calm, intelligent workspace agent.
-                  </p>
-                </div>
-              )}
-
-              {/* Proactive Suggestions */}
-              {sessionReady && currentTeamId && (
-                <div className="w-full max-w-3xl mb-3">
-                  <ProactiveSuggestions teamId={currentTeamId} />
                 </div>
               )}
 
               {/* Textarea Input Card */}
               <div className="w-full max-w-3xl relative">
-                <div className="relative w-full">
+                <div className="relative w-full group">
                   <textarea
                     ref={inputRef}
                     rows={1}
-                    className="w-full rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-800)] py-3 pl-4 pr-24 text-[14px] text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/40 focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden leading-relaxed"
+                    className="w-full rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-800)] py-3 pl-4 pr-28 text-[15px] text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--border-strong)] focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden leading-relaxed"
                     style={{ maxHeight: "180px" }}
                     placeholder={!sessionReady ? "Initializing…" : isRecording ? "" : "Ask anything…"}
                     value={input}
@@ -1118,7 +1110,7 @@ export function ChatInterface() {
                     </div>
                   )}
 
-                  <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                  <div className="absolute right-2 bottom-1.5 flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => setResearchRequested((prev) => !prev)}
@@ -1144,10 +1136,10 @@ export function ChatInterface() {
                       title={isRecording ? "Stop recording speech" : "Start recording speech"}
                       aria-label={isRecording ? "Stop recording speech" : "Start recording speech"}
                       className={cn(
-                        "h-8 w-8 flex items-center justify-center rounded-lg transition-all border border-transparent hover:border-white/5",
+                        "h-8 w-8 flex items-center justify-center rounded-lg transition-all border border-transparent hover:border-[var(--border-subtle)]",
                         isRecording 
                           ? "text-rose-500 bg-rose-500/10 hover:bg-rose-500/20" 
-                          : "text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-white/5"
+                          : "text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)]"
                       )}
                     >
                       {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
@@ -1165,14 +1157,14 @@ export function ChatInterface() {
                       disabled={sendDisabled}
                       title={isStreaming ? "Stop generation" : "Send message"}
                       aria-label={isStreaming ? "Stop generation" : "Send message"}
-                      className="h-8 w-8 flex items-center justify-center rounded-full bg-[var(--accent)] text-[var(--bg-950)] transition-all disabled:opacity-25 hover:scale-105 active:scale-95 shadow-none cursor-pointer"
+                      className="h-8 w-8 flex items-center justify-center rounded-full bg-[var(--accent)] text-white transition-all disabled:opacity-25 hover:scale-105 active:scale-95 shadow-none cursor-pointer"
                     >
                       {isStreaming ? <X className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
                 {researchRequested && capabilities?.research_quota && (
-                  <p className="text-center text-[11px] text-[var(--text-dim)] mt-1.5">
+                  <p className="pl-2 text-left text-[11px] text-[var(--text-dim)] mt-1.5">
                     Research mode is on · {capabilities.research_quota.remaining} searches remaining
                   </p>
                 )}

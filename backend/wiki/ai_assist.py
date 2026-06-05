@@ -3,7 +3,6 @@
 from dataclasses import dataclass, field
 from llm_orchestrator.orchestrator import llm_call
 from wiki.models import WikiPage
-from planning.models import Project, Task, Milestone
 from accounts.models import Team
 
 
@@ -216,56 +215,6 @@ If nothing is stale, return empty array []."""
         return [StaleSection(**item) for item in data]
     except (json.JSONDecodeError, AttributeError, TypeError):
         return []
-
-
-def generate_from_plan(team_id: str, project_id: str) -> str:
-    """Generate comprehensive wiki documentation from a project plan."""
-    try:
-        project = Project.objects.get(id=project_id, team_id=team_id)
-    except Project.DoesNotExist:
-        return ""
-
-    tasks = list(Task.objects.filter(project=project).values(
-        "title", "description", "status", "priority", "start_date", "end_date"
-    ))
-    milestones = list(Milestone.objects.filter(project=project).values(
-        "title", "description", "target_date", "status"
-    ))
-
-    prompt = f"""Generate a comprehensive wiki page documenting this project plan.
-
-Project: {project.name}
-Description: {project.description or "No description"}
-Status: {project.status}
-
-Tasks ({len(tasks)}):
-{_format_items(tasks)}
-
-Milestones ({len(milestones)}):
-{_format_items(milestones)}
-
-Generate a well-structured markdown wiki page with:
-1. Project overview and objectives
-2. Strategic roadmap with checkpoints and milestones
-3. Task breakdown with priorities
-4. Timeline and dependencies
-5. Risk considerations
-
-Output the full markdown page."""
-    
-    team = _get_team_or_none(team_id)
-    if not team:
-        return ""
-
-    resp, _, _ = llm_call(
-        team=team,
-        operation="wiki_from_plan",
-        messages=[
-            {"role": "system", "content": "You are a technical documentation writer. Output only markdown."},
-            {"role": "user", "content": prompt},
-        ],
-    )
-    return resp.choices[0].message.content if resp else ""
 
 
 def _format_items(items: list[dict]) -> str:

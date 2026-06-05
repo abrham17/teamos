@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Loader2 } from "lucide-react";
+import { Check } from "lucide-react";
 import type { CrewProgress, CrewAgentProgress } from "./chatTypes";
 import { getAgentIdentity } from "@/lib/agentIdentity";
 
@@ -17,7 +17,7 @@ function AgentStatusIcon({ status }: { status: CrewAgentProgress["status"] }) {
     case "executing":
       return <div className="w-2.5 h-2.5 rounded-full bg-[var(--accent)] animate-pulse shrink-0" />;
     case "done":
-      return <Check className="w-3 h-3 text-[var(--success)] shrink-0 font-bold" />;
+      return <div className="w-2.5 h-2.5 rounded-full bg-[var(--success)] flex items-center justify-center shrink-0"><Check className="w-2 h-2 text-white" /></div>;
   }
 }
 
@@ -28,23 +28,19 @@ export function CrewActivityPanel({ progress, isRunning = true }: CrewActivityPa
   if (!agents.length) return null;
 
   return (
-    <div className="my-2 border border-[var(--border-subtle)] rounded-xl overflow-hidden bg-transparent">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border-subtle)] bg-[var(--bg-800)]/20">
+    <div className="border border-[var(--border-subtle)] rounded-xl overflow-hidden bg-transparent">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border-subtle)] text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
         <div className="flex items-center gap-2">
+          <span>Crew</span>
           {isRunning && (
             <span className="flex h-1.5 w-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
           )}
-          <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-            Crew
-          </span>
         </div>
-        <span className="text-[10px] text-[var(--text-dim)] font-mono">
+        <span>
           {doneCount}/{agents.length} done
         </span>
       </div>
 
-      {/* Agents List */}
       <div className="divide-y divide-[var(--border-subtle)]">
         {agents.map((agent) => {
           const identity = getAgentIdentity(agent.role);
@@ -54,14 +50,14 @@ export function CrewActivityPanel({ progress, isRunning = true }: CrewActivityPa
           return (
             <div
               key={agent.role}
-              className="flex items-center gap-2.5 px-3 py-2 text-left bg-transparent"
+              className="flex items-center gap-2.5 px-3 py-2 bg-transparent"
             >
               <AgentStatusIcon status={agent.status} />
               <span className="text-[12px] font-medium text-[var(--text-primary)] capitalize shrink-0">
-                {identity.label}
+                {identity.label || agent.role}
               </span>
-              <span className="text-[11px] text-[var(--text-dim)] ml-2 truncate max-w-[280px]">
-                {isActive ? (agent.current_action || "executing") : isDone ? "completed" : "queued"}
+              <span className="text-[11px] text-[var(--text-dim)] truncate max-w-[180px] ml-2">
+                {isActive ? (agent.current_action || "executing...") : isDone ? "completed" : "queued"}
               </span>
             </div>
           );

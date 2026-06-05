@@ -29,38 +29,31 @@ export function CollapsibleThoughtBlock({
   if (!thoughtText.trim()) return null;
 
   return (
-    <div className={cn("my-2 w-full border border-[var(--border-subtle)] rounded-xl overflow-hidden", className)}>
-      <button
+    <div className={cn("border border-[var(--border-subtle)] rounded-xl overflow-hidden", className)}>
+      <div
         onClick={() => setExpanded((p) => !p)}
-        className="w-full flex items-center justify-between px-3 py-2 hover:bg-[var(--bg-800)]/30 transition-colors select-none text-left"
+        className="flex items-center gap-2 px-3 py-2 cursor-pointer select-none"
       >
-        <div className="flex items-center gap-2">
-          <Brain
-            className={cn(
-              "w-3.5 h-3.5 shrink-0 transition-colors",
-              isStreaming
-                ? "text-[var(--accent)]"
-                : "text-[var(--text-muted)]"
-            )}
-          />
-          <span className="text-[11px] font-medium text-[var(--text-muted)]">
-            {isStreaming ? "Thinking..." : "Thought Process"}
-          </span>
-          {isStreaming && (
-            <span className="inline-flex h-1.5 w-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
-          )}
-        </div>
-        <ChevronDown
+        <Brain
           className={cn(
-            "w-3.5 h-3.5 text-[var(--text-dim)] transition-transform duration-200",
-            expanded ? "rotate-180" : ""
+            "w-3 h-3 shrink-0 transition-colors",
+            isStreaming ? "text-[var(--accent)]" : "text-[var(--text-muted)]"
           )}
         />
-      </button>
-
+        <span className="text-[11px] text-[var(--text-muted)]">Thinking</span>
+        {isStreaming && (
+          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
+        )}
+        <ChevronDown
+          className={cn(
+            "w-3 h-3 ml-auto transition-transform duration-200 text-[var(--text-dim)]",
+            expanded && "rotate-180"
+          )}
+        />
+      </div>
       {expanded && (
-        <div className="px-3 pb-3 border-t border-[var(--border-subtle)] pt-3">
-          <p className="text-[11px] leading-relaxed text-[var(--text-dim)] whitespace-pre-wrap font-mono max-h-48 overflow-y-auto custom-scrollbar">
+        <div className="border-t border-[var(--border-subtle)] px-3 pb-3">
+          <p className="text-[11px] leading-relaxed text-[var(--text-dim)] whitespace-pre-wrap font-mono max-h-48 overflow-y-auto mt-3">
             {thoughtText}
           </p>
         </div>

@@ -448,51 +448,5 @@ def agent_react_to_page_change(self, page_id: str, event_type: str = "update", t
     max_retries=1,
 )
 def agent_sync_wiki_to_plans(self, page_id: str, trace_id: str | None = None):
-    """
-    When a wiki page changes, check if any active plans are affected
-    and log the impact for team awareness.
-    """
-    trace_id = coalesce_trace_id(trace_id, prefix="plan-sync")
-    from wiki.models import WikiPage
-    from planning.agent_sync import analyze_wiki_change_impact
-
-    try:
-        page = WikiPage.objects.get(id=page_id, is_deleted=False)
-    except WikiPage.DoesNotExist:
-        return
-
-    try:
-        impact = analyze_wiki_change_impact(str(page.id), str(page.team_id))
-
-        if impact.get("affected_tasks"):
-            from chat.agent_memory_service import set_memory
-
-            set_memory(
-                team_id=str(page.team_id),
-                key=f"wiki_impact_{page.id}",
-                value=impact,
-                category="context",
-                summary=(
-                    f"Wiki page '{page.title}' changed — affects "
-                    f"{len(impact['affected_tasks'])} task(s) in "
-                    f"{len(impact['affected_projects'])} project(s)"
-                ),
-            )
-
-        ops_logger.info(
-            "agent_wiki_plan_sync_completed",
-            trace_id=trace_id,
-            page_id=str(page.id),
-            affected_projects=len(impact.get("affected_projects", [])),
-            affected_tasks=len(impact.get("affected_tasks", [])),
-        )
-    except Exception as exc:
-        if self.request.retries >= self.max_retries:
-            record_dead_letter(
-                task_name="ingest.agent_sync_wiki_to_plans",
-                error_message=str(exc),
-                trace_id=trace_id,
-                payload={"page_id": page_id},
-            )
-        raise
+    return  # planning removed
 
