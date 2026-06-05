@@ -16,14 +16,7 @@ class WikiPage(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="pages")
-    project = models.OneToOneField(
-        "planning.Project", 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True, 
-        related_name="wiki_page",
-        help_text="The strategic plan this page represents."
-    )
+
     title = models.CharField(max_length=300)
     slug = models.SlugField(max_length=300)
     content = models.TextField(blank=True)          # raw Markdown

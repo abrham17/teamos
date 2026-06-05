@@ -15,14 +15,7 @@ export function buildChatCitationHref(citation: ChatCitationLinkInput): string {
     return (citation.url || "").trim() || "#";
   }
   if ((citation.source || "").toLowerCase() === "plan") {
-    const params = new URLSearchParams();
-    if (citation.project_id) params.set("project", String(citation.project_id));
-    if (citation.chunk_id) params.set("chunk", String(citation.chunk_id));
-    if (citation.source_kind) params.set("source_kind", citation.source_kind);
-    if (citation.source_ref_id) params.set("source_ref_id", String(citation.source_ref_id));
-    params.set("source", "chat");
-    const query = params.toString();
-    return query ? `/plan?${query}` : "/plan";
+    return "/wiki";
   }
 
   const slug = (citation.page_slug || "").trim();

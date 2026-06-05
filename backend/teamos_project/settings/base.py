@@ -52,7 +52,6 @@ INSTALLED_APPS = [
     "billing",
     "product_analytics",
     "presence",
-    "planning",
     "llm_orchestrator",
     "admin_api",
     "research",
@@ -212,30 +211,6 @@ CELERY_BEAT_SCHEDULE = {
     "prune-expired-agent-memories": {
         "task": "chat.tasks.prune_expired_agent_memories",
         "schedule": crontab(hour="3", minute="30"),
-    },
-    "daily-overdue-notifications": {
-        "task": "planning.tasks.daily_overdue_notifications",
-        "schedule": crontab(hour="8", minute="0"),
-    },
-    "milestone-approach-notifications": {
-        "task": "planning.tasks.milestone_approach_notifications",
-        "schedule": crontab(hour="8", minute="30"),
-    },
-    "daily-task-digest": {
-        "task": "planning.tasks.daily_task_digest",
-        "schedule": crontab(hour="7", minute="0"),
-    },
-    "autonomous-schedule-auditor": {
-        "task": "planning.tasks.autonomous_schedule_auditor",
-        "schedule": crontab(hour="*/2"),  # every 2 hours
-    },
-    "check-mcp-servers": {
-        "task": "chat.tasks.check_all_mcp_servers",
-        "schedule": crontab(minute="*/5"),  # every 5 minutes
-    },
-    "daily-directive-maintenance": {
-        "task": "chat.tasks.daily_directive_maintenance",
-        "schedule": crontab(hour="2", minute="0"),  # nightly at 02:00
     },
 }
 

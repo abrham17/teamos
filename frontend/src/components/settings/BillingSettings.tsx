@@ -489,7 +489,7 @@ export function BillingSettings() {
                   <div className="h-full bg-indigo-400 rounded-full" style={{ width: "44%" }} />
                 </div>
                 <p className="text-[10px] text-[var(--text-dim)] italic">
-                  Average cost per planning canvas run: $0.14 (approx. 9.3k tokens per execution).
+                  Average cost per agent run: $0.14 (approx. 9.3k tokens per execution).
                 </p>
               </div>
 

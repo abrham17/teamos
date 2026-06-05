@@ -976,7 +976,7 @@ export default function SettingsPage() {
                     <div>
                       <h4 className="font-bold text-[13px] text-rose-400">Destroy this team</h4>
                       <p className="text-[11px] text-[var(--text-muted)] mt-1 leading-relaxed">
-                        Delete all planning details, documents, and historical team chats forever. This cannot be undone.
+                        Delete all historical team chats forever. This cannot be undone.
                       </p>
                     </div>
                     <button

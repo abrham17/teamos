@@ -8,7 +8,7 @@ export const ICONSCOUT = {
   illustrations: {
     emptyChat: "/iconscout/illustrations/empty-chat.svg",
     emptyWiki: "/iconscout/illustrations/empty-wiki.svg",
-    emptyPlanner: "/iconscout/illustrations/empty-planner.svg",
+    emptyChart: "/iconscout/illustrations/empty-chart.svg",
     emptyGraph: "/iconscout/illustrations/empty-graph.svg",
     emptyIngest: "/iconscout/illustrations/empty-ingest.svg",
     onboardingWelcome: "/iconscout/illustrations/onboarding-welcome.svg",

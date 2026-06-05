@@ -11,7 +11,6 @@ class Migration(migrations.Migration):
     dependencies = [
         ('accounts', '0005_team_plan_enterprise'),
         ('ingest', '0007_wikichangeset_status'),
-        ('wiki', '0003_wikipage_project'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
