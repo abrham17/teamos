@@ -484,6 +484,17 @@ export function IntegrationsSettings({ teamId, myRole }: IntegrationsSettingsPro
     }
   };
 
+  const handleRefresh = async (providerKey: string) => {
+    try {
+      await api.get(`/integrations/${providerKey}/refresh/`);
+      success(`${providerKey} refreshed.`);
+      loadData();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e ?? "Failed to refresh token.");
+      showError(msg || "Failed to refresh token.");
+    }
+  };
+
   // MCP handlers
   const handleMcpAdd = async (e: React.FormEvent) => {
     e.preventDefault();
