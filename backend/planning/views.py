@@ -1703,18 +1703,24 @@ class CanvasAIAssistView(APIView):
             '"message": "brief explanation of changes"}'
         )
 
-        from llm_orchestrator.orchestrator import llm_json_call
+        try:
+            from openai import OpenAI
+        except ImportError:
+            from integrations.llm import get_completion
 
-        result = llm_json_call(
-            team=project.team,
-            operation="canvas_assist",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": json.dumps(context, default=str)},
-            ],
-            user=request.user,
-            default_on_error={"nodes": canvas.nodes, "edges": canvas.edges, "message": "Failed to generate AI response."}
-        )
+            result_text = get_completion(system_prompt + "\n\nContext:\n" + json.dumps(context, default=str))
+            result = json.loads(result_text)
+        else:
+            client = OpenAI()
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": json.dumps(context, default=str)},
+                ],
+                response_format={"type": "json_object"},
+            )
+            result = json.loads(resp.choices[0].message.content or "{}")
 
         if "nodes" in result:
             canvas.nodes = result["nodes"]
