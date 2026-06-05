@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, BrainCircuit, Search, BookOpen, ArrowUp, Mic, MicOff, Globe2 } from "lucide-react";
+import { Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, BrainCircuit, Search, BookOpen, ArrowUp, Mic, MicOff, Globe2, PlusCircle } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { ChatCitationList } from "@/components/chat/ChatCitationList";
-import { ChatAgentToolTimeline } from "@/components/chat/ChatAgentToolTimeline";
 import { ChatSidebar } from "@/components/chat/ChatSidebar";
 import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
@@ -17,10 +16,9 @@ import { CollapsibleThoughtBlock } from "@/components/chat/CollapsibleThoughtBlo
 import { CrewActivityPanel } from "@/components/chat/CrewActivityPanel";
 import { GuardianBlockCard } from "@/components/chat/GuardianBlockCard";
 import { IntentAcknowledgmentCard } from "@/components/chat/IntentAcknowledgmentCard";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ICONSCOUT } from "@/lib/iconscoutAssets";
 import { QuestionCard } from "@/components/chat/QuestionCard";
 import { ProactiveSuggestions } from "@/components/chat/ProactiveSuggestions";
+
 type SessionDetailResponse = { messages?: ChatMessage[] };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
@@ -31,7 +29,6 @@ const QUICK_PROMPTS = [
   { label: "Draft a System Brief", desc: "Formulate architectural descriptions, component specs, and API lists.", icon: BookOpen, prompt: "Write an architectural system brief for a microservices-based notification engine." },
   { label: "Summarize Recent Activity", desc: "Get a concise summary of recent team wiki updates.", icon: User, prompt: "Summarize all wiki pages updated in the last week and highlight any critical changes." }
 ];
-
 
 function agentStepsForMessage(m: ChatMessage): AgentToolStep[] {
   if (m.toolSteps?.length) return m.toolSteps;
@@ -62,8 +59,6 @@ export function ChatInterface() {
   const [strategy, setStrategy] = useState<AgentStrategy | null>(null);
   const [capabilities, setCapabilities] = useState<ChatCapabilities | null>(null);
   const [researchRequested, setResearchRequested] = useState(false);
-
-
 
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editInput, setEditInput] = useState("");
@@ -140,7 +135,6 @@ export function ChatInterface() {
     let cancelled = false;
     setSessionReady(false);
 
-    // Optimistically load from local cache (Phase 6.3)
     const cacheKey = `teamos:chat:sessions:${currentTeamId}`;
     try {
       const cached = localStorage.getItem(cacheKey);
@@ -234,7 +228,6 @@ export function ChatInterface() {
     };
   }, [currentTeamId]);
 
-
   useEffect(() => {
     if (!currentTeamId || !activeSessionId) return;
     api
@@ -266,15 +259,12 @@ export function ChatInterface() {
 
   const handleCorrectRoute = useCallback(
     (mode: "ask" | "agent" | "research") => {
-      // Abort current stream and re-send last user message with corrected mode
       abortControllerRef.current?.abort();
       const lastUser = [...messages].reverse().find((m) => m.role === "user");
       if (!lastUser) return;
-      // Remove last incomplete assistant message then resend with override
       setMessages((prev) => prev.filter((m) => m.isStreaming !== true));
       setIsStreaming(false);
       setStatus("");
-      // Small delay so abort resolves before next fetch
       setTimeout(() => sendUserMessage(lastUser.content, mode), 80);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -313,7 +303,6 @@ export function ChatInterface() {
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
-      // Derive mode: explicit override > research toggle > default
       const resolvedMode = modeOverride ?? (researchRequested ? "research" : "ask");
 
       try {
@@ -371,7 +360,6 @@ export function ChatInterface() {
                   } else if (currentEvent === "agent_strategy") {
                     const strat = data as unknown as AgentStrategy;
                     setStrategy(strat);
-                    // Also attach strategy to the working message so it persists in history
                     working = { ...working, strategy: strat };
                     setMessages((prev) => {
                       const next = [...prev];
@@ -567,99 +555,98 @@ export function ChatInterface() {
                       next[next.length - 1] = { ...working };
                       return next;
                     });
-                } else if (currentEvent === "agent_step") {
-                  const name = String((data as { name?: string }).name ?? "");
-                  const arg = String((data as { arguments?: string }).arguments ?? "");
-                  const steps = [...(working.agentSteps ?? []), { name, arguments: arg }];
-                  working = { ...working, agentSteps: steps };
-                  setMessages((prev) => {
-                    const next = [...prev];
-                    next[next.length - 1] = { ...working };
-                    return next;
-                  });
-                } else if (currentEvent === "agent_result") {
-                  const name = String((data as { name?: string }).name ?? "");
-                  const ok = Boolean((data as { ok?: boolean }).ok);
-                  const result = (data as { result?: unknown }).result;
-                  const steps = [...(working.agentSteps ?? [])];
-                  let li = -1;
-                  for (let i = steps.length - 1; i >= 0; i--) {
-                    if (steps[i].name === name && steps[i].ok === undefined) { li = i; break; }
-                  }
-                  if (li >= 0) steps[li] = { ...steps[li], ok, result };
-                  working = { ...working, agentSteps: steps };
-                  setMessages((prev) => {
-                    const next = [...prev];
-                    next[next.length - 1] = { ...working };
-                    return next;
-                  });
-                } else if (currentEvent === "thinking") {
-                  const content = String((data as { content?: string }).content ?? "");
-                  if (content) {
-                    working = { ...working, reasoning: (working.reasoning ?? "") + content, isStreaming: true };
+                  } else if (currentEvent === "agent_step") {
+                    const name = String((data as { name?: string }).name ?? "");
+                    const arg = String((data as { arguments?: string }).arguments ?? "");
+                    const steps = [...(working.agentSteps ?? []), { name, arguments: arg }];
+                    working = { ...working, agentSteps: steps };
                     setMessages((prev) => {
                       const next = [...prev];
                       next[next.length - 1] = { ...working };
                       return next;
                     });
-                  }
-                } else if (currentEvent === "reflection") {
-                  // Reflection feedback is handled via agent_activity events
-                } else if (currentEvent === "agent_activity") {
-                  const activityData = data as unknown as ActivityEntry;
-                  if (activityData.message) {
-                    const entry: ActivityEntry = {
-                      id: activityData.id || `act-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                      timestamp: activityData.timestamp || Date.now(),
-                      kind: activityData.kind || "status",
-                      message: activityData.message,
-                      detail: activityData.detail,
-                      status: activityData.status || "running",
-                    };
+                  } else if (currentEvent === "agent_result") {
+                    const name = String((data as { name?: string }).name ?? "");
+                    const ok = Boolean((data as { ok?: boolean }).ok);
+                    const result = (data as { result?: unknown }).result;
+                    const steps = [...(working.agentSteps ?? [])];
+                    let li = -1;
+                    for (let i = steps.length - 1; i >= 0; i--) {
+                      if (steps[i].name === name && steps[i].ok === undefined) { li = i; break; }
+                    }
+                    if (li >= 0) steps[li] = { ...steps[li], ok, result };
+                    working = { ...working, agentSteps: steps };
+                    setMessages((prev) => {
+                      const next = [...prev];
+                      next[next.length - 1] = { ...working };
+                      return next;
+                    });
+                  } else if (currentEvent === "thinking") {
+                    const content = String((data as { content?: string }).content ?? "");
+                    if (content) {
+                      working = { ...working, reasoning: (working.reasoning ?? "") + content, isStreaming: true };
+                      setMessages((prev) => {
+                        const next = [...prev];
+                        next[next.length - 1] = { ...working };
+                        return next;
+                      });
+                    }
+                  } else if (currentEvent === "reflection") {
+                    // Reflection feedback is handled via agent_activity events
+                  } else if (currentEvent === "agent_activity") {
+                    const activityData = data as unknown as ActivityEntry;
+                    if (activityData.message) {
+                      const entry: ActivityEntry = {
+                        id: activityData.id || `act-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                        timestamp: activityData.timestamp || Date.now(),
+                        kind: activityData.kind || "status",
+                        message: activityData.message,
+                        detail: activityData.detail,
+                        status: activityData.status || "running",
+                      };
+                      working = {
+                        ...working,
+                        activityFeed: [...(working.activityFeed || []), entry],
+                      };
+                      setMessages((prev) => {
+                        const next = [...prev];
+                        next[next.length - 1] = { ...working };
+                        return next;
+                      });
+                    }
+                  } else if (currentEvent === "ask_user") {
+                    const q = data as { question?: string; options?: string[] };
                     working = {
                       ...working,
-                      activityFeed: [...(working.activityFeed || []), entry],
+                      isStreaming: false,
+                      question: {
+                        question: q.question || "Could you share more details?",
+                        options: Array.isArray(q.options) ? q.options : undefined,
+                      },
                     };
+                    setIsStreaming(false);
                     setMessages((prev) => {
                       const next = [...prev];
                       next[next.length - 1] = { ...working };
                       return next;
                     });
+                  } else if (currentEvent === "replan") {
+                    setStatus("Replanning approach...");
+                  } else if (currentEvent === "done") {
+                    setIsStreaming(false);
+                    setStatus("");
+                    working = { ...working, isStreaming: false };
+                    setMessages((prev) => {
+                      const next = [...prev];
+                      next[next.length - 1] = { ...working };
+                      return next;
+                    });
+                  } else if (currentEvent === "error") {
+                    throw new Error("Stream error");
                   }
-                } else if (currentEvent === "ask_user") {
-                  // Planning agent needs one clarifying answer before proceeding
-                  const q = data as { question?: string; options?: string[] };
-                  working = {
-                    ...working,
-                    isStreaming: false,
-                    question: {
-                      question: q.question || "Could you share more details?",
-                      options: Array.isArray(q.options) ? q.options : undefined,
-                    },
-                  };
-                  setIsStreaming(false);
-                  setMessages((prev) => {
-                    const next = [...prev];
-                    next[next.length - 1] = { ...working };
-                    return next;
-                  });
-                } else if (currentEvent === "replan") {
-                  setStatus("Replanning approach...");
-                } else if (currentEvent === "done") {
-                  setIsStreaming(false);
-                  setStatus("");
-                  working = { ...working, isStreaming: false };
-                  setMessages((prev) => {
-                    const next = [...prev];
-                    next[next.length - 1] = { ...working };
-                    return next;
-                  });
-                } else if (currentEvent === "error") {
-                  throw new Error("Stream error");
-                }
-              } catch { /* skip parse errs */ }
+                } catch { /* skip parse errs */ }
+              }
             }
-          }
           }
           if (done) {
             if (buffer.trim()) {
@@ -690,7 +677,6 @@ export function ChatInterface() {
           }
         }
         
-        // Ensure isStreaming is set to false on completion
         working = { ...working, isStreaming: false };
         setMessages((prev) => {
           const next = [...prev];
@@ -798,6 +784,7 @@ export function ChatInterface() {
     const idx = messages.findIndex(m => m.id === id);
     setMessages(prev => prev.slice(0, idx));
     setEditingMessageId(null);
+    setEditingMessageId(null);
     await handleSend(editInput);
   };
 
@@ -806,8 +793,13 @@ export function ChatInterface() {
 
   const hasMessages = messages.length > 0;
 
+  const activeSessionTitle = useMemo(() => {
+    const s = sessions.find((s) => s.id === activeSessionId);
+    return s ? s.title : "Infrastructure Alignment: Orion";
+  }, [sessions, activeSessionId]);
+
   return (
-    <div className="flex h-full w-full flex-1 bg-[var(--bg-900)] overflow-hidden border-none shadow-none">
+    <div className="flex h-full w-full flex-1 bg-[var(--bg-950)] overflow-hidden border-none shadow-none font-sans text-[var(--text-primary)]">
       <ChatSidebar
         sessions={sessions}
         activeSessionId={activeSessionId}
@@ -817,7 +809,7 @@ export function ChatInterface() {
         onRenameSession={handleRenameSession}
       />
 
-      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden w-full h-full border-none shadow-none">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden w-full h-full border-none shadow-none bg-[var(--bg-900)]">
         {!currentTeamId ? (
           <div className="flex flex-1 flex-col items-center justify-center p-8 text-center space-y-4 my-auto">
             <div className="relative w-16 h-16 rounded-2xl bg-[var(--accent-subtle)] border border-[var(--border-subtle)] flex items-center justify-center">
@@ -829,13 +821,27 @@ export function ChatInterface() {
             </div>
           </div>
         ) : (
-            <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-[var(--bg-900)]">
+          <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-[var(--bg-900)]">
             
+            {/* ── Compact Claude-style Header ───────────────────────── */}
+            <header className="h-[52px] border-b border-[var(--border-subtle)] flex items-center justify-between px-6 shrink-0 relative z-10 select-none">
+              <h2 className="text-sm font-medium text-[var(--text-primary)]">
+                {activeSessionTitle}
+              </h2>
+              <button
+                onClick={handleNewChat}
+                className="p-1.5 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-800)]/60 transition-colors cursor-pointer"
+                title="New Chat"
+              >
+                <PlusCircle className="w-4 h-4" />
+              </button>
+            </header>
+
             {/* ── Messages scroll area ─────────────────────────── */}
             <div 
               ref={scrollContainerRef} 
               className={cn(
-                "flex-1 overflow-y-auto px-4 sm:px-6 py-8 min-h-0 custom-scrollbar w-full border-none shadow-none", 
+                "flex-1 overflow-y-auto px-6 sm:px-8 py-8 min-h-0 custom-scrollbar w-full border-none shadow-none", 
                 !hasMessages && "hidden"
               )}
             >
@@ -843,30 +849,49 @@ export function ChatInterface() {
                 const isLiveAssistant = m.role === "assistant" && isStreaming && i === messages.length - 1;
                 const isUser = m.role === "user";
                 const isEditing = editingMessageId === m.id;
+
+                const effectiveEntries = m.activityFeed && m.activityFeed.length > 0
+                  ? m.activityFeed
+                  : (m.toolSteps && m.toolSteps.length > 0)
+                  ? m.toolSteps.map((s, idx) => ({
+                      id: `step-${idx}-${m.id}`,
+                      timestamp: Date.now(),
+                      kind: "tool" as const,
+                      message: `Tool Call: ${s.name}`,
+                      status: s.ok === true ? "done" as const : s.ok === false ? "error" as const : "running" as const,
+                    }))
+                  : [];
                 
                 return (
                   <motion.div 
-                    initial={{ opacity: 0, y: 8 }} 
+                    initial={{ opacity: 0, y: 12 }} 
                     animate={{ opacity: 1, y: 0 }} 
+                    transition={{ duration: 0.35, ease: "easeOut" }}
                     key={m.id || i} 
                     className={cn(
-                      "mx-auto flex w-full max-w-5xl gap-4 py-4 group/msg border-none shadow-none", 
+                      "mx-auto flex w-full max-w-3xl gap-4 py-4 group/msg border-none shadow-none", 
                       isUser ? "justify-end" : "justify-start"
                     )}
                   >
                     {!isUser && (
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--accent)] mt-0.5">
-                        <Bot className="h-4.5 w-4.5 text-[var(--bg-950)]" />
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] mt-0.5 select-none">
+                        <Bot className="h-4 w-4 text-[var(--bg-950)]" />
                       </div>
                     )}
-                    <div className={cn("flex max-w-[85%] flex-col gap-2 min-w-0", isUser ? "items-end" : "items-start")}>
-                      {!isUser && agentStepsForMessage(m).length > 0 && <ChatAgentToolTimeline steps={agentStepsForMessage(m)} />}
+                    <div className={cn("flex max-w-[85%] flex-col gap-1 min-w-0 w-full", isUser ? "items-end" : "items-start")}>
+                      
+                      <div className="flex items-center gap-2 mb-1 px-1 opacity-0 group-hover/msg:opacity-100 transition-opacity h-4 select-none">
+                        <span className="text-[9px] text-[var(--text-dim)] font-mono">
+                          {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      
                       <div className="relative group/msg-content w-full">
                         <div className={cn(
-                          "px-4 py-3 text-[14px] leading-relaxed rounded-lg border",
+                          "text-[14px] leading-relaxed",
                           isUser
-                            ? "bg-[var(--bg-700)] border-[var(--border-subtle)] text-[var(--text-primary)]"
-                            : "bg-[var(--bg-900)] border-[var(--border-subtle)] text-[var(--text-primary)]"
+                            ? "bg-[var(--bg-800)] px-4 py-2.5 rounded-2xl text-[var(--text-primary)] inline-block float-right text-right"
+                            : "bg-transparent text-[var(--text-primary)] w-full"
                         )}>
                             {isEditing ? (
                               <div className="flex flex-col gap-3 min-w-0 w-full">
@@ -899,8 +924,14 @@ export function ChatInterface() {
                                 </div>
                               </div>
                             ) : m.role === "assistant" ? (
-                              <div className="w-full max-w-none overflow-x-auto space-y-2">
-                                {/* Intent Acknowledgment Card — visible before agent starts, collapses after */}
+                              <div className="w-full max-w-none overflow-x-auto space-y-3">
+                                {isLiveAssistant && status && (
+                                  <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] select-none">
+                                    <Loader2 className="w-3.5 h-3.5 text-[var(--accent)] animate-spin shrink-0" />
+                                    <span>{status}</span>
+                                  </div>
+                                )}
+                                {/* Intent Acknowledgment Card */}
                                 {m.strategy && (
                                   <IntentAcknowledgmentCard
                                     strategy={m.strategy}
@@ -917,9 +948,9 @@ export function ChatInterface() {
                                   />
                                 )}
                                 {/* Agent activity feed */}
-                                {m.activityFeed && m.activityFeed.length > 0 && (
+                                {effectiveEntries.length > 0 && (
                                   <AgentActivityFeed
-                                    entries={m.activityFeed}
+                                    entries={effectiveEntries}
                                     isRunning={!!(m.isStreaming ?? isLiveAssistant)}
                                   />
                                 )}
@@ -930,7 +961,7 @@ export function ChatInterface() {
                                     isStreaming={m.isStreaming ?? isLiveAssistant}
                                   />
                                 )}
-                                {/* Guardian blocks — distinct styled cards, NOT raw errors */}
+                                {/* Guardian blocks */}
                                 {m.guardianBlocks && m.guardianBlocks.length > 0 && (
                                   <div className="space-y-1.5">
                                     {m.guardianBlocks.map((block) => (
@@ -980,16 +1011,15 @@ export function ChatInterface() {
                             </div>
                         )}
                       </div>
-                      {m.citations && m.citations.length > 0 && <div className="mt-1 w-full"><ChatCitationList citations={m.citations} /></div>}
+                      {m.citations && m.citations.length > 0 && <div className="mt-2 w-full"><ChatCitationList citations={m.citations} /></div>}
 
-                      {/* Inline QuestionCard — rendered when the planning agent asks a clarifying question */}
+                      {/* Inline QuestionCard */}
                       {m.question && (
                         <QuestionCard
                           question={m.question.question}
                           options={m.question.options}
                           isProcessing={isStreaming}
                           onSelect={(answer) => {
-                            // Clear question from message then send the answer as next user message
                             setMessages((prev) =>
                               prev.map((msg) =>
                                 msg.id === m.id ? { ...msg, question: undefined } : msg
@@ -1000,25 +1030,16 @@ export function ChatInterface() {
                         />
                       )}
 
-
                     </div>
                     {isUser && (
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--bg-700)] border border-[var(--border-strong)] mt-0.5">
-                        <User className="h-4.5 w-4.5 text-[var(--text-muted)]" />
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--bg-700)] border border-[var(--border-strong)] mt-0.5 select-none">
+                        <User className="h-4 w-4 text-[var(--text-muted)]" />
                       </div>
                     )}
                   </motion.div>
                 );
               })}
 
-              {isStreaming && status && (
-                <div className="mx-auto flex w-full max-w-5xl justify-start items-center gap-3 pl-13 border-none shadow-none">
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-900)]">
-                    <Loader2 className="w-3 h-3 text-[var(--accent)] animate-spin shrink-0" />
-                    <span className="text-[12px] text-[var(--text-muted)]">{status}</span>
-                  </div>
-                </div>
-              )}
               <div ref={messagesEndRef} className="h-4" />
             </div>
 
@@ -1026,7 +1047,7 @@ export function ChatInterface() {
             {showScrollBtn && (
               <button
                 onClick={scrollToBottom}
-                className="absolute right-6 bottom-24 z-30 p-2.5 rounded-full border border-[var(--border-strong)] bg-[var(--bg-800)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] transition-all shadow-none"
+                className="absolute right-8 bottom-28 z-30 p-2.5 rounded-full border border-[var(--border-strong)] bg-[var(--bg-800)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-700)] transition-all shadow-none"
                 title="Scroll to bottom"
                 aria-label="Scroll to bottom"
               >
@@ -1041,25 +1062,20 @@ export function ChatInterface() {
               className={cn(
                 "w-full transition-all duration-300 border-none shadow-none flex flex-col items-center",
                 hasMessages 
-                  ? "shrink-0 bg-[var(--bg-900)] px-4 pt-3 pb-5 border-t border-[var(--border-subtle)]" 
+                  ? "shrink-0 bg-[var(--bg-950)]/40 backdrop-blur-md px-8 pt-4 pb-6 border-t border-[var(--border-subtle)]" 
                   : "flex-1 justify-center p-6 max-w-4xl mx-auto custom-scrollbar overflow-y-auto"
               )}
             >
-              {/* Centered Landing elements (Only visible when empty) */}
+              {/* Calm Claude-style Empty State */}
               {!hasMessages && sessionReady && (
-                <motion.div
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="w-full mb-8 pointer-events-auto"
-                >
-                  <EmptyState
-                    illustrationSrc={ICONSCOUT.illustrations.emptyChat}
-                    illustrationAlt="AI assistant ready to help"
-                    title="Architect Intelligence"
-                    description="Design roads, balance assignee logs, search project constraints, and query wiki documents."
-                    className="py-4"
-                  />
-                </motion.div>
+                <div className="text-center py-6 select-none">
+                  <h1 className="text-3xl font-medium tracking-tight text-[var(--text-primary)] mb-2">
+                    TeamOS Chat
+                  </h1>
+                  <p className="text-sm text-[var(--text-muted)] max-w-md mx-auto">
+                    Calm, intelligent workspace agent.
+                  </p>
+                </div>
               )}
 
               {/* Proactive Suggestions */}
@@ -1071,26 +1087,11 @@ export function ChatInterface() {
 
               {/* Textarea Input Card */}
               <div className="w-full max-w-3xl relative">
-                {strategy && hasMessages && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center gap-2 mb-2 px-1"
-                  >
-                    {strategy.primary_agent === "lightweight" && <Search className="w-3 h-3 text-[var(--accent)]" />}
-                    {(strategy.primary_agent === "wiki" || strategy.primary_agent === "plan" || strategy.primary_agent === "analyst" || strategy.primary_agent === "strategic_planner") && <BrainCircuit className="w-3 h-3 text-[var(--accent)]" />}
-                    <span className="text-[11px] text-[var(--text-muted)]">
-                      {strategy.primary_agent === "strategic_planner" ? "Architecting strategy" :
-                       strategy.primary_agent === "lightweight" ? "Knowledge lookup" : "Executing"}
-                    </span>
-                    <span className="text-[var(--text-dim)] text-[11px]">· {strategy.reasoning_depth}</span>
-                  </motion.div>
-                )}
                 <div className="relative w-full">
                   <textarea
                     ref={inputRef}
                     rows={1}
-                    className="w-full rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-800)] py-4 pl-5 pr-28 text-[14px] text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/5 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden leading-relaxed shadow-none"
+                    className="w-full rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-800)] py-3 pl-4 pr-24 text-[14px] text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-dim)] focus:border-[var(--accent)]/40 focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50 resize-none overflow-hidden leading-relaxed"
                     style={{ maxHeight: "180px" }}
                     placeholder={!sessionReady ? "Initializing…" : isRecording ? "" : "Ask anything…"}
                     value={input}
@@ -1109,28 +1110,15 @@ export function ChatInterface() {
                     title="Chat input prompt"
                   />
 
-                  {/* Glowing Soundwave Overlay when recording */}
+                  {/* Glowing Soundwave Overlay */}
                   {isRecording && (
-                    <div className="absolute left-5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none">
-                      <div className="w-2 h-2 rounded-full bg-rose-500 animate-ping shrink-0" />
-                      <span className="text-xs text-rose-500 font-semibold tracking-wider uppercase animate-pulse">Listening...</span>
-                      <div className="flex items-end gap-0.5 h-4 ml-2">
-                        {[1, 2, 3, 4, 5].map((n) => (
-                          <span
-                            key={n}
-                            className="w-0.5 bg-rose-500 rounded-full animate-bounce"
-                            style={{
-                              height: "100%",
-                              animationDuration: `${0.4 + n * 0.1}s`,
-                              animationDelay: `${n * 0.05}s`
-                            }}
-                          />
-                        ))}
-                      </div>
+                    <div className="absolute left-5 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none select-none">
+                      <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0" />
+                      <span className="text-xs text-rose-500 font-semibold tracking-wider uppercase">Listening...</span>
                     </div>
                   )}
 
-                  <div className="absolute right-2.5 bottom-2.5 flex items-center gap-1">
+                  <div className="absolute right-2 bottom-2 flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => setResearchRequested((prev) => !prev)}
@@ -1138,14 +1126,14 @@ export function ChatInterface() {
                       title={researchRequested ? "Research on" : "Research off"}
                       aria-label={researchRequested ? "Disable research" : "Enable research"}
                       className={cn(
-                        "h-10 w-10 flex items-center justify-center rounded-full transition-all border border-transparent",
+                        "h-8 w-8 flex items-center justify-center rounded-lg transition-all border border-transparent",
                         researchRequested
                           ? "text-[var(--accent)] bg-[var(--accent)]/10 hover:bg-[var(--accent)]/15 border-[var(--accent)]/20"
                           : "text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-white/5",
                         !capabilities?.research_mode_available && "opacity-35 cursor-not-allowed"
                       )}
                     >
-                      <Globe2 className="h-4.5 w-4.5" />
+                      <Globe2 className="h-4 w-4" />
                     </button>
 
                     {/* Voice Mic Input */}
@@ -1156,13 +1144,13 @@ export function ChatInterface() {
                       title={isRecording ? "Stop recording speech" : "Start recording speech"}
                       aria-label={isRecording ? "Stop recording speech" : "Start recording speech"}
                       className={cn(
-                        "h-10 w-10 flex items-center justify-center rounded-full transition-all border border-transparent hover:border-white/5",
+                        "h-8 w-8 flex items-center justify-center rounded-lg transition-all border border-transparent hover:border-white/5",
                         isRecording 
                           ? "text-rose-500 bg-rose-500/10 hover:bg-rose-500/20" 
                           : "text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-white/5"
                       )}
                     >
-                      {isRecording ? <MicOff className="h-4.5 w-4.5" /> : <Mic className="h-4.5 w-4.5" />}
+                      {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                     </button>
 
                     {/* Circular send button */}
@@ -1177,46 +1165,37 @@ export function ChatInterface() {
                       disabled={sendDisabled}
                       title={isStreaming ? "Stop generation" : "Send message"}
                       aria-label={isStreaming ? "Stop generation" : "Send message"}
-                      className="h-10 w-10 flex items-center justify-center rounded-full bg-[var(--accent)] text-[var(--bg-950)] transition-all disabled:opacity-25 hover:scale-105 active:scale-95 shadow-none"
+                      className="h-8 w-8 flex items-center justify-center rounded-full bg-[var(--accent)] text-[var(--bg-950)] transition-all disabled:opacity-25 hover:scale-105 active:scale-95 shadow-none cursor-pointer"
                     >
-                      {isStreaming ? <X className="h-4.5 w-4.5" /> : <ArrowUp className="h-4.5 w-4.5" />}
+                      {isStreaming ? <X className="h-4 w-4" /> : <ArrowUp className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
-                {!hasMessages && (
-                  <p className="text-center text-[11px] text-[var(--text-dim)] mt-2">Press Enter to send · Shift+Enter for newline</p>
-                )}
                 {researchRequested && capabilities?.research_quota && (
-                  <p className="text-center text-[11px] text-[var(--text-dim)] mt-1">
-                    Research ready: {capabilities.research_quota.remaining} of {capabilities.research_quota.limit} searches left
+                  <p className="text-center text-[11px] text-[var(--text-dim)] mt-1.5">
+                    Research mode is on · {capabilities.research_quota.remaining} searches remaining
                   </p>
                 )}
               </div>
 
-              {/* Quick Prompt Cards under Input (Only visible when empty) */}
+              {/* Quick Prompt Cards */}
               {!hasMessages && sessionReady && (
-                <motion.div
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 w-full max-w-3xl mt-8"
-                >
+                <div className="flex flex-col space-y-1 w-full max-w-3xl mt-6">
                   {QUICK_PROMPTS.map(({ icon: Icon, label, desc, prompt }) => (
                     <button
                       key={label}
                       type="button"
                       onClick={() => { setInput(prompt); inputRef.current?.focus(); }}
-                      className="group flex flex-col gap-2.5 p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-800)] hover:bg-[var(--bg-700)] text-left transition-all duration-200"
+                      className="group flex items-start gap-3 px-4 py-3 rounded-xl hover:bg-[var(--bg-800)] border border-transparent hover:border-[var(--border-subtle)] transition-all text-left cursor-pointer bg-transparent"
                     >
-                      <div className="w-8 h-8 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
-                        <Icon className="w-4.5 h-4.5 text-[var(--accent)]" />
-                      </div>
-                      <div>
-                        <div className="text-[13px] font-semibold text-[var(--text-primary)]">{label}</div>
-                        <div className="text-[11px] text-[var(--text-dim)] mt-0.5 leading-snug">{desc}</div>
+                      <Icon className="h-4 w-4 text-[var(--text-dim)] group-hover:text-[var(--accent)] mt-0.5 shrink-0 transition-colors" />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[13px] font-medium text-[var(--text-primary)] mr-2">{label}</span>
+                        <span className="text-[12px] text-[var(--text-dim)] leading-snug">— {desc}</span>
                       </div>
                     </button>
                   ))}
-                </motion.div>
+                </div>
               )}
             </motion.div>
 

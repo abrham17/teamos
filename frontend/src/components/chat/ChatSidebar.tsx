@@ -47,14 +47,14 @@ export function ChatSidebar({
       return [
         "w-11 h-10 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0 relative group",
         isActive
-          ? "bg-[var(--bg-800)] text-[var(--text-primary)] border border-[var(--border-subtle)]"
+          ? "bg-[var(--bg-800)] text-[var(--text-primary)]"
           : "text-[var(--text-muted)] hover:bg-[var(--bg-700)] hover:text-[var(--text-primary)]",
       ].join(" ");
     }
     return [
       "flex items-center gap-3 px-3.5 py-2.5 w-full rounded-lg text-sm transition-all duration-200 text-left truncate group/sess relative",
       isActive
-        ? "bg-[var(--bg-800)] text-[var(--text-primary)] font-semibold border border-[var(--border-subtle)]"
+        ? "bg-[var(--bg-800)] text-[var(--text-primary)] font-semibold"
         : "text-[var(--text-secondary)] hover:bg-[var(--bg-700)] hover:text-[var(--text-primary)] border border-transparent",
     ].join(" ");
   };
@@ -123,8 +123,7 @@ export function ChatSidebar({
           ) : (
             <>
               <div className="flex items-center gap-2">
-                <Bot className="w-5 h-5 text-[var(--accent)]" />
-                <span className="font-bold text-[var(--text-primary)] tracking-tight text-[15px]">
+                <span className="text-[11px] uppercase tracking-widest text-[var(--text-muted)] font-bold">
                   Chats
                 </span>
               </div>
@@ -145,16 +144,16 @@ export function ChatSidebar({
             <button
               onClick={onNewChat}
               title="New Chat"
-              className="w-10 h-10 rounded-lg flex items-center justify-center text-[var(--accent)] hover:bg-[var(--accent-subtle)] transition-colors"
+              className="w-10 h-10 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:bg-[var(--bg-800)] transition-colors"
             >
               <PlusCircle className="w-4 h-4" />
             </button>
           ) : (
             <button
               onClick={onNewChat}
-              className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm rounded-lg border border-[var(--border-subtle)] bg-transparent text-[var(--accent)] hover:bg-[var(--bg-700)] font-medium transition-colors"
+              className="flex items-center gap-2 w-full px-3 py-2 text-[13px] rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-800)] font-medium transition-colors"
             >
-              <PlusCircle className="w-4 h-4" />
+              <PlusCircle className="w-4 h-4 shrink-0 text-[var(--text-dim)]" />
               New Chat
             </button>
           )}

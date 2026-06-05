@@ -145,29 +145,34 @@ function MermaidBlock({ chart, deferRender }: { chart: string; deferRender?: boo
 
   if (deferRender) {
     return (
-      <pre className="my-3 overflow-x-auto rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-950)] p-3 text-[12px] text-[var(--text-muted)]">
-        <code className="whitespace-pre font-mono">{chart}</code>
-        <div className="mt-2 text-[11px] font-medium uppercase tracking-wide text-[var(--text-dim)]">
-          Chart preview when reply finishes…
+      <div className="my-4 rounded-xl border border-dashed border-[var(--border-subtle)] bg-[var(--bg-950)]">
+        <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--bg-950)] border-b border-[var(--border-subtle)] rounded-t-lg">
+          <span className="text-[10px] uppercase text-[var(--text-dim)]">Diagram</span>
         </div>
-      </pre>
-    );
-  }
-
-  if (fallback) {
-    return (
-      <pre className="my-3 overflow-x-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-950)] p-3 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-        <code className="whitespace-pre font-mono text-[12px]">{chart}</code>
-      </pre>
+        <div className="p-4">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-dim)]">
+            Chart preview when reply finishes…
+          </div>
+        </div>
+      </div>
     );
   }
 
   return (
-    <div className="my-4 overflow-x-auto rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-950)] p-3">
-      <div
-        ref={hostRef}
-        className="flex justify-center text-[var(--text-primary)] [&_svg]:h-auto [&_svg]:max-w-full"
-      />
+    <div className="my-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-950)] overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--bg-950)] border-b border-[var(--border-subtle)] rounded-t-lg">
+        <span className="text-[10px] uppercase text-[var(--text-dim)]">Diagram</span>
+      </div>
+      <div className="p-4 overflow-x-auto">
+        {fallback ? (
+          <span className="text-[var(--danger)] text-[12px]">Failed to render diagram.</span>
+        ) : (
+          <div
+            ref={hostRef}
+            className="flex justify-center text-[var(--text-primary)] [&_svg]:h-auto [&_svg]:max-w-full"
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -214,22 +219,61 @@ const mdComponents: Components = {
   ),
   hr: () => <hr className="my-6 border-[var(--border-subtle)]" />,
   table: ({ children }) => (
-    <div className="my-5 overflow-x-auto rounded-xl border border-[var(--border-strong)] bg-[var(--surface-1)] shadow-xl">
-      <table className="w-full min-w-[320px] border-collapse text-left text-sm">{children}</table>
+    <div className="my-5 overflow-x-auto rounded-lg border border-[var(--border-subtle)]">
+      <table className="w-full min-w-[320px] border-collapse text-left text-[13px]">{children}</table>
     </div>
   ),
-  thead: ({ children }) => <thead className="bg-[var(--bg-950)]/50 border-b border-[var(--border-strong)] text-[var(--text-secondary)] font-bold">{children}</thead>,
-  tbody: ({ children }) => <tbody className="divide-y divide-[var(--border-subtle)]/30">{children}</tbody>,
-  tr: ({ children }) => <tr className="transition-colors hover:bg-[var(--accent-subtle)]/5">{children}</tr>,
+  thead: ({ children }) => <thead className="bg-[var(--bg-800)]">{children}</thead>,
+  tbody: ({ children }) => <tbody>{children}</tbody>,
+  tr: ({ children }) => <tr className="transition-colors hover:bg-[var(--bg-800)]/20 even:bg-[var(--bg-800)]/30">{children}</tr>,
   th: ({ children }) => (
-    <th className="px-4 py-3 font-black uppercase tracking-wider text-[11px] text-[var(--text-muted)]">
+    <th className="px-3 py-2 font-semibold uppercase tracking-wide text-[10px] text-[var(--text-muted)]">
       {children}
     </th>
   ),
   td: ({ children }) => (
-    <td className="px-4 py-3 text-[var(--text-primary)] border-r border-[var(--border-subtle)]/20 last:border-0">{children}</td>
+    <td className="px-3 py-2 text-[var(--text-primary)] border-t border-[var(--border-subtle)]">{children}</td>
   ),
 };
+
+function CodeBlock({ lang, text, className, children }: { lang?: string; text: string; className?: string; children: React.ReactNode }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    void navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="my-5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-950)] overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-[var(--bg-950)] border-b border-[var(--border-subtle)] rounded-t-lg select-none">
+        <span className="text-[10px] uppercase font-semibold text-[var(--text-dim)] tracking-wider">
+          {lang || "code"}
+        </span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1 text-[10px] font-semibold text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors"
+          title="Copy code"
+        >
+          {copied ? (
+            <span className="text-[var(--success)]">Copied!</span>
+          ) : (
+            <>
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+      <pre className="overflow-x-auto p-4 rounded-b-lg">
+        <code className={`font-mono text-[12px] leading-relaxed text-[var(--text-secondary)] block ${className ?? ""}`}>
+          {children}
+        </code>
+      </pre>
+    </div>
+  );
+}
 
 type ChatMessageContentProps = {
   content: string;
@@ -273,29 +317,9 @@ export function ChatMessageContent({ content, streaming }: ChatMessageContentPro
         }
 
         return (
-          <div className="relative group my-5">
-            <div className="absolute right-3 top-3 flex items-center gap-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] bg-[var(--bg-950)] px-2 py-1 rounded-md border border-[var(--border-subtle)]">
-                    {lang || "code"}
-                </div>
-                <button
-                    onClick={() => {
-                        navigator.clipboard.writeText(text);
-                    }}
-                    className="p-1.5 rounded-md bg-[var(--bg-950)] border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)]/30 transition-all active:scale-95"
-                    title="Copy to clipboard"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                </button>
-            </div>
-            <pre className="overflow-x-auto rounded-xl border border-[var(--border-strong)] bg-[var(--bg-950)] p-4 shadow-2xl relative">
-                <code
-                className={`font-mono text-[13px] leading-relaxed text-[var(--text-secondary)] block ${className ?? ""}`}
-                >
-                {children}
-                </code>
-            </pre>
-          </div>
+          <CodeBlock lang={lang} text={text} className={className}>
+            {children}
+          </CodeBlock>
         );
       },
     }),
@@ -308,6 +332,14 @@ export function ChatMessageContent({ content, streaming }: ChatMessageContentPro
 
   return (
     <div className="chat-md max-w-none">
+      <style>{`
+        .chat-md .math-display, .chat-md .katex-display {
+          overflow-x: auto;
+          padding-top: 0.75rem;
+          padding-bottom: 0.75rem;
+          width: 100%;
+        }
+      `}</style>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex, [rehypeSanitize, sanitizeSchema]]}

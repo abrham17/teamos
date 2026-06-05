@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { Check, Loader2, AlertCircle, Brain, Wrench, ChevronDown } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Check, Loader2, AlertCircle, ChevronDown } from "lucide-react";
 import type { ActivityEntry } from "./chatTypes";
 
 interface AgentActivityFeedProps {
@@ -11,21 +10,20 @@ interface AgentActivityFeedProps {
 }
 
 export function AgentActivityFeed({ entries, isRunning }: AgentActivityFeedProps) {
-  const [collapsedThinking, setCollapsedThinking] = useState<Set<string>>(new Set());
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [isFeedExpanded, setIsFeedExpanded] = useState(isRunning);
+  const [expandedDetails, setExpandedDetails] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [entries.length]);
+    setIsFeedExpanded(isRunning);
+  }, [isRunning]);
 
   if (entries.length === 0) return null;
 
-  const completedCount = entries.filter((e) => e.status === "done").length;
   const totalCount = entries.filter((e) => e.kind !== "thinking").length;
   const hasRunning = entries.some((e) => e.status === "running");
 
-  const toggleThinking = (id: string) => {
-    setCollapsedThinking((prev) => {
+  const toggleDetail = (id: string) => {
+    setExpandedDetails((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -34,144 +32,75 @@ export function AgentActivityFeed({ entries, isRunning }: AgentActivityFeedProps
   };
 
   const getIcon = (entry: ActivityEntry) => {
-    if (entry.status === "running") return <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--accent)]" />;
-    if (entry.status === "error") return <AlertCircle className="h-3.5 w-3.5 text-[var(--danger)]" />;
-    if (entry.status === "done") return <Check className="h-3.5 w-3.5 text-[var(--success)]" />;
-    return <div className="h-1.5 w-1.5 rounded-full bg-[var(--text-dim)]" />;
-  };
-
-  const getKindIcon = (kind: ActivityEntry["kind"]) => {
-    switch (kind) {
-      case "thinking": return <Brain className="h-3 w-3" />;
-      case "tool": return <Wrench className="h-3 w-3" />;
-      default: return null;
-    }
+    if (entry.status === "running") return <Loader2 className="h-3 w-3 animate-spin text-[var(--accent)] shrink-0" />;
+    if (entry.status === "error") return <AlertCircle className="h-3 w-3 text-[var(--danger)] shrink-0" />;
+    if (entry.status === "done") return <Check className="h-3 w-3 text-[var(--success)] shrink-0" />;
+    return <div className="h-1.5 w-1.5 rounded-full bg-[var(--text-dim)] shrink-0" />;
   };
 
   return (
-    <div className="mt-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-950)]/70 shadow-none overflow-hidden">
+    <div className="my-2 border border-[var(--border-subtle)] rounded-xl overflow-hidden bg-transparent">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--border-subtle)]">
+      <button
+        onClick={() => setIsFeedExpanded((prev) => !prev)}
+        className="w-full flex items-center justify-between px-3 py-2 text-[10px] uppercase tracking-widest text-[var(--text-muted)] hover:bg-[var(--bg-800)]/30 transition-colors select-none text-left"
+      >
         <div className="flex items-center gap-2">
-          <div className={`h-2 w-2 rounded-full ${isRunning || hasRunning ? "animate-pulse bg-[var(--accent)]" : "bg-[var(--success)]"}`} />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-            {isRunning || hasRunning ? "Agent Activity" : "Activity Feed"}
+          <ChevronDown className={`w-3 h-3 text-[var(--text-dim)] transition-transform duration-200 ${isFeedExpanded ? "" : "-rotate-90"}`} />
+          <span className={`h-1.5 w-1.5 rounded-full ${isRunning || hasRunning ? "animate-pulse bg-[var(--accent)]" : "bg-[var(--success)]"}`} />
+          <span className="font-semibold">
+            {isRunning || hasRunning ? "Running…" : `${totalCount || entries.length} steps completed`}
           </span>
-          {totalCount > 0 && (
-            <span className="text-[10px] text-[var(--text-dim)]">
-              {completedCount}/{totalCount}
-            </span>
-          )}
         </div>
         {(isRunning || hasRunning) && (
-          <span className="text-[10px] text-[var(--accent)] flex items-center gap-1">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Working...
-          </span>
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--accent)]" />
         )}
-      </div>
+      </button>
 
-      {/* Progress Bar — only show when running */}
-      {(isRunning || hasRunning) && totalCount > 0 && (
-        <div className="h-1 overflow-hidden bg-[var(--border-subtle)]">
-          <motion.div
-            className="h-full bg-gradient-to-r from-[var(--accent)] to-purple-600"
-            initial={{ width: 0 }}
-            animate={{ width: `${(completedCount / totalCount) * 100}%` }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-          />
-        </div>
-      )}
-
-      {/* Entries */}
-      <div className="p-3 space-y-2 max-h-[500px] overflow-y-auto custom-scrollbar">
-        <AnimatePresence initial={false}>
+      {/* Entries List */}
+      {isFeedExpanded && (
+        <div className="border-t border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)]">
           {entries.map((entry) => {
-            const isThinkingKind = entry.kind === "thinking";
-            const isCollapsed = isThinkingKind && collapsedThinking.has(entry.id);
-            const isDone = entry.status === "done";
+            const isTool = entry.kind === "tool";
+            const showDetail = expandedDetails.has(entry.id);
             const isErr = entry.status === "error";
-            const isRunning = entry.status === "running";
 
             return (
-              <motion.div
+              <div
                 key={entry.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.2 }}
-                className={`rounded-xl border overflow-hidden ${
-                  isErr
-                    ? "border-[var(--danger)]/20 bg-[var(--danger)]/5"
-                    : isThinkingKind
-                    ? "border-[var(--border-subtle)] bg-[var(--surface-1)]/30"
-                    : "border-[var(--border-subtle)] bg-[var(--surface-1)]/50"
+                className={`px-3 py-1.5 flex flex-col transition-colors ${
+                  isTool ? "hover:bg-[var(--bg-800)]/20 cursor-pointer" : ""
                 }`}
+                onClick={() => isTool && toggleDetail(entry.id)}
               >
-                <button
-                  onClick={() => isThinkingKind && toggleThinking(entry.id)}
-                  className={`w-full flex items-start gap-3 p-3 text-left transition-colors ${
-                    isThinkingKind ? "hover:bg-[var(--surface-1)]/50 cursor-pointer" : "cursor-default"
-                  }`}
-                >
-                  {/* Status icon */}
-                  <span className="mt-0.5 shrink-0">
-                    {getIcon(entry)}
+                <div className="flex items-center gap-2.5">
+                  {getIcon(entry)}
+                  <span className={`text-[12px] truncate flex-1 ${isErr ? "text-[var(--danger)]" : "text-[var(--text-secondary)]"}`}>
+                    {entry.message}
                   </span>
+                  <span className="text-[9px] uppercase text-[var(--text-dim)] ml-auto shrink-0 font-medium select-none">
+                    {entry.kind}
+                  </span>
+                  <span className="text-[9px] text-[var(--text-dim)] shrink-0 font-mono select-none">
+                    {new Date(entry.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                  </span>
+                </div>
 
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      {getKindIcon(entry.kind) && (
-                        <span className="text-[var(--text-dim)]">
-                          {getKindIcon(entry.kind)}
-                        </span>
-                      )}
-                      <span className={`text-[10px] font-medium uppercase tracking-wide ${
-                        isErr ? "text-[var(--danger)]" :
-                        isRunning ? "text-[var(--accent)]" :
-                        isThinkingKind ? "text-[var(--text-dim)]" :
-                        "text-[var(--text-dim)]"
-                      }`}>
-                        {entry.kind === "thinking" ? "Thought" : 
-                         entry.kind === "tool" ? "Tool" : "Status"}
-                      </span>
-                      <span className="text-[9px] text-[var(--text-dim)] ml-auto">
-                        {new Date(entry.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                      </span>
-                      {isThinkingKind && (
-                        <ChevronDown className={`h-3 w-3 text-[var(--text-dim)] transition-transform ${isCollapsed ? "" : "rotate-180"}`} />
-                      )}
-                    </div>
-
-                    <p className={`text-[12px] leading-relaxed ${
-                      isDone ? "text-[var(--text-secondary)]" :
-                      isRunning ? "text-[var(--text-primary)] font-medium" :
-                      isErr ? "text-[var(--danger)]" :
-                      isThinkingKind ? "text-[var(--text-dim)] italic" :
-                      "text-[var(--text-secondary)]"
-                    } ${isCollapsed ? "line-clamp-1" : ""}`}>
-                      {entry.message}
-                    </p>
-
-                    {/* Expanded details for status entries */}
-                    {!isCollapsed && entry.detail && Object.keys(entry.detail).length > 0 && entry.kind !== "thinking" && (
-                      <div className="mt-2 pt-2 border-t border-[var(--border-subtle)] grid grid-cols-2 gap-1.5 text-[10px]">
-                        {Object.entries(entry.detail).slice(0, 6).map(([key, value]) => (
-                          <div key={key} className="flex flex-col">
-                            <span className="text-[var(--text-dim)] uppercase tracking-wider">{key.replace(/_/g, " ")}</span>
-                            <span className="text-[var(--text-primary)] font-medium">{String(value)}</span>
-                          </div>
-                        ))}
+                {isTool && showDetail && entry.detail && Object.keys(entry.detail).length > 0 && (
+                  <div className="mt-1.5 pl-5 pb-1 grid grid-cols-2 gap-1.5 text-[10px] text-[var(--text-dim)] border-t border-[var(--border-subtle)]/30 pt-1.5">
+                    {Object.entries(entry.detail).map(([key, value]) => (
+                      <div key={key} className="flex flex-col">
+                        <span className="uppercase tracking-wider font-semibold text-[8px] text-[var(--text-muted)]">{key.replace(/_/g, " ")}</span>
+                        <span className="text-[var(--text-secondary)] truncate font-mono">{String(value)}</span>
                       </div>
-                    )}
+                    ))}
                   </div>
-                </button>
-              </motion.div>
+                )}
+              </div>
             );
           })}
-        </AnimatePresence>
-        <div ref={bottomRef} />
-      </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,13 +1,11 @@
 from django.db import migrations
-from pgvector.django import VectorExtension
 
 
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("wiki", "0003_wikipage_project"),
+        ("wiki", "0005_pagechunk_embedding_remove_pagechunk_qdrant_point_id"),
     ]
 
     operations = [
-        VectorExtension(),
     ]

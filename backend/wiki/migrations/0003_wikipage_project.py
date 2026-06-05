@@ -1,13 +1,11 @@
 from django.db import migrations
-from pgvector.django import VectorExtension
 
 
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("wiki", "0003_wikipage_project"),
+        ("wiki", "0002_wikipage_raw_content"),
     ]
 
     operations = [
-        VectorExtension(),
     ]
