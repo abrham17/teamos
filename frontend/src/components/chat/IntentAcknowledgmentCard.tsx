@@ -16,7 +16,7 @@ import type { AgentStrategy } from "./chatTypes";
 
 interface IntentAcknowledgmentCardProps {
   strategy: AgentStrategy;
-  onCorrectRoute: (mode: "ask" | "agent" | "plan" | "research") => void;
+  onCorrectRoute: (mode: "ask" | "agent" | "research") => void;
   collapsed: boolean;
   canRoute?: boolean;
 }
@@ -212,16 +212,6 @@ export function IntentAcknowledgmentCard({
               <ChevronRight className="w-3 h-3 text-[var(--text-dim)]" />
             </button>
 
-            <button
-              onClick={() => onCorrectRoute("plan")}
-              className="flex items-center justify-between px-2.5 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-950)] hover:bg-[var(--bg-700)] text-[11px] text-[var(--text-primary)] transition-all text-left hover:border-[var(--accent)] cursor-pointer group"
-            >
-              <span className="flex items-center gap-1.5">
-                <Brain className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
-                <span>Strategic Planner</span>
-              </span>
-              <ChevronRight className="w-3 h-3 text-[var(--text-dim)]" />
-            </button>
 
             <button
               onClick={() => onCorrectRoute("agent")}

@@ -10,7 +10,6 @@ import { useRouter } from "next/navigation";
    ────────────────────────────────────────────── */
 const PANEL_COLORS: Record<FloatingPanel["type"], string> = {
   wiki: "#6366f1",
-  plan: "#10b981",
   chat: "#8b7ff4",
   task: "#f59e0b",
   ingest: "#06b6d4",
@@ -18,7 +17,6 @@ const PANEL_COLORS: Record<FloatingPanel["type"], string> = {
 
 const PANEL_LABELS: Record<FloatingPanel["type"], string> = {
   wiki: "Wiki",
-  plan: "Plan",
   chat: "Chat",
   task: "Task",
   ingest: "Ingest",

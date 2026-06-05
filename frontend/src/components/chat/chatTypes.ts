@@ -1,12 +1,10 @@
 export type ChatSession = { id: string; title: string };
 
 export type Citation = {
-  source?: "wiki" | "plan" | "web" | string;
+  source?: "wiki" | "web" | string;
   title?: string;
   page_slug?: string;
   page_title?: string;
-  project_id?: string;
-  project_name?: string;
   source_kind?: string;
   source_ref_id?: string;
   url?: string;
@@ -93,7 +91,7 @@ export type GuardianBlock = {
   tier_label?: string;
   settings_path?: string;
   rephrase_suggestion?: string;
-  /** Section 6.1 — which agent role triggered the Guardian block */
+  /** Which agent role triggered the Guardian block */
   triggered_by_agent?: string;
 };
 
@@ -119,10 +117,8 @@ export type CrewProgress = {
 
 export type ChatCapabilities = {
   can_edit_wiki: boolean;
-  can_edit_plans: boolean;
   can_ingest: boolean;
   agent_mode_available: boolean;
-  plan_mode_available: boolean;
   research_mode_available: boolean;
   research_quota?: {
     limit: number;
@@ -131,24 +127,4 @@ export type ChatCapabilities = {
     reason?: string | null;
   };
   research_save_available?: boolean;
-};
-
-export type ReviewMutation = {
-  id?: string;
-  op: "create" | "update" | "delete" | "set_dependencies" | "update_project";
-  entity_type?: "task" | "milestone" | "project";
-  entity_id?: string;
-  semantic_key?: string;
-  fields?: Record<string, unknown>;
-  old_fields?: Record<string, unknown>;
-  depends_on?: string[];
-  title?: string;
-  reason?: string;
-};
-
-export type ReviewPlanPreview = {
-  projectName: string;
-  description: string;
-  tasks: unknown[];
-  milestones: unknown[];
 };

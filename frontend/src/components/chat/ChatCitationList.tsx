@@ -9,7 +9,6 @@ function CitationLink({ c }: { c: Citation }) {
   const href = buildChatCitationHref({
     source: c.source,
     page_slug: c.page_slug,
-    project_id: c.project_id,
     chunk_id: c.chunk_id,
     anchor_hint: c.anchor_hint,
     snippet: c.snippet,
@@ -17,9 +16,8 @@ function CitationLink({ c }: { c: Citation }) {
     source_ref_id: c.source_ref_id,
     url: c.url,
   });
-  const isPlan = (c.source || "").toLowerCase() === "plan";
   const isWeb = (c.source || "").toLowerCase() === "web";
-  const displayTitle = c.title ?? c.page_title ?? c.project_name ?? c.page_slug ?? "Source";
+  const displayTitle = c.title ?? c.page_title ?? c.page_slug ?? "Source";
   const classes = "flex items-center gap-2 px-3 py-1.5 border border-[var(--border-subtle)] bg-[var(--bg-800)] hover:bg-[var(--bg-700)] hover:border-[var(--border-strong)] transition-colors duration-150 group";
 
   if (isWeb) {
@@ -36,19 +34,10 @@ function CitationLink({ c }: { c: Citation }) {
 
   return (
     <Link href={href} className={classes}>
-      {isPlan ? (
-          <Layers className="h-3 w-3 text-[var(--warning)] shrink-0" />
-      ) : (
-          <FileText className="h-3 w-3 text-[var(--accent)] shrink-0" />
-      )}
+      <FileText className="h-3 w-3 text-[var(--accent)] shrink-0" />
       <span className="text-[11px] font-medium text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] truncate max-w-[120px] transition-colors">
         {displayTitle}
       </span>
-      {isPlan && c.source_kind && (
-          <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 bg-[var(--warning-bg)] text-[var(--warning)] border border-[var(--warning)]/15">
-              {c.source_kind}
-          </span>
-      )}
     </Link>
   );
 }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getApiAuthHeaders } from "@/lib/api";
 import { useWikiStore } from "@/stores/useWikiStore";
-import { Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, BrainCircuit, Search, BookOpen, Target, ArrowUp, Mic, MicOff, Globe2 } from "lucide-react";
+import { Bot, User, Pencil, X, Check, Copy, RotateCcw, ArrowDown, Loader2, BrainCircuit, Search, BookOpen, ArrowUp, Mic, MicOff, Globe2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ChatMessageContent } from "@/components/chat/ChatMessageContent";
 import { ChatCitationList } from "@/components/chat/ChatCitationList";
@@ -19,7 +19,6 @@ import { GuardianBlockCard } from "@/components/chat/GuardianBlockCard";
 import { IntentAcknowledgmentCard } from "@/components/chat/IntentAcknowledgmentCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ICONSCOUT } from "@/lib/iconscoutAssets";
-import { PlanReviewPanel, type ReviewMutation, type ReviewPlanPreview } from "@/components/chat/PlanReviewPanel";
 import { QuestionCard } from "@/components/chat/QuestionCard";
 import { ProactiveSuggestions } from "@/components/chat/ProactiveSuggestions";
 type SessionDetailResponse = { messages?: ChatMessage[] };
@@ -27,10 +26,10 @@ type SessionDetailResponse = { messages?: ChatMessage[] };
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 const QUICK_PROMPTS = [
-  { label: "Build a Strategic Roadmap", desc: "Generate a timeline with sprint cycles, critical path, and checkpoints.", icon: Target, prompt: "Draft a comprehensive project roadmap for our software launch, complete with 4 milestones and key subtasks." },
-  { label: "Decompose Strategic Constraints", desc: "Identify and resolve resource locks, conflicts, and dependency paths.", icon: BrainCircuit, prompt: "Analyze our current project plans, list potential constraints, and provide detailed mitigation ideas." },
+  { label: "Search the Knowledge Base", desc: "Find and summarize relevant wiki pages and documents.", icon: Search, prompt: "Search our wiki and summarize everything we have about our onboarding process." },
+  { label: "Research & Analyze", desc: "Investigate market trends, competitors, or any topic.", icon: BrainCircuit, prompt: "Research the top 5 AI workspace tools and compare their key features and pricing models." },
   { label: "Draft a System Brief", desc: "Formulate architectural descriptions, component specs, and API lists.", icon: BookOpen, prompt: "Write an architectural system brief for a microservices-based notification engine." },
-  { label: "Analyze Project Workload", desc: "Evaluate team distribution, assignee logs, and balance limits.", icon: User, prompt: "Provide a workload analysis overview for the engineering team and flag any over-allocated members." }
+  { label: "Summarize Recent Activity", desc: "Get a concise summary of recent team wiki updates.", icon: User, prompt: "Summarize all wiki pages updated in the last week and highlight any critical changes." }
 ];
 
 
@@ -64,62 +63,7 @@ export function ChatInterface() {
   const [capabilities, setCapabilities] = useState<ChatCapabilities | null>(null);
   const [researchRequested, setResearchRequested] = useState(false);
 
-  // Review states
-  const [isReviewOpen, setIsReviewOpen] = useState(false);
-  const [reviewMutations, setReviewMutations] = useState<ReviewMutation[]>([]);
-  const [reviewPlanPreview, setReviewPlanPreview] = useState<ReviewPlanPreview | null>(null);
-  const [reviewChangesetId, setReviewChangesetId] = useState<string | null>(null);
-  const [reviewProjectId, setReviewProjectId] = useState<string | null>(null);
 
-  const handleApproveReview = async (approvedIndices?: string[]) => {
-    setIsStreaming(true);
-    try {
-      if (reviewChangesetId && reviewProjectId && currentTeamId) {
-        const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
-        const auth = await getApiAuthHeaders();
-        const res = await fetch(`${API_BASE}/planning/${currentTeamId}/projects/${reviewProjectId}/changesets/${reviewChangesetId}/approve/`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...auth },
-          body: JSON.stringify({ approved_indices: approvedIndices, apply_remediation: true }),
-        });
-        if (!res.ok) throw new Error("Approval failed");
-      }
-      setIsReviewOpen(false);
-    } catch (e) {
-      console.error(e);
-      alert("Failed to approve plan.");
-    } finally {
-      setIsStreaming(false);
-    }
-  };
-
-  const handleRejectReview = async () => {
-    setIsStreaming(true);
-    try {
-      if (reviewChangesetId && reviewProjectId && currentTeamId) {
-        const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
-        const auth = await getApiAuthHeaders();
-        await fetch(`${API_BASE}/planning/${currentTeamId}/projects/${reviewProjectId}/changesets/${reviewChangesetId}/reject/`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...auth },
-        });
-      }
-      setIsReviewOpen(false);
-      setReviewMutations([]);
-      setReviewPlanPreview(null);
-      setReviewChangesetId(null);
-      setReviewProjectId(null);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsStreaming(false);
-    }
-  };
-
-  const handleReviseReview = async (feedback: string) => {
-    setIsReviewOpen(false);
-    await sendUserMessage(`Revise the current plan based on this feedback: ${feedback}`);
-  };
 
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editInput, setEditInput] = useState("");
@@ -321,7 +265,7 @@ export function ChatInterface() {
   };
 
   const handleCorrectRoute = useCallback(
-    (mode: "ask" | "agent" | "plan" | "research") => {
+    (mode: "ask" | "agent" | "research") => {
       // Abort current stream and re-send last user message with corrected mode
       abortControllerRef.current?.abort();
       const lastUser = [...messages].reverse().find((m) => m.role === "user");
@@ -338,7 +282,7 @@ export function ChatInterface() {
   );
 
   const sendUserMessage = useCallback(
-    async (userMsg: string, modeOverride?: "ask" | "agent" | "plan" | "research") => {
+    async (userMsg: string, modeOverride?: "ask" | "agent" | "research") => {
       const trimmed = userMsg.trim();
       if (!trimmed || !currentTeamId || !activeSessionId || isStreaming) return;
       if (researchRequested && !capabilities?.research_mode_available) {
@@ -649,27 +593,6 @@ export function ChatInterface() {
                     next[next.length - 1] = { ...working };
                     return next;
                   });
-                } else if (currentEvent === "plan_changeset_ready") {
-                  setReviewChangesetId(String(data.changeset_id || ""));
-                  setReviewMutations([]);
-                  setIsReviewOpen(true);
-                } else if (currentEvent === "plan_mutation_pending") {
-                  const mut = data.mutation as ReviewMutation;
-                  if (mut) {
-                    setReviewMutations((prev) => [...prev, mut]);
-                  }
-                } else if (currentEvent === "reasoning_done" || currentEvent === "agent_done") {
-                  if (data.projectName || data.tasks || data.milestones || data.project_name) {
-                    setReviewPlanPreview({
-                      projectName: String(data.projectName || data.project_name || "New Plan"),
-                      description: String(data.description || ""),
-                      tasks: Array.isArray(data.tasks) ? data.tasks : [],
-                      milestones: Array.isArray(data.milestones) ? data.milestones : [],
-                    });
-                    if (data.project_id) {
-                      setReviewProjectId(String(data.project_id));
-                    }
-                  }
                 } else if (currentEvent === "thinking") {
                   const content = String((data as { content?: string }).content ?? "");
                   if (content) {
@@ -1077,21 +1000,7 @@ export function ChatInterface() {
                         />
                       )}
 
-                      {/* Inline Review Panel — rendered inside the chat flow if it's open */}
-                      {i === messages.length - 1 && isReviewOpen && (
-                        <div className="mt-3 w-full max-w-full">
-                          <PlanReviewPanel
-                            isOpen={isReviewOpen}
-                            onClose={() => setIsReviewOpen(false)}
-                            mutations={reviewMutations}
-                            planPreview={reviewPlanPreview}
-                            onApprove={handleApproveReview}
-                            onReject={handleRejectReview}
-                            onRevise={handleReviseReview}
-                            isProcessing={isStreaming}
-                          />
-                        </div>
-                      )}
+
                     </div>
                     {isUser && (
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--bg-700)] border border-[var(--border-strong)] mt-0.5">

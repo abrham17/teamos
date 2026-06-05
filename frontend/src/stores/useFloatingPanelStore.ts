@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type FloatingPanelType = "wiki" | "plan" | "chat" | "task" | "ingest";
+export type FloatingPanelType = "wiki" | "chat" | "task" | "ingest";
 
 export interface FloatingPanel {
   id: string;
