@@ -7,7 +7,6 @@ from teamos_project.api_response import fail, ok
 
 from .services import record_product_event, weekly_cohort_summary, weekly_funnel_counts
 from wiki.models import WikiPage
-from planning.models import Project
 from ingest.models import IngestJob
 
 
@@ -26,7 +25,6 @@ class TeamQuantitativeStatsView(APIView):
         team = membership.team
         docs_processed = IngestJob.objects.filter(team=team, status="done").count()
         wiki_created = WikiPage.objects.filter(team=team, is_deleted=False).count()
-        projects_count = Project.objects.filter(team=team).count()
 
         # Token usage aggregation for last 14 days
         today = datetime.date.today()
@@ -54,7 +52,6 @@ class TeamQuantitativeStatsView(APIView):
             {
                 "documents_processed": docs_processed,
                 "wiki_created": wiki_created,
-                "projects_count": projects_count,
                 "daily_token_usage": daily_token_usage,
             }
         )

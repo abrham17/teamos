@@ -58,7 +58,6 @@ INSTALLED_APPS = [
     'llm_orchestrator',
     'product_analytics',
     'admin_api',
-    'planning',
     'research',
     'integrations.apps.IntegrationsConfig',
 ]

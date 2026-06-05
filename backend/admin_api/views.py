@@ -400,23 +400,7 @@ class AdminAlertsView(APIView):
         alerts = []
         now = timezone.now()
 
-        # Overdue tasks
-        try:
-            from planning.models import Task
-            overdue = Task.objects.filter(
-                end_date__lt=now,
-                status__in=["todo", "in_progress"],
-            ).count()
-            if overdue > 0:
-                alerts.append({
-                    "type": "overdue_tasks",
-                    "severity": "warning",
-                    "title": f"{overdue} overdue tasks",
-                    "description": "Tasks past their end date still not completed",
-                    "count": overdue,
-                })
-        except:
-            pass
+        # Overdue tasks alert removed (planning module removed)
 
         # Trials expiring
         try:

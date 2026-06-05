@@ -15,20 +15,15 @@ You are an intent classifier for TeamOS, an agentic workspace platform.
 {team_context}
 
 ## Intent Types
-- plan/create: Creating new projects, plans, roadmaps, sprints
-- plan/update: Modifying existing plans, tasks, milestones
-- plan/query: Querying plan status, progress, assignments
 - wiki/query: Looking up knowledge base information
 - wiki/update: Creating or updating wiki pages
 - research/analyze: Web research, competitive analysis, data investigation
-- task/create: Creating individual tasks or subtasks
-- task/update: Updating task status, assignments, dates
 - chat/general: Conversational questions, explanations, summaries
 - integration/action: Actions involving external tools (GitHub, Slack, etc.)
 
 ## Required Capabilities
-Choose from: web_search, wiki_search, wiki_write, plan_creation, plan_read,
-task_management, risk_analysis, knowledge_graph, integration_github,
+Choose from: web_search, wiki_search, wiki_write,
+risk_analysis, knowledge_graph, integration_github,
 integration_slack, integration_jira, integration_linear, integration_notion, data_analysis
 
 Output JSON only (no markdown code blocks, just raw JSON):
@@ -48,20 +43,12 @@ Output JSON only (no markdown code blocks, just raw JSON):
 def get_team_context(team_id: str) -> str:
     try:
         from chat.models import IntentClassificationLog
-        from planning.models import Project
-        
         recent_logs = IntentClassificationLog.objects.filter(team_id=team_id).order_by("-created_at")[:3]
-        active_projects = Project.objects.filter(team_id=team_id, status="active")[:3]
-        
         parts = []
         if recent_logs:
             parts.append("Recent User Intents:")
             for log in recent_logs:
                 parts.append(f"  - {log.intent_type} (complexity: {log.complexity})")
-        if active_projects:
-            parts.append("Active Projects:")
-            for proj in active_projects:
-                parts.append(f"  - {proj.name}: {proj.description or ''}")
         return "\n".join(parts) if parts else "No recent activity."
     except Exception:
         return "No recent activity."
